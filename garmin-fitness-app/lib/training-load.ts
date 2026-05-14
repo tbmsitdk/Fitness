@@ -60,8 +60,7 @@ export function computeTrainingLoad(activities: Activity[]): TrainingLoad[] {
     current.setDate(current.getDate() + 1);
   }
 
-  // Return last 365 days only
-  return result.slice(-365);
+  return result;
 }
 
 export function computeWeeklyVolume(activities: Activity[]): WeeklyVolume[] {

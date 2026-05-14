@@ -14,7 +14,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-interface Props { activities: Activity[]; wellness: WellnessRecord[]; }
+interface Props {
+  activities: Activity[];
+  allActivities: Activity[];   // full history for CTL/ATL EWMA accuracy
+  wellness: WellnessRecord[];
+  cutoff: Date;                // start of the selected period
+}
 
 function StatCard({ label, value, sub, accent, hint }: { label: string; value: string; sub?: string; accent: string; hint?: string }) {
   return (
@@ -29,12 +34,16 @@ function StatCard({ label, value, sub, accent, hint }: { label: string; value: s
   );
 }
 
-export default function Dashboard({ activities, wellness }: Props) {
+export default function Dashboard({ activities, allActivities, wellness, cutoff }: Props) {
   const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
   const [wellMetric, setWellMetric] = useState<'hrv' | 'rhr' | 'sleep'>('rhr');
 
   const weeklyVolume = useMemo(() => computeWeeklyVolume(activities), [activities]);
-  const trainingLoad = useMemo(() => computeTrainingLoad(activities), [activities]);
+  // Training load uses full history so EWMA starts warm, then sliced to selected period
+  const trainingLoad = useMemo(() => {
+    const all = computeTrainingLoad(allActivities);
+    return all.filter(d => new Date(d.date) >= cutoff);
+  }, [allActivities, cutoff]);
   const hrZones = useMemo(() => computeHRZoneDistribution(activities), [activities]);
   const personalBests = useMemo(() => computePersonalBests(activities), [activities]);
   const consistency = useMemo(() => computeConsistency(activities), [activities]);
