@@ -1,62 +1,24 @@
 'use client';
-
 import { PersonalBest } from '@/types';
-import { Trophy, Activity, Bike, Footprints } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { clsx } from 'clsx';
+import { cn } from '@/lib/utils';
 
-interface Props {
-  data: PersonalBest[];
-}
+const SPORT_DOT: Record<string, string> = { running: 'bg-blue-500', cycling: 'bg-green-500', walking: 'bg-amber-500' };
 
-const SPORT_ICON = {
-  running: <Activity className="w-4 h-4" />,
-  cycling: <Bike className="w-4 h-4" />,
-  walking: <Footprints className="w-4 h-4" />,
-};
-
-const SPORT_COLORS = {
-  running: 'bg-green-50 text-garmin-green border-green-100',
-  cycling: 'bg-blue-50 text-garmin-blue border-blue-100',
-  walking: 'bg-orange-50 text-garmin-orange border-orange-100',
-};
-
-export default function PersonalBests({ data }: Props) {
-  if (data.length === 0) {
-    return (
-      <div className="h-32 flex items-center justify-center text-slate-400 text-sm">
-        No personal bests computed yet
-      </div>
-    );
-  }
-
+export default function PersonalBests({ data }: { data: PersonalBest[] }) {
+  if (!data.length) return <div className="h-20 flex items-center justify-center text-xs text-muted-foreground">No personal bests yet</div>;
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      {data.map((pb, i) => {
-        const sport = pb.activity_type as keyof typeof SPORT_COLORS;
-        return (
-          <div
-            key={i}
-            className={clsx(
-              'p-3 rounded-xl border flex flex-col gap-1',
-              SPORT_COLORS[sport] || 'bg-slate-50 text-slate-600 border-slate-100'
-            )}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                {SPORT_ICON[sport] || <Trophy className="w-4 h-4" />}
-                <span className="text-xs font-medium opacity-75">{pb.activity_type}</span>
-              </div>
-              <Trophy className="w-3 h-3 opacity-50" />
-            </div>
-            <p className="text-lg font-bold leading-none">{pb.value}</p>
-            <p className="text-xs opacity-75 leading-tight">{pb.label}</p>
-            <p className="text-xs opacity-50 mt-0.5">
-              {format(parseISO(pb.date), 'MMM d, yyyy')}
-            </p>
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      {data.map((pb, i) => (
+        <div key={i} className="p-3 rounded-md border border-border bg-card/50 space-y-1">
+          <div className="flex items-center gap-1.5">
+            <div className={cn('w-1.5 h-1.5 rounded-full', SPORT_DOT[pb.activity_type] ?? 'bg-muted-foreground')} />
+            <p className="text-[10px] text-muted-foreground truncate">{pb.label}</p>
           </div>
-        );
-      })}
+          <p className="text-lg font-bold font-mono tracking-tight leading-none">{pb.value}</p>
+          <p className="text-[10px] text-muted-foreground">{format(parseISO(pb.date), 'MMM d, yyyy')}</p>
+        </div>
+      ))}
     </div>
   );
 }

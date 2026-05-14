@@ -1,15 +1,7 @@
 'use client';
-
 import { useMemo, useState } from 'react';
 import { Activity, WellnessRecord } from '@/types';
-import {
-  computeWeeklyVolume,
-  computeTrainingLoad,
-  computeHRZoneDistribution,
-  computePersonalBests,
-  computeConsistency,
-  compute90DaySummary,
-} from '@/lib/training-load';
+import { computeWeeklyVolume, computeTrainingLoad, computeHRZoneDistribution, computePersonalBests, computeConsistency, compute90DaySummary } from '@/lib/training-load';
 import WeeklyVolumeChart from './charts/WeeklyVolumeChart';
 import FitnessTrendChart from './charts/FitnessTrendChart';
 import TrainingLoadChart from './charts/TrainingLoadChart';
@@ -17,41 +9,28 @@ import HRZoneChart from './charts/HRZoneChart';
 import ConsistencyChart from './charts/ConsistencyChart';
 import PersonalBests from './charts/PersonalBests';
 import StepsChart from './charts/StepsChart';
-import { Activity as ActivityIcon, Bike, Footprints, TrendingUp, Zap, Heart } from 'lucide-react';
-import { clsx } from 'clsx';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
-interface Props {
-  activities: Activity[];
-  wellness: WellnessRecord[];
-}
+interface Props { activities: Activity[]; wellness: WellnessRecord[]; }
 
-function StatCard({ label, value, sub, icon, color }: { label: string; value: string; sub?: string; icon: React.ReactNode; color: string }) {
+function StatCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent: string }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-4">
-      <div className={clsx('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0', color)}>
-        {icon}
+    <div className="p-4 rounded-lg border border-border bg-card space-y-1">
+      <p className="text-[10px] font-medium tracking-widest uppercase text-muted-foreground">{label}</p>
+      <div className="flex items-baseline gap-2">
+        <p className="text-2xl font-bold font-mono tracking-tight leading-none" style={{ color: accent }}>{value}</p>
       </div>
-      <div className="min-w-0">
-        <p className="text-xs text-slate-500 font-medium truncate">{label}</p>
-        <p className="text-xl font-bold text-slate-900 leading-none mt-0.5">{value}</p>
-        {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
-      </div>
-    </div>
-  );
-}
-
-function Card({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={clsx('bg-white rounded-2xl border border-slate-100 p-5', className)}>
-      <h3 className="text-sm font-semibold text-slate-700 mb-4">{title}</h3>
-      {children}
+      {sub && <p className="text-[10px] text-muted-foreground">{sub}</p>}
     </div>
   );
 }
 
 export default function Dashboard({ activities, wellness }: Props) {
-  const [volumeMetric, setVolumeMetric] = useState<'km' | 'hours'>('km');
-  const [wellnessMetric, setWellnessMetric] = useState<'hrv' | 'rhr' | 'sleep'>('rhr');
+  const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
+  const [wellMetric, setWellMetric] = useState<'hrv' | 'rhr' | 'sleep'>('rhr');
 
   const weeklyVolume = useMemo(() => computeWeeklyVolume(activities), [activities]);
   const trainingLoad = useMemo(() => computeTrainingLoad(activities), [activities]);
@@ -59,141 +38,98 @@ export default function Dashboard({ activities, wellness }: Props) {
   const personalBests = useMemo(() => computePersonalBests(activities), [activities]);
   const consistency = useMemo(() => computeConsistency(activities), [activities]);
   const summary = useMemo(() => compute90DaySummary(activities), [activities]);
-
-  const sortedWellness = useMemo(() =>
-    [...wellness].sort((a, b) => a.date.localeCompare(b.date)),
-    [wellness]
-  );
+  const sortedWellness = useMemo(() => [...wellness].sort((a,b) => a.date.localeCompare(b.date)), [wellness]);
 
   const latestLoad = trainingLoad[trainingLoad.length - 1];
-
-  // Determine form status
-  const formStatus = latestLoad
-    ? latestLoad.tsb > 5 ? { label: 'Fresh', color: 'text-garmin-green', bg: 'bg-green-50' }
-    : latestLoad.tsb < -10 ? { label: 'Fatigued', color: 'text-red-600', bg: 'bg-red-50' }
-    : { label: 'Neutral', color: 'text-amber-600', bg: 'bg-amber-50' }
+  const formBadge = latestLoad
+    ? latestLoad.tsb > 5 ? { label: 'Fresh', variant: 'fresh' as const }
+    : latestLoad.tsb < -10 ? { label: 'Fatigued', variant: 'fatigued' as const }
+    : { label: 'Neutral', variant: 'neutral' as const }
     : null;
 
   return (
-    <div className="space-y-6">
-      {/* Summary stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatCard
-          label="Runs (90d)"
-          value={`${summary.running.count}`}
-          sub={`${summary.running.km} km`}
-          icon={<ActivityIcon className="w-5 h-5 text-garmin-green" />}
-          color="bg-green-50"
-        />
-        <StatCard
-          label="Rides (90d)"
-          value={`${summary.cycling.count}`}
-          sub={`${summary.cycling.km} km`}
-          icon={<Bike className="w-5 h-5 text-garmin-blue" />}
-          color="bg-blue-50"
-        />
-        <StatCard
-          label="Walks (90d)"
-          value={`${summary.walking.count}`}
-          sub={`${summary.walking.km} km`}
-          icon={<Footprints className="w-5 h-5 text-garmin-orange" />}
-          color="bg-orange-50"
-        />
-        <StatCard
-          label="Fitness (CTL)"
-          value={latestLoad ? `${latestLoad.ctl.toFixed(0)}` : '—'}
-          sub="42-day avg TSS"
-          icon={<TrendingUp className="w-5 h-5 text-garmin-purple" />}
-          color="bg-purple-50"
-        />
-        <StatCard
-          label="Week TSS"
-          value={`${summary.current_week_tss}`}
-          sub={summary.load_change_pct >= 0 ? `+${summary.load_change_pct}% vs last wk` : `${summary.load_change_pct}% vs last wk`}
-          icon={<Zap className="w-5 h-5 text-amber-500" />}
-          color="bg-amber-50"
-        />
-        <StatCard
-          label="Form (TSB)"
-          value={latestLoad ? `${latestLoad.tsb.toFixed(1)}` : '—'}
-          sub={formStatus?.label}
-          icon={<Heart className="w-5 h-5 text-red-500" />}
-          color="bg-red-50"
-        />
+    <div className="space-y-4">
+      {/* KPI row */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        <StatCard label="Runs 90d" value={`${summary.running.count}`} sub={`${summary.running.km} km`} accent="#3B82F6" />
+        <StatCard label="Rides 90d" value={`${summary.cycling.count}`} sub={`${summary.cycling.km} km`} accent="#22C55E" />
+        <StatCard label="Walks 90d" value={`${summary.walking.count}`} sub={`${summary.walking.km} km`} accent="#F59E0B" />
+        <StatCard label="Fitness CTL" value={latestLoad ? `${latestLoad.ctl.toFixed(0)}` : '—'} sub="42-day avg" accent="hsl(0 0% 98%)" />
+        <StatCard label="Week TSS" value={`${summary.current_week_tss}`} sub={`${summary.load_change_pct >= 0 ? '+' : ''}${summary.load_change_pct}% vs prev`} accent="hsl(0 0% 98%)" />
+        <div className="p-4 rounded-lg border border-border bg-card space-y-1">
+          <p className="text-[10px] font-medium tracking-widest uppercase text-muted-foreground">Form TSB</p>
+          <p className="text-2xl font-bold font-mono tracking-tight leading-none">{latestLoad ? latestLoad.tsb.toFixed(1) : '—'}</p>
+          {formBadge && <Badge variant={formBadge.variant}>{formBadge.label}</Badge>}
+        </div>
       </div>
 
       {/* Weekly volume */}
-      <Card title="Weekly Training Volume">
-        <div className="flex items-center gap-2 mb-4">
-          {(['km', 'hours'] as const).map(m => (
-            <button
-              key={m}
-              onClick={() => setVolumeMetric(m)}
-              className={clsx(
-                'px-3 py-1 text-xs font-medium rounded-full transition-colors',
-                volumeMetric === m ? 'bg-garmin-blue text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              )}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-        <WeeklyVolumeChart data={weeklyVolume} metric={volumeMetric} />
+      <Card>
+        <CardHeader className="flex-row items-center justify-between pb-2">
+          <CardTitle>Weekly Volume</CardTitle>
+          <div className="flex gap-1">
+            {(['km','hours'] as const).map(m => (
+              <Button key={m} variant={volMetric === m ? 'default' : 'ghost'} size="sm" onClick={() => setVolMetric(m)}>{m}</Button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent><WeeklyVolumeChart data={weeklyVolume} metric={volMetric} /></CardContent>
       </Card>
 
       {/* Training load + HR zones */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Training Load — ATL / CTL / Form (TSB)">
-          <TrainingLoadChart data={trainingLoad} />
-          <div className="flex gap-4 mt-2 text-xs text-slate-500">
-            <span><span className="font-semibold text-garmin-blue">CTL</span> = fitness (42d avg)</span>
-            <span><span className="font-semibold text-red-500">ATL</span> = fatigue (7d avg)</span>
-            <span><span className="font-semibold text-garmin-green">TSB</span> = form (CTL − ATL)</span>
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle>Training Load — ATL / CTL / Form</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TrainingLoadChart data={trainingLoad} />
+            <div className="flex gap-4 mt-1 text-[10px] text-muted-foreground">
+              <span><span className="text-blue-400 font-medium">CTL</span> fitness</span>
+              <span><span className="text-red-400 font-medium">ATL</span> fatigue</span>
+              <span><span className="text-green-400 font-medium">TSB</span> form</span>
+            </div>
+          </CardContent>
         </Card>
-
-        <Card title="HR Zone Distribution (all activities)">
-          <HRZoneChart data={hrZones} />
+        <Card>
+          <CardHeader className="pb-2"><CardTitle>HR Zone Distribution</CardTitle></CardHeader>
+          <CardContent><HRZoneChart data={hrZones} /></CardContent>
         </Card>
       </div>
 
-      {/* Wellness trends */}
-      <Card title="Wellness Trends">
-        <div className="flex items-center gap-2 mb-4">
-          {([
-            { id: 'rhr', label: 'Resting HR' },
-            { id: 'hrv', label: 'HRV' },
-            { id: 'sleep', label: 'Sleep' },
-          ] as const).map(m => (
-            <button
-              key={m.id}
-              onClick={() => setWellnessMetric(m.id)}
-              className={clsx(
-                'px-3 py-1 text-xs font-medium rounded-full transition-colors',
-                wellnessMetric === m.id ? 'bg-garmin-blue text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              )}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-        <FitnessTrendChart wellness={sortedWellness} metric={wellnessMetric} />
+      {/* Wellness */}
+      <Card>
+        <CardHeader className="flex-row items-center justify-between pb-2">
+          <CardTitle>Wellness Trends</CardTitle>
+          <div className="flex gap-1">
+            {([
+              { id: 'rhr', label: 'Resting HR' },
+              { id: 'hrv', label: 'HRV' },
+              { id: 'sleep', label: 'Sleep' },
+            ] as const).map(m => (
+              <Button key={m.id} variant={wellMetric === m.id ? 'default' : 'ghost'} size="sm" onClick={() => setWellMetric(m.id)}>{m.label}</Button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent><FitnessTrendChart wellness={sortedWellness} metric={wellMetric} /></CardContent>
       </Card>
 
       {/* Consistency + Steps */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Monthly Consistency">
-          <ConsistencyChart data={consistency} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-2"><CardTitle>Monthly Consistency</CardTitle></CardHeader>
+          <CardContent><ConsistencyChart data={consistency} /></CardContent>
         </Card>
-
-        <Card title="Daily Steps (last 60 days)">
-          <StepsChart wellness={sortedWellness} />
+        <Card>
+          <CardHeader className="pb-2"><CardTitle>Daily Steps</CardTitle></CardHeader>
+          <CardContent><StepsChart wellness={sortedWellness} /></CardContent>
         </Card>
       </div>
 
       {/* Personal bests */}
-      <Card title="Personal Bests">
-        <PersonalBests data={personalBests} />
+      <Card>
+        <CardHeader className="pb-2"><CardTitle>Personal Bests</CardTitle></CardHeader>
+        <CardContent><PersonalBests data={personalBests} /></CardContent>
       </Card>
     </div>
   );

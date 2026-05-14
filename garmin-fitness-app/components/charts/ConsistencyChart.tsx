@@ -1,61 +1,30 @@
 'use client';
-
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ConsistencyData } from '@/types';
 import { format, parseISO } from 'date-fns';
 
-interface Props {
-  data: ConsistencyData[];
-}
+const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
+interface Row { month: string; 'Running': number; 'Cycling': number; 'Walking': number; pct: number; }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const labelFmt = (label: string, payload: any[]) => { const pct = payload?.[0]?.payload?.pct; return `${label}${pct != null ? ` · ${pct}% active` : ''}`; };
 
-interface ChartRow {
-  month: string;
-  'Running days': number;
-  'Cycling days': number;
-  'Walking days': number;
-  pct: number;
-}
-
-export default function ConsistencyChart({ data }: Props) {
-  const recent = data.slice(-12);
-
-  const formatted: ChartRow[] = recent.map(d => ({
+export default function ConsistencyChart({ data }: { data: ConsistencyData[] }) {
+  const rows: Row[] = data.slice(-12).map(d => ({
     month: format(parseISO(d.month + '-01'), 'MMM yy'),
-    'Running days': d.running_days,
-    'Cycling days': d.cycling_days,
-    'Walking days': d.walking_days,
+    Running: d.running_days, Cycling: d.cycling_days, Walking: d.walking_days,
     pct: Math.round((d.active_days / d.total_days) * 100),
   }));
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function labelFormatter(label: string, payload: any[]) {
-    const pct = payload?.[0]?.payload?.pct as number | undefined;
-    return `${label}${pct != null ? ` · ${pct}% active` : ''}`;
-  }
-
   return (
-    <ResponsiveContainer width="100%" height={240}>
-      <BarChart data={formatted} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-        <XAxis
-          dataKey="month"
-          tick={{ fontSize: 11, fill: '#94a3b8' }}
-          tickLine={false}
-          axisLine={false}
-        />
-        <YAxis
-          tick={{ fontSize: 11, fill: '#94a3b8' }}
-          tickLine={false}
-          axisLine={false}
-        />
-        <Tooltip
-          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 24px rgba(0,0,0,.1)', fontSize: 12 }}
-          labelFormatter={labelFormatter}
-        />
-        <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" iconSize={8} />
-        <Bar dataKey="Running days" fill="#009E60" radius={[2, 2, 0, 0]} />
-        <Bar dataKey="Cycling days" fill="#0096D6" radius={[2, 2, 0, 0]} />
-        <Bar dataKey="Walking days" fill="#FF6B00" radius={[2, 2, 0, 0]} />
+    <ResponsiveContainer width="100%" height={220}>
+      <BarChart data={rows} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
+        <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} />
+        <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }} labelFormatter={labelFmt} />
+        <Legend wrapperStyle={{ fontSize: 11, color: 'hsl(240 5% 64.9%)', paddingTop: 8 }} iconType="circle" iconSize={6} />
+        <Bar dataKey="Running" fill="#3B82F6" radius={[2,2,0,0]} />
+        <Bar dataKey="Cycling" fill="#22C55E" radius={[2,2,0,0]} />
+        <Bar dataKey="Walking" fill="#F59E0B" radius={[2,2,0,0]} />
       </BarChart>
     </ResponsiveContainer>
   );

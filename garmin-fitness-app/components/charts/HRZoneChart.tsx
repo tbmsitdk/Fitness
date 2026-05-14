@@ -1,73 +1,32 @@
 'use client';
-
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer } from 'recharts';
 import { HRZoneData } from '@/types';
 
-interface Props {
-  data: HRZoneData[];
-}
-
-const ZONE_COLORS = ['#94a3b8', '#0096D6', '#009E60', '#FF6B00', '#E30613'];
-
-function formatMinutes(mins: number): string {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-
+const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
+const ZONE_COLORS = ['#334155', '#3B82F6', '#22C55E', '#F59E0B', '#EF4444'];
+const fmt = (m: number) => { const h = Math.floor(m/60); const s = m%60; return h > 0 ? `${h}h ${s}m` : `${s}m`; };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function tooltipFormatter(value: unknown, _name: unknown, props: any) {
-  const mins = props?.payload?.minutes as number | undefined;
-  return [`${value}%${mins != null ? ` · ${formatMinutes(mins)}` : ''}`, 'Time in zone'];
-}
+const ttFmt = (v: unknown, _: unknown, p: any) => [`${v}%${p?.payload?.minutes != null ? ` · ${fmt(p.payload.minutes)}` : ''}`, 'Zone time'];
 
-export default function HRZoneChart({ data }: Props) {
-  if (data.every(d => d.minutes === 0)) {
-    return (
-      <div className="h-[220px] flex items-center justify-center text-slate-400 text-sm">
-        No heart rate data found — activities with HR monitor required
-      </div>
-    );
-  }
-
+export default function HRZoneChart({ data }: { data: HRZoneData[] }) {
+  if (data.every(d => d.minutes === 0)) return <div className="h-[180px] flex items-center justify-center text-xs text-muted-foreground">No HR data — activities recorded with heart rate monitor required</div>;
   return (
     <div className="space-y-3">
-      <ResponsiveContainer width="100%" height={160}>
-        <BarChart data={data} layout="vertical" margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-          <XAxis
-            type="number"
-            tick={{ fontSize: 11, fill: '#94a3b8' }}
-            tickLine={false}
-            axisLine={false}
-            tickFormatter={(v: number) => `${v}%`}
-            domain={[0, 100]}
-          />
-          <YAxis
-            type="category"
-            dataKey="zone"
-            tick={{ fontSize: 10, fill: '#64748b' }}
-            tickLine={false}
-            axisLine={false}
-            width={110}
-          />
-          <Tooltip
-            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 24px rgba(0,0,0,.1)', fontSize: 12 }}
-            formatter={tooltipFormatter}
-          />
-          <Bar dataKey="percentage" radius={[0, 4, 4, 0]}>
-            {data.map((_, i) => (
-              <Cell key={i} fill={ZONE_COLORS[i]} />
-            ))}
-          </Bar>
+      <ResponsiveContainer width="100%" height={140}>
+        <BarChart data={data} layout="vertical" margin={{ top: 0, right: 36, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" horizontal={false} />
+          <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v}%`} domain={[0,100]} />
+          <YAxis type="category" dataKey="zone" tick={{ fontSize: 9, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} width={100} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)' }} formatter={ttFmt} />
+          <Bar dataKey="percentage" radius={[0,3,3,0]}>{data.map((_,i) => <Cell key={i} fill={ZONE_COLORS[i]} />)}</Bar>
         </BarChart>
       </ResponsiveContainer>
       <div className="grid grid-cols-5 gap-1">
-        {data.map((d, i) => (
+        {data.map((d,i) => (
           <div key={i} className="text-center">
-            <div className="w-full h-1 rounded-full mb-1" style={{ backgroundColor: ZONE_COLORS[i] }} />
-            <p className="text-xs font-semibold text-slate-700">{d.percentage}%</p>
-            <p className="text-xs text-slate-400">{formatMinutes(d.minutes)}</p>
+            <div className="h-0.5 rounded-full mb-1" style={{ background: ZONE_COLORS[i] }} />
+            <p className="text-xs font-semibold">{d.percentage}%</p>
+            <p className="text-[10px] text-muted-foreground">{fmt(d.minutes)}</p>
           </div>
         ))}
       </div>

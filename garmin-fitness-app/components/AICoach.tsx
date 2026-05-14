@@ -1,355 +1,203 @@
 'use client';
-
 import { useState, useEffect, useRef } from 'react';
 import { Activity, WellnessRecord, AISummary, ChatMessage } from '@/types';
-import { Bot, Send, RefreshCw, AlertTriangle, TrendingUp, Shield, Heart, ChevronDown } from 'lucide-react';
-import { clsx } from 'clsx';
+import { Bot, Send, RefreshCw, AlertTriangle, TrendingUp, Shield, Heart } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
-interface Props {
-  activities: Activity[];
-  wellness: WellnessRecord[];
-}
+interface Props { activities: Activity[]; wellness: WellnessRecord[]; }
 
-const QUICK_QUESTIONS = [
-  'Am I overtraining right now?',
-  'How should I structure next week?',
-  'How is my aerobic base developing?',
-  'What does my Zone 2 training look like?',
-  'Am I getting enough recovery?',
-  'How is my fitness trending over the last 3 months?',
+const QUICK = [
+  'Am I overtraining?','How should I structure next week?',
+  'How is my aerobic base developing?','What does my Zone 2 look like?',
+  'Am I recovering enough?','How is my fitness trending?',
 ];
 
-function MarkdownText({ text }: { text: string }) {
+function Prose({ text }: { text: string }) {
   const html = text
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
-    .replace(/^### (.*?)$/gm, '<h3 class="text-sm font-semibold mt-3 mb-1">$1</h3>')
-    .replace(/^- (.*?)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)+/gs, '<ul>$&</ul>')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/^(?!<[hup])(.+)$/gm, (m) => m ? m : '');
-
-  return <div className="ai-prose text-sm text-slate-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />;
+    .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+    .replace(/^## (.*?)$/gm,'<h2>$1</h2>')
+    .replace(/^- (.*?)$/gm,'<li>$1</li>')
+    .replace(/\n\n/g,'</p><p>');
+  return <div className="ai-prose text-sm" dangerouslySetInnerHTML={{ __html: `<p>${html}</p>` }} />;
 }
 
 export default function AICoach({ activities, wellness }: Props) {
+  const [section, setSection] = useState<'summary'|'chat'>('summary');
   const [summary, setSummary] = useState<AISummary | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
-  const [summaryError, setSummaryError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const [activeSection, setActiveSection] = useState<'summary' | 'chat'>('summary');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    fetchSummary();
-  }, []);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  useEffect(() => { fetchSummary(); }, []);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   async function fetchSummary(invalidate = false) {
-    setSummaryLoading(true);
-    setSummaryError('');
+    setLoading(true); setError('');
     try {
       if (invalidate) await fetch('/api/ai-summary', { method: 'DELETE' });
       const res = await fetch('/api/ai-summary');
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to load summary');
+      if (!res.ok) throw new Error(json.error || 'Failed');
       setSummary(json);
-    } catch (err) {
-      setSummaryError(err instanceof Error ? err.message : 'Failed to load coaching summary');
-    } finally {
-      setSummaryLoading(false);
-    }
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    finally { setLoading(false); }
   }
 
-  async function sendMessage(text: string) {
+  async function send(text: string) {
     if (!text.trim() || chatLoading) return;
     const userMsg: ChatMessage = { role: 'user', content: text.trim() };
     const updated = [...messages, userMsg];
-    setMessages(updated);
-    setInput('');
-    setChatLoading(true);
-
-    const assistantMsg: ChatMessage = { role: 'assistant', content: '' };
-    setMessages([...updated, assistantMsg]);
-
+    setMessages([...updated, { role: 'assistant', content: '' }]);
+    setInput(''); setChatLoading(true);
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updated }),
-      });
-
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: updated }) });
       if (!res.ok || !res.body) throw new Error('Chat failed');
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
+        const { done, value } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n'); buf = lines.pop() ?? '';
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6);
-          if (data === '[DONE]') break;
-          try {
-            const { text: chunk, error } = JSON.parse(data);
-            if (error) throw new Error(error);
-            if (chunk) {
-              setMessages(prev => {
-                const msgs = [...prev];
-                msgs[msgs.length - 1] = { role: 'assistant', content: msgs[msgs.length - 1].content + chunk };
-                return msgs;
-              });
-            }
-          } catch { /* skip malformed chunk */ }
+          const d = line.slice(6); if (d === '[DONE]') break;
+          try { const { text: chunk } = JSON.parse(d); if (chunk) setMessages(prev => { const m = [...prev]; m[m.length-1] = { role: 'assistant', content: m[m.length-1].content + chunk }; return m; }); } catch { /* skip */ }
         }
       }
-    } catch (err) {
-      setMessages(prev => {
-        const msgs = [...prev];
-        msgs[msgs.length - 1] = { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' };
-        return msgs;
-      });
-    } finally {
-      setChatLoading(false);
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
-    }
+    } catch { setMessages(prev => { const m = [...prev]; m[m.length-1] = { role: 'assistant', content: 'Something went wrong. Please try again.' }; return m; }); }
+    finally { setChatLoading(false); }
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      {/* Tabs */}
-      <div className="flex border-b border-slate-200">
-        {(['summary', 'chat'] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveSection(tab)}
-            className={clsx(
-              'px-5 py-2.5 text-sm font-medium capitalize border-b-2 transition-colors -mb-px',
-              activeSection === tab
-                ? 'border-garmin-blue text-garmin-blue'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
-            )}
-          >
-            {tab === 'summary' ? 'Weekly Summary' : 'Chat with your data'}
-          </button>
+    <div className="max-w-2xl mx-auto space-y-4">
+      {/* Section tabs */}
+      <div className="flex border-b border-border">
+        {(['summary','chat'] as const).map(t => (
+          <button key={t} onClick={() => setSection(t)} className={cn(
+            'px-4 py-2.5 text-xs font-medium capitalize border-b-2 transition-colors -mb-px',
+            section === t ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}>{t === 'summary' ? 'Weekly Summary' : 'Chat with data'}</button>
         ))}
       </div>
 
-      {/* Weekly Summary */}
-      {activeSection === 'summary' && (
-        <div className="space-y-4">
+      {section === 'summary' && (
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Bot className="w-5 h-5 text-garmin-blue" />
-              <span className="text-sm font-semibold text-slate-700">AI Fitness Coach</span>
-              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">claude-sonnet-4-5</span>
+              <Bot className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium">AI Fitness Coach</span>
+              <Badge variant="outline">claude-sonnet-4-5</Badge>
             </div>
-            <button
-              onClick={() => fetchSummary(true)}
-              disabled={summaryLoading}
-              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 disabled:opacity-50"
-            >
-              <RefreshCw className={clsx('w-3.5 h-3.5', summaryLoading && 'animate-spin')} />
-              Refresh
-            </button>
+            <Button variant="ghost" size="sm" onClick={() => fetchSummary(true)} disabled={loading}>
+              <RefreshCw className={cn('w-3 h-3 mr-1.5', loading && 'animate-spin')} />Refresh
+            </Button>
           </div>
 
-          {summaryLoading ? (
-            <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center space-y-3">
-              <div className="w-10 h-10 border-2 border-garmin-blue border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="text-sm text-slate-500">Analysing your last 90 days of training…</p>
-              <p className="text-xs text-slate-400">This may take up to 30 seconds</p>
-            </div>
-          ) : summaryError ? (
-            <div className="bg-red-50 rounded-2xl border border-red-100 p-6 flex gap-3">
-              <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-red-700">Could not load coaching summary</p>
-                <p className="text-sm text-red-600 mt-1">{summaryError}</p>
-                {summaryError.includes('ANTHROPIC') && (
-                  <p className="text-xs text-red-500 mt-2">Add your ANTHROPIC_API_KEY in Vercel → Settings → Environment Variables, then redeploy.</p>
-                )}
+          {loading ? (
+            <Card><CardContent className="py-10 text-center space-y-2">
+              <div className="w-4 h-4 border border-border border-t-foreground rounded-full animate-spin mx-auto" />
+              <p className="text-xs text-muted-foreground">Analysing 90 days of training…</p>
+            </CardContent></Card>
+          ) : error ? (
+            <Card className="border-red-500/20 bg-red-500/5"><CardContent className="py-4 flex gap-3 items-start">
+              <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+              <div><p className="text-sm font-medium text-red-400">{error}</p>
+              {error.includes('ANTHROPIC') && <p className="text-xs text-muted-foreground mt-1">Add ANTHROPIC_API_KEY in Vercel → Settings → Environment Variables, then redeploy.</p>}
               </div>
-            </div>
-          ) : summary ? (
-            <div className="space-y-4">
-              {/* Main summary */}
-              <div className="bg-white rounded-2xl border border-slate-100 p-6">
-                <MarkdownText text={summary.summary} />
-                {summary.cached && (
-                  <p className="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-50">
-                    Cached · generated {new Date(summary.generated_at).toLocaleString()} · refreshes every 24h
-                  </p>
-                )}
-              </div>
+            </CardContent></Card>
+          ) : summary && (
+            <>
+              <Card><CardContent className="pt-4"><Prose text={summary.summary} />
+                {summary.cached && <p className="text-[10px] text-muted-foreground mt-3 pt-3 border-t border-border">Cached · {new Date(summary.generated_at).toLocaleString()} · 24h TTL</p>}
+              </CardContent></Card>
 
-              {/* Recommendations */}
               {summary.recommendations.length > 0 && (
-                <div className="bg-blue-50 rounded-2xl border border-blue-100 p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <TrendingUp className="w-4 h-4 text-garmin-blue" />
-                    <h4 className="text-sm font-semibold text-garmin-blue">Recommendations</h4>
-                  </div>
-                  <ul className="space-y-2">
-                    {summary.recommendations.map((r, i) => (
-                      <li key={i} className="flex gap-2 text-sm text-slate-700">
-                        <span className="text-garmin-blue font-bold">→</span>
-                        <span>{r}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <Card className="border-blue-500/20 bg-blue-500/5"><CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-1.5 text-blue-400"><TrendingUp className="w-3 h-3" />Recommendations</CardTitle>
+                </CardHeader><CardContent>
+                  <ul className="space-y-2">{summary.recommendations.map((r,i) => (
+                    <li key={i} className="flex gap-2 text-xs text-muted-foreground"><span className="text-blue-400">→</span>{r}</li>
+                  ))}</ul>
+                </CardContent></Card>
               )}
 
-              {/* Injury risks */}
               {summary.injury_risks.length > 0 && (
-                <div className="bg-amber-50 rounded-2xl border border-amber-100 p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Shield className="w-4 h-4 text-amber-600" />
-                    <h4 className="text-sm font-semibold text-amber-700">Injury Risk Flags</h4>
-                  </div>
-                  <ul className="space-y-2">
-                    {summary.injury_risks.map((r, i) => (
-                      <li key={i} className="flex gap-2 text-sm text-amber-800">
-                        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                        <span>{r}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <Card className="border-amber-500/20 bg-amber-500/5"><CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-1.5 text-amber-400"><Shield className="w-3 h-3" />Injury Risk Flags</CardTitle>
+                </CardHeader><CardContent>
+                  <ul className="space-y-2">{summary.injury_risks.map((r,i) => (
+                    <li key={i} className="flex gap-2 text-xs text-muted-foreground"><AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0 mt-0.5" />{r}</li>
+                  ))}</ul>
+                </CardContent></Card>
               )}
 
-              {/* Longevity insights */}
               {summary.longevity_insights.length > 0 && (
-                <div className="bg-green-50 rounded-2xl border border-green-100 p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Heart className="w-4 h-4 text-garmin-green" />
-                    <h4 className="text-sm font-semibold text-garmin-green">Longevity Insights</h4>
-                  </div>
-                  <ul className="space-y-2">
-                    {summary.longevity_insights.map((r, i) => (
-                      <li key={i} className="flex gap-2 text-sm text-slate-700">
-                        <span className="text-garmin-green font-bold">♡</span>
-                        <span>{r}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <Card className="border-green-500/20 bg-green-500/5"><CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-1.5 text-green-400"><Heart className="w-3 h-3" />Longevity Insights</CardTitle>
+                </CardHeader><CardContent>
+                  <ul className="space-y-2">{summary.longevity_insights.map((r,i) => (
+                    <li key={i} className="flex gap-2 text-xs text-muted-foreground"><span className="text-green-400">♡</span>{r}</li>
+                  ))}</ul>
+                </CardContent></Card>
               )}
-            </div>
-          ) : null}
-
-          {/* CTA to chat */}
-          <button
-            onClick={() => setActiveSection('chat')}
-            className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
-          >
-            <Bot className="w-4 h-4" />
-            Ask a question about your data
-            <ChevronDown className="w-4 h-4" />
-          </button>
+            </>
+          )}
+          <Button variant="outline" className="w-full text-xs" onClick={() => setSection('chat')}>
+            <Bot className="w-3.5 h-3.5 mr-2" />Ask a question about your data
+          </Button>
         </div>
       )}
 
-      {/* Chat */}
-      {activeSection === 'chat' && (
-        <div className="flex flex-col h-[calc(100vh-280px)] min-h-[500px]">
-          {/* Quick questions */}
+      {section === 'chat' && (
+        <div className="flex flex-col" style={{ height: 'calc(100vh - 220px)', minHeight: 500 }}>
           {messages.length === 0 && (
-            <div className="mb-4">
-              <p className="text-xs text-slate-500 mb-2 font-medium">Quick questions:</p>
-              <div className="flex flex-wrap gap-2">
-                {QUICK_QUESTIONS.map(q => (
-                  <button
-                    key={q}
-                    onClick={() => sendMessage(q)}
-                    className="text-xs px-3 py-1.5 bg-white border border-slate-200 hover:border-garmin-blue hover:text-garmin-blue rounded-full transition-colors text-slate-600"
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {QUICK.map(q => (
+                <button key={q} onClick={() => send(q)} className="text-[11px] px-2.5 py-1 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors">{q}</button>
+              ))}
             </div>
           )}
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+          <div className="flex-1 overflow-y-auto space-y-3 pr-1">
             {messages.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-center">
-                <div className="space-y-2">
-                  <div className="w-12 h-12 bg-garmin-blue/10 rounded-2xl flex items-center justify-center mx-auto">
-                    <Bot className="w-6 h-6 text-garmin-blue" />
-                  </div>
-                  <p className="text-sm font-medium text-slate-700">Ask me anything about your training</p>
-                  <p className="text-xs text-slate-400">I have full context of your last 90 days</p>
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center space-y-2">
+                  <Bot className="w-8 h-8 text-muted-foreground mx-auto" />
+                  <p className="text-sm text-muted-foreground">Ask anything about your training</p>
+                  <p className="text-xs text-muted-foreground/60">I have full context of your last 90 days</p>
                 </div>
               </div>
-            ) : (
-              messages.map((m, i) => (
-                <div key={i} className={clsx('flex gap-3', m.role === 'user' ? 'flex-row-reverse' : 'flex-row')}>
-                  <div className={clsx(
-                    'w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold',
-                    m.role === 'user' ? 'bg-garmin-blue text-white' : 'bg-slate-100 text-slate-600'
-                  )}>
-                    {m.role === 'user' ? 'You' : <Bot className="w-4 h-4" />}
-                  </div>
-                  <div className={clsx(
-                    'max-w-[85%] px-4 py-3 rounded-2xl text-sm',
-                    m.role === 'user'
-                      ? 'bg-garmin-blue text-white rounded-tr-sm'
-                      : 'bg-white border border-slate-100 rounded-tl-sm'
-                  )}>
-                    {m.role === 'assistant'
-                      ? <MarkdownText text={m.content || (chatLoading && i === messages.length - 1 ? '▋' : '')} />
-                      : m.content
-                    }
-                  </div>
+            ) : messages.map((m,i) => (
+              <div key={i} className={cn('flex gap-2.5', m.role === 'user' && 'flex-row-reverse')}>
+                <div className={cn('w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 text-[10px] font-bold',
+                  m.role === 'user' ? 'bg-foreground text-background' : 'bg-secondary text-muted-foreground')}>
+                  {m.role === 'user' ? 'U' : <Bot className="w-3.5 h-3.5" />}
                 </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
+                <div className={cn('max-w-[85%] px-3 py-2 rounded-lg text-sm',
+                  m.role === 'user' ? 'bg-foreground text-background rounded-tr-sm' : 'bg-secondary text-foreground rounded-tl-sm')}>
+                  {m.role === 'assistant' ? <Prose text={m.content || (chatLoading && i === messages.length-1 ? '▋' : '')} /> : m.content}
+                </div>
+              </div>
+            ))}
+            <div ref={endRef} />
           </div>
 
-          {/* Input */}
-          <div className="mt-4 flex gap-2 items-end">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask about your training, recovery, or next week's plan… (Enter to send)"
-              rows={2}
-              disabled={chatLoading}
-              className="flex-1 resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-garmin-blue/30 focus:border-garmin-blue disabled:opacity-50"
+          <div className="mt-3 flex gap-2 items-end">
+            <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
+              placeholder="Ask about your training… (Enter to send)"
+              rows={2} disabled={chatLoading}
+              className="flex-1 resize-none rounded-md border border-border bg-secondary px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
             />
-            <button
-              onClick={() => sendMessage(input)}
-              disabled={!input.trim() || chatLoading}
-              className="w-10 h-10 bg-garmin-blue hover:bg-blue-600 disabled:opacity-40 text-white rounded-xl flex items-center justify-center transition-colors flex-shrink-0"
-            >
-              {chatLoading
-                ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                : <Send className="w-4 h-4" />
-              }
-            </button>
+            <Button onClick={() => send(input)} disabled={!input.trim() || chatLoading} size="icon">
+              {chatLoading ? <div className="w-3.5 h-3.5 border border-background border-t-transparent rounded-full animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            </Button>
           </div>
         </div>
       )}

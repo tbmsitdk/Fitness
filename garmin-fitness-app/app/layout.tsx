@@ -1,15 +1,17 @@
 import type { Metadata } from 'next';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Garmin Fitness Analytics',
-  description: 'Personal fitness analytics powered by your Garmin data and AI coaching',
+  title: 'Fitness Analytics',
+  description: 'Personal fitness analytics powered by Garmin data and Claude AI',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-slate-50 antialiased">{children}</body>
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable} dark`}>
+      <body className="min-h-screen bg-background font-sans antialiased">{children}</body>
     </html>
   );
 }
