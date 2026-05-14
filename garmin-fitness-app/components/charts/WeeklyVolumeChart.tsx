@@ -2,12 +2,9 @@
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { WeeklyVolume } from '@/types';
 import { format, parseISO } from 'date-fns';
+import { getPeerBenchmarks } from '@/lib/benchmarks';
 
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
-
-// Peer benchmarks (recreational active adult, mixed sport)
-const PEER_WEEKLY_KM   = 60;   // km/week total
-const PEER_WEEKLY_HRS  = 5;    // hours/week total
 
 function linearTrend(values: number[]): (number | null)[] {
   const n = values.length;
@@ -24,8 +21,9 @@ function linearTrend(values: number[]): (number | null)[] {
 }
 
 export default function WeeklyVolumeChart({ data, metric }: { data: WeeklyVolume[]; metric: 'km' | 'hours' }) {
+  const bench = getPeerBenchmarks();
   const unit = metric === 'km' ? 'km' : 'h';
-  const peerRef = metric === 'km' ? PEER_WEEKLY_KM : PEER_WEEKLY_HRS;
+  const peerRef = metric === 'km' ? bench.weeklyKm : bench.weeklyHours;
 
   const totals = data.map(d =>
     metric === 'km'
@@ -61,7 +59,7 @@ export default function WeeklyVolumeChart({ data, metric }: { data: WeeklyVolume
           <Line dataKey="Trend" stroke="hsl(0 0% 70%)" strokeWidth={1.5} dot={false} strokeDasharray="4 2" legendType="none" />
         </ComposedChart>
       </ResponsiveContainer>
-      <p className="text-[10px] text-muted-foreground/60 mt-1 italic">Dashed yellow line = peer group average ({peerRef}{unit}/week for recreational athletes). Grey dashed = your trend.</p>
+      <p className="text-[10px] text-muted-foreground/60 mt-1 italic">Yellow = peer avg for age {bench.label} ({peerRef}{unit}/week). Grey dashed = your trend.</p>
     </div>
   );
 }

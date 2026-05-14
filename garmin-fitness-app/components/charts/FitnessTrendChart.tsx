@@ -2,15 +2,9 @@
 import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { WellnessRecord } from '@/types';
 import { format, parseISO } from 'date-fns';
+import { getPeerBenchmarks } from '@/lib/benchmarks';
 
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
-
-// Peer benchmarks for active adults (approx 35–55 yo)
-const BENCHMARKS = {
-  hrv:   { value: 42,   label: 'Peer avg 42ms',   note: 'Typical active adult 35–55yo' },
-  rhr:   { value: 58,   label: 'Peer avg 58bpm',  note: 'Good aerobic fitness baseline' },
-  sleep: { value: 7.5,  label: 'Target 7.5h',     note: 'WHO / sleep science recommendation' },
-};
 
 const CONFIG = {
   hrv:   { key: 'hrv_rmssd'   as keyof WellnessRecord, label: 'HRV',        color: '#8B5CF6', unit: 'ms' },
@@ -34,6 +28,12 @@ function linearTrend(values: number[]): (number | null)[] {
 
 export default function FitnessTrendChart({ wellness, metric }: { wellness: WellnessRecord[]; metric: 'hrv' | 'rhr' | 'sleep' }) {
   const cfg = CONFIG[metric];
+  const peer = getPeerBenchmarks();
+  const BENCHMARKS = {
+    hrv:   { value: peer.hrv,   label: `Age ${peer.label} peer avg ${peer.hrv}ms`,   note: `Typical active adult age ${peer.label}` },
+    rhr:   { value: peer.rhr,   label: `Age ${peer.label} peer avg ${peer.rhr}bpm`,  note: `Active adult age ${peer.label}` },
+    sleep: { value: peer.sleep, label: `Age ${peer.label} target ${peer.sleep}h`,    note: 'Sleep science recommendation' },
+  };
   const bench = BENCHMARKS[metric];
 
   const filtered = wellness.filter(w => w[cfg.key] != null);
