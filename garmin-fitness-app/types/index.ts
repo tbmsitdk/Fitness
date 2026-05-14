@@ -73,6 +73,7 @@ export interface AISummary {
   injury_risks: string[];
   longevity_insights: string[];
   generated_at: string;
+cached?: boolean;
 }
 
 export interface ParsedGarminData {
