@@ -48,7 +48,7 @@ function parseActivitiesCSV(csvContent: string): ParsedGarminData['activities'] 
   const result = Papa.parse<Record<string, string>>(csvContent, {
     header: true,
     skipEmptyLines: true,
-    trimHeaders: true,
+    transformHeader: (h: string) => h.trim(),
   });
 
   const rows = result.data;
@@ -95,7 +95,7 @@ function parseActivitiesCSV(csvContent: string): ParsedGarminData['activities'] 
 function parseDailyStepsCSV(csvContent: string): Map<string, Partial<ParsedGarminData['wellness'][0]>> {
   const map = new Map<string, Partial<ParsedGarminData['wellness'][0]>>();
   const result = Papa.parse<Record<string, string>>(csvContent, {
-    header: true, skipEmptyLines: true, trimHeaders: true,
+    header: true, skipEmptyLines: true, transformHeader: (h: string) => h.trim(),
   });
   for (const row of result.data) {
     const dateKey = row['Date'] || row['date'] || row['Calendar Date'];
@@ -112,7 +112,7 @@ function parseDailyStepsCSV(csvContent: string): Map<string, Partial<ParsedGarmi
 function parseRHRCSV(csvContent: string): Map<string, number> {
   const map = new Map<string, number>();
   const result = Papa.parse<Record<string, string>>(csvContent, {
-    header: true, skipEmptyLines: true, trimHeaders: true,
+    header: true, skipEmptyLines: true, transformHeader: (h: string) => h.trim(),
   });
   for (const row of result.data) {
     const dateKey = Object.keys(row).find(k => k.toLowerCase().includes('date'));
@@ -128,7 +128,7 @@ function parseRHRCSV(csvContent: string): Map<string, number> {
 function parseHRVCSV(csvContent: string): Map<string, number> {
   const map = new Map<string, number>();
   const result = Papa.parse<Record<string, string>>(csvContent, {
-    header: true, skipEmptyLines: true, trimHeaders: true,
+    header: true, skipEmptyLines: true, transformHeader: (h: string) => h.trim(),
   });
   for (const row of result.data) {
     const dateKey = Object.keys(row).find(k => k.toLowerCase().includes('date'));
@@ -144,7 +144,7 @@ function parseHRVCSV(csvContent: string): Map<string, number> {
 function parseSleepCSV(csvContent: string): Map<string, { hours: number; score: number | null }> {
   const map = new Map<string, { hours: number; score: number | null }>();
   const result = Papa.parse<Record<string, string>>(csvContent, {
-    header: true, skipEmptyLines: true, trimHeaders: true,
+    header: true, skipEmptyLines: true, transformHeader: (h: string) => h.trim(),
   });
   for (const row of result.data) {
     const dateKey = Object.keys(row).find(k => k.toLowerCase().includes('date'));
@@ -170,7 +170,7 @@ function parseSleepCSV(csvContent: string): Map<string, { hours: number; score: 
 function parseStressCSV(csvContent: string): Map<string, number> {
   const map = new Map<string, number>();
   const result = Papa.parse<Record<string, string>>(csvContent, {
-    header: true, skipEmptyLines: true, trimHeaders: true,
+    header: true, skipEmptyLines: true, transformHeader: (h: string) => h.trim(),
   });
   for (const row of result.data) {
     const dateKey = Object.keys(row).find(k => k.toLowerCase().includes('date'));
@@ -192,7 +192,7 @@ export async function parseGarminZip(buffer: ArrayBuffer): Promise<ParsedGarminD
   for (const [filePath, file] of Object.entries(zip.files)) {
     if (file.dir) continue;
     const lower = filePath.toLowerCase();
-    const name = path.split('/').pop()?.toLowerCase() || '';
+    const name = filePath.split('/').pop()?.toLowerCase() || '';
 
     if (name === 'activities.csv') {
       activitiesCSV = await file.async('string');
