@@ -160,3 +160,42 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
 }
 
 export { sql };
+
+// Postgres returns DECIMAL as strings and DATE/TIMESTAMPTZ as Date objects.
+// These helpers normalise raw rows before passing to any computation code.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function coerceActivity(row: any) {
+  return {
+    ...row,
+    id:               Number(row.id),
+    date:             row.date instanceof Date ? row.date.toISOString() : String(row.date),
+    distance_km:      Number(row.distance_km)      || 0,
+    duration_seconds: Number(row.duration_seconds) || 0,
+    calories:         Number(row.calories)         || 0,
+    avg_hr:           row.avg_hr           != null ? Number(row.avg_hr)           : null,
+    max_hr:           row.max_hr           != null ? Number(row.max_hr)           : null,
+    training_effect:  row.training_effect  != null ? Number(row.training_effect)  : null,
+    avg_cadence:      row.avg_cadence      != null ? Number(row.avg_cadence)      : null,
+    avg_speed_kmh:    row.avg_speed_kmh    != null ? Number(row.avg_speed_kmh)    : null,
+    tss:              row.tss              != null ? Number(row.tss)              : null,
+    avg_power:        row.avg_power        != null ? Number(row.avg_power)        : null,
+    max_power:        row.max_power        != null ? Number(row.max_power)        : null,
+    elevation_gain:   row.elevation_gain   != null ? Number(row.elevation_gain)   : null,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function coerceWellness(row: any) {
+  return {
+    ...row,
+    id:           Number(row.id),
+    date:         row.date instanceof Date ? row.date.toISOString() : String(row.date),
+    steps:        row.steps        != null ? Number(row.steps)        : null,
+    resting_hr:   row.resting_hr   != null ? Number(row.resting_hr)   : null,
+    hrv_rmssd:    row.hrv_rmssd    != null ? Number(row.hrv_rmssd)    : null,
+    sleep_hours:  row.sleep_hours  != null ? Number(row.sleep_hours)  : null,
+    sleep_score:  row.sleep_score  != null ? Number(row.sleep_score)  : null,
+    stress_score: row.stress_score != null ? Number(row.stress_score) : null,
+    body_battery: row.body_battery != null ? Number(row.body_battery) : null,
+  };
+}

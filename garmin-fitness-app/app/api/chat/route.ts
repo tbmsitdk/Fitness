@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { streamChat } from '@/lib/ai';
-import { Activity, WellnessRecord, ChatMessage } from '@/types';
+import { coerceActivity, coerceWellness } from '@/lib/db';
+import { ChatMessage } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,8 +19,8 @@ export async function POST(request: NextRequest) {
       sql`SELECT * FROM wellness WHERE date >= ${cutoff} ORDER BY date`,
     ]);
 
-    const activities = actResult.rows as Activity[];
-    const wellness = wellResult.rows as WellnessRecord[];
+    const activities = actResult.rows.map(coerceActivity);
+    const wellness = wellResult.rows.map(coerceWellness);
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
