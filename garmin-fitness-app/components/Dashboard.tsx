@@ -3,12 +3,15 @@ import { useMemo, useState } from 'react';
 import { Activity, WellnessRecord } from '@/types';
 import { computeWeeklyVolume, computeTrainingLoad, computeHRZoneDistribution, computePersonalBests, computeConsistency, compute90DaySummary } from '@/lib/training-load';
 import WeeklyVolumeChart from './charts/WeeklyVolumeChart';
-import FitnessTrendChart from './charts/FitnessTrendChart';
+import FitnessTrendChart, { WellnessMetric } from './charts/FitnessTrendChart';
 import TrainingLoadChart from './charts/TrainingLoadChart';
 import HRZoneChart from './charts/HRZoneChart';
 import ConsistencyChart from './charts/ConsistencyChart';
 import PersonalBests from './charts/PersonalBests';
 import StepsChart from './charts/StepsChart';
+import PowerChart from './charts/PowerChart';
+import CaloriesChart from './charts/CaloriesChart';
+import CadenceChart from './charts/CadenceChart';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,7 +39,8 @@ function StatCard({ label, value, sub, accent, hint }: { label: string; value: s
 
 export default function Dashboard({ activities, allActivities, wellness, cutoff }: Props) {
   const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
-  const [wellMetric, setWellMetric] = useState<'hrv' | 'rhr' | 'sleep'>('rhr');
+  const [wellMetric, setWellMetric] = useState<WellnessMetric>('rhr');
+  const [cadenceSport, setCadenceSport] = useState<'running' | 'cycling'>('running');
 
   const weeklyVolume = useMemo(() => computeWeeklyVolume(activities), [activities]);
   // Training load uses full history so EWMA starts warm, then sliced to selected period
@@ -112,11 +116,14 @@ export default function Dashboard({ activities, allActivities, wellness, cutoff 
       <Card>
         <CardHeader className="flex-row items-center justify-between pb-2">
           <CardTitle>Wellness Trends</CardTitle>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1">
             {([
-              { id: 'rhr', label: 'Resting HR' },
-              { id: 'hrv', label: 'HRV' },
-              { id: 'sleep', label: 'Sleep' },
+              { id: 'rhr',     label: 'Resting HR' },
+              { id: 'hrv',     label: 'HRV' },
+              { id: 'sleep',   label: 'Sleep h' },
+              { id: 'score',   label: 'Sleep Score' },
+              { id: 'stress',  label: 'Stress' },
+              { id: 'battery', label: 'Body Battery' },
             ] as const).map(m => (
               <Button key={m.id} variant={wellMetric === m.id ? 'default' : 'ghost'} size="sm" onClick={() => setWellMetric(m.id)}>{m.label}</Button>
             ))}
@@ -136,6 +143,32 @@ export default function Dashboard({ activities, allActivities, wellness, cutoff 
           <CardContent><StepsChart wellness={sortedWellness} /></CardContent>
         </Card>
       </div>
+
+      {/* Power & Performance */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-2"><CardTitle>Cycling Power</CardTitle></CardHeader>
+          <CardContent><PowerChart activities={activities} /></CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle>Weekly Calories</CardTitle></CardHeader>
+          <CardContent><CaloriesChart activities={activities} /></CardContent>
+        </Card>
+      </div>
+
+      {/* Cadence */}
+      <Card>
+        <CardHeader className="flex-row items-center justify-between pb-2">
+          <CardTitle>Cadence</CardTitle>
+          <div className="flex gap-1">
+            {(['running', 'cycling'] as const).map(s => (
+              <Button key={s} variant={cadenceSport === s ? 'default' : 'ghost'} size="sm"
+                onClick={() => setCadenceSport(s)} className="capitalize">{s}</Button>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent><CadenceChart activities={activities} sport={cadenceSport} /></CardContent>
+      </Card>
 
       {/* Personal bests */}
       <Card>
