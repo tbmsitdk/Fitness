@@ -19,12 +19,30 @@ export default function Upload({ onUploadComplete }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  function fakeProgress(from: number, to: number) {
+  // Slow crawl: never stops, just gets slower — shows "still working" past 80%
+  function startCrawl(from: number) {
     if (timerRef.current) clearInterval(timerRef.current);
     setProgress(from);
     timerRef.current = setInterval(() => {
-      setProgress(p => { if (p >= to) { clearInterval(timerRef.current!); return to; } return p + 2; });
-    }, 250);
+      setProgress(p => {
+        if (p >= 99) return 99;          // never hit 100 until truly done
+        const step = p < 80 ? 2 : p < 90 ? 0.5 : 0.1;
+        return Math.min(99, p + step);
+      });
+    }, 400);
+  }
+
+  function stopProgress() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  }
+
+  function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 60000)} min. Check your internet connection and try again.`)), ms)
+      ),
+    ]);
   }
 
   async function handleFile(file: File) {
@@ -33,34 +51,55 @@ export default function Upload({ onUploadComplete }: Props) {
       setMessage('Upload a .zip from garmin.com → Account → Data Management → Export Your Data');
       return;
     }
-    setState('uploading'); fakeProgress(0, 80);
-    setMessage('Uploading…');
+
+    setState('uploading');
+    setMessage(`Uploading ${(file.size / 1024 / 1024).toFixed(0)} MB…`);
+    startCrawl(0);
+
     try {
-      const blob = await upload(`garmin-exports/${Date.now()}-${file.name}`, file, {
-        access: 'public',
-        handleUploadUrl: '/api/upload',
-      });
-      clearInterval(timerRef.current!); setProgress(85);
-      setState('processing'); fakeProgress(85, 98);
+      // 10 minutes for large exports; shows clear error if it hangs
+      const blob = await withTimeout(
+        upload(`garmin-exports/${Date.now()}-${file.name}`, file, {
+          access: 'public',
+          handleUploadUrl: '/api/upload',
+        }),
+        10 * 60 * 1000,
+        'Upload'
+      );
+
+      stopProgress(); setProgress(85);
+      setState('processing');
       setMessage('Parsing activities…');
-      const res = await fetch('/api/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blobUrl: blob.url }),
-      });
-      clearInterval(timerRef.current!); setProgress(100);
+      startCrawl(85);
+
+      // 3 minutes for processing
+      const res = await withTimeout(
+        fetch('/api/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ blobUrl: blob.url }),
+        }),
+        3 * 60 * 1000,
+        'Processing'
+      );
+
+      stopProgress(); setProgress(100);
       const json = await res.json();
       if (!res.ok) { setState('error'); setMessage(json.error || 'Processing failed'); return; }
       setState('success');
       setStats({ activities: json.activities_imported, wellness: json.wellness_records_imported });
       setTimeout(onUploadComplete, 1400);
     } catch (err) {
-      clearInterval(timerRef.current!);
+      stopProgress();
       const msg = err instanceof Error ? err.message : 'Upload failed';
       setState('error');
-      setMessage(msg.toLowerCase().includes('blob') || msg.toLowerCase().includes('token')
-        ? 'Vercel Blob not configured — add a Blob store in your Vercel dashboard → Storage.'
-        : msg);
+      if (msg.toLowerCase().includes('blob') || msg.toLowerCase().includes('token')) {
+        setMessage('Vercel Blob not configured — add a Blob store in your Vercel dashboard → Storage, then redeploy.');
+      } else if (msg.toLowerCase().includes('timed out')) {
+        setMessage(msg);
+      } else {
+        setMessage(msg);
+      }
     }
   }
 
@@ -108,9 +147,14 @@ export default function Upload({ onUploadComplete }: Props) {
             <div className="w-5 h-5 border border-border border-t-foreground rounded-full animate-spin mx-auto mb-3" />
             <p className="text-sm font-medium">{message}</p>
             <div className="mt-3 h-0.5 bg-border rounded-full overflow-hidden max-w-[200px] mx-auto">
-              <div className="h-full bg-foreground/70 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+              <div className="h-full bg-foreground/70 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
             </div>
-            <p className="text-xs text-muted-foreground mt-2">{progress}%</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              {progress < 85 ? `Uploading to Blob… ${Math.round(progress)}%` : `Processing… ${Math.round(progress)}%`}
+            </p>
+            {progress >= 79 && progress < 85 && (
+              <p className="text-[10px] text-muted-foreground/60 mt-1">Large files can take several minutes</p>
+            )}
           </>
         )}
         {state === 'success' && (
