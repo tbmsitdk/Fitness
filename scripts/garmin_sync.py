@@ -187,12 +187,14 @@ def main() -> None:
             buf = io.BytesIO(base64.b64decode(GARMIN_TOKENS))
             with tarfile.open(fileobj=buf, mode="r:gz") as tar:
                 tar.extractall("/tmp")
-            api = Garmin()
+            # Pass credentials to constructor (required by garminconnect even with tokenstore),
+            # but login() will use the token store and skip password auth.
+            api = Garmin(GARMIN_EMAIL, GARMIN_PASSWORD)
             api.login(TOKEN_DIR)
             print("  ✓ Logged in via saved tokens")
         except Exception as exc:
             print(f"  ✗ Token login failed: {exc}")
-            print("    Re-run scripts/garmin_get_tokens.py locally to refresh tokens.")
+            print("    Re-run garmin_mfa_login.py flow to refresh tokens.")
             sys.exit(1)
     else:
         print(f"Logging in to Garmin Connect ({GARMIN_EMAIL})…")
@@ -202,7 +204,6 @@ def main() -> None:
             print("  ✓ Logged in via credentials")
         except GarminConnectAuthenticationError as exc:
             print(f"  ✗ Authentication failed: {exc}")
-            print("    Run scripts/garmin_get_tokens.py locally to set up token auth.")
             sys.exit(1)
 
     today = date.today()
