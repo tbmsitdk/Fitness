@@ -1,6 +1,6 @@
 'use client';
 
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { WellnessRecord } from '@/types';
 import { format, parseISO } from 'date-fns';
 
@@ -10,21 +10,26 @@ interface Props {
 }
 
 const CONFIG = {
-  hrv: { key: 'hrv_rmssd', label: 'HRV (rmssd)', color: '#7B2D8B', unit: 'ms' },
-  rhr: { key: 'resting_hr', label: 'Resting HR', color: '#E30613', unit: 'bpm' },
-  sleep: { key: 'sleep_hours', label: 'Sleep', color: '#0096D6', unit: 'h' },
+  hrv:   { key: 'hrv_rmssd'  as keyof WellnessRecord, label: 'HRV (rmssd)', color: '#7B2D8B', unit: 'ms' },
+  rhr:   { key: 'resting_hr' as keyof WellnessRecord, label: 'Resting HR',  color: '#E30613', unit: 'bpm' },
+  sleep: { key: 'sleep_hours' as keyof WellnessRecord, label: 'Sleep',      color: '#0096D6', unit: 'h' },
 };
 
 export default function FitnessTrendChart({ wellness, metric }: Props) {
   const cfg = CONFIG[metric];
 
   const data = wellness
-    .filter(w => w[cfg.key as keyof WellnessRecord] != null)
+    .filter(w => w[cfg.key] != null)
     .slice(-90)
-    .map(w => ({
-      date: format(parseISO(w.date), 'MMM d'),
-      [cfg.label]: w[cfg.key as keyof WellnessRecord],
-    }));
+    .map(w => {
+      const raw = w[cfg.key];
+      const value = typeof raw === 'number' ? raw : null;
+      return {
+        date: format(parseISO(w.date), 'MMM d'),
+        [cfg.label]: value,
+      };
+    })
+    .filter(d => d[cfg.label] != null);
 
   if (data.length === 0) {
     return (
@@ -50,7 +55,7 @@ export default function FitnessTrendChart({ wellness, metric }: Props) {
           tickLine={false}
           axisLine={false}
           domain={['auto', 'auto']}
-          tickFormatter={v => `${v}${cfg.unit}`}
+          tickFormatter={(v: number) => `${v}${cfg.unit}`}
         />
         <Tooltip
           contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 24px rgba(0,0,0,.1)', fontSize: 12 }}

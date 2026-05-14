@@ -17,6 +17,21 @@ export default function Upload({ onUploadComplete }: UploadProps) {
   const [stats, setStats] = useState<{ activities: number; wellness: number } | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function startFakeProgress(from: number, to: number) {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setUploadProgress(p => {
+        if (p >= to) {
+          clearInterval(timerRef.current!);
+          return to;
+        }
+        return p + 2;
+      });
+    }, 300);
+    setUploadProgress(from);
+  }
 
   async function handleFile(file: File) {
     if (!file.name.toLowerCase().endsWith('.zip')) {
@@ -28,30 +43,33 @@ export default function Upload({ onUploadComplete }: UploadProps) {
     setState('uploading');
     setUploadProgress(0);
     setMessage('Uploading your Garmin export…');
+    startFakeProgress(0, 80);
 
     try {
-      // Step 1: Upload file directly to Vercel Blob (bypasses 4.5 MB serverless limit)
       const blob = await upload(
         `garmin-exports/${Date.now()}-${file.name}`,
         file,
         {
           access: 'public',
           handleUploadUrl: '/api/upload',
-          onUploadProgress: ({ percentage }) => {
-            setUploadProgress(Math.round(percentage));
-          },
         }
       );
 
-      // Step 2: Trigger server-side parsing
+      if (timerRef.current) clearInterval(timerRef.current);
+      setUploadProgress(85);
+
       setState('processing');
       setMessage('Parsing activities and wellness data…');
+      startFakeProgress(85, 98);
 
       const res = await fetch('/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ blobUrl: blob.url }),
       });
+
+      if (timerRef.current) clearInterval(timerRef.current);
+      setUploadProgress(100);
 
       const json = await res.json();
       if (!res.ok) {
@@ -65,10 +83,10 @@ export default function Upload({ onUploadComplete }: UploadProps) {
       setMessage('Import complete!');
       setTimeout(onUploadComplete, 1500);
     } catch (err) {
+      if (timerRef.current) clearInterval(timerRef.current);
       setState('error');
-      // If Blob isn't provisioned, fall back to a helpful message
       const msg = err instanceof Error ? err.message : 'Upload failed';
-      if (msg.includes('blob') || msg.includes('token') || msg.includes('Blob')) {
+      if (msg.toLowerCase().includes('blob') || msg.toLowerCase().includes('token')) {
         setMessage('Vercel Blob storage not configured. Please add a Blob store in your Vercel dashboard → Storage tab, then redeploy.');
       } else {
         setMessage(msg);
@@ -92,11 +110,10 @@ export default function Upload({ onUploadComplete }: UploadProps) {
     if (state === 'dragging') setState('idle');
   }
 
-  const isActive = state === 'idle' || state === 'error' || state === 'dragging';
+  const isClickable = state === 'idle' || state === 'error' || state === 'dragging';
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
-      {/* Hero */}
       <div className="text-center space-y-3">
         <div className="flex justify-center gap-3 mb-4">
           {[
@@ -113,12 +130,11 @@ export default function Upload({ onUploadComplete }: UploadProps) {
         <p className="text-slate-500 text-sm">Drop your Garmin Connect export ZIP to unlock AI-powered fitness analytics, training load, and longevity insights.</p>
       </div>
 
-      {/* Drop zone */}
       <div
         onDrop={onDrop}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
-        onClick={() => isActive && fileRef.current?.click()}
+        onClick={() => isClickable && fileRef.current?.click()}
         className={clsx(
           'relative border-2 border-dashed rounded-2xl p-12 text-center transition-all',
           state === 'dragging' && 'border-garmin-blue bg-blue-50 scale-[1.01] cursor-copy',
@@ -136,7 +152,6 @@ export default function Upload({ onUploadComplete }: UploadProps) {
           onChange={e => {
             const f = e.target.files?.[0];
             if (f) handleFile(f);
-            // Reset so same file can be re-selected
             e.target.value = '';
           }}
         />
@@ -151,7 +166,7 @@ export default function Upload({ onUploadComplete }: UploadProps) {
           </>
         )}
 
-        {state === 'uploading' && (
+        {(state === 'uploading' || state === 'processing') && (
           <>
             <div className="w-16 h-16 bg-garmin-blue/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <div className="w-8 h-8 border-[3px] border-garmin-blue border-t-transparent rounded-full animate-spin" />
@@ -159,21 +174,11 @@ export default function Upload({ onUploadComplete }: UploadProps) {
             <p className="text-lg font-semibold text-slate-700">{message}</p>
             <div className="mt-4 bg-slate-200 rounded-full h-2 overflow-hidden max-w-xs mx-auto">
               <div
-                className="h-full bg-garmin-blue rounded-full transition-all duration-200"
+                className="h-full bg-garmin-blue rounded-full transition-all duration-300"
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
             <p className="text-sm text-slate-400 mt-2">{uploadProgress}%</p>
-          </>
-        )}
-
-        {state === 'processing' && (
-          <>
-            <div className="w-16 h-16 bg-garmin-blue/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <div className="w-8 h-8 border-[3px] border-garmin-blue border-t-transparent rounded-full animate-spin" />
-            </div>
-            <p className="text-lg font-semibold text-slate-700">{message}</p>
-            <p className="text-sm text-slate-400 mt-2">Analysing activities, HR zones, and wellness data…</p>
           </>
         )}
 
@@ -212,7 +217,6 @@ export default function Upload({ onUploadComplete }: UploadProps) {
         )}
       </div>
 
-      {/* How to export */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6">
         <h3 className="font-semibold text-slate-900 mb-4">How to export from Garmin Connect</h3>
         <ol className="space-y-3 text-sm text-slate-600">

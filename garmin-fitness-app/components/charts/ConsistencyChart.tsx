@@ -8,17 +8,30 @@ interface Props {
   data: ConsistencyData[];
 }
 
+interface ChartRow {
+  month: string;
+  'Running days': number;
+  'Cycling days': number;
+  'Walking days': number;
+  pct: number;
+}
+
 export default function ConsistencyChart({ data }: Props) {
   const recent = data.slice(-12);
 
-  const formatted = recent.map(d => ({
+  const formatted: ChartRow[] = recent.map(d => ({
     month: format(parseISO(d.month + '-01'), 'MMM yy'),
-    'Active days': d.active_days,
     'Running days': d.running_days,
     'Cycling days': d.cycling_days,
     'Walking days': d.walking_days,
     pct: Math.round((d.active_days / d.total_days) * 100),
   }));
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function labelFormatter(label: string, payload: any[]) {
+    const pct = payload?.[0]?.payload?.pct as number | undefined;
+    return `${label}${pct != null ? ` · ${pct}% active` : ''}`;
+  }
 
   return (
     <ResponsiveContainer width="100%" height={240}>
@@ -34,15 +47,10 @@ export default function ConsistencyChart({ data }: Props) {
           tick={{ fontSize: 11, fill: '#94a3b8' }}
           tickLine={false}
           axisLine={false}
-          label={{ value: 'Days', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 10, fill: '#94a3b8' } }}
         />
         <Tooltip
           contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 24px rgba(0,0,0,.1)', fontSize: 12 }}
-          formatter={(v: number, name: string) => [v, name]}
-          labelFormatter={(label, payload) => {
-            const pct = payload?.[0]?.payload?.pct;
-            return `${label}${pct != null ? ` · ${pct}% active` : ''}`;
-          }}
+          labelFormatter={labelFormatter}
         />
         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" iconSize={8} />
         <Bar dataKey="Running days" fill="#009E60" radius={[2, 2, 0, 0]} />
