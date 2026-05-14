@@ -27,6 +27,7 @@ jobs:
 
       - name: Run sync
         env:
+          GARMIN_TOKENS:   ${{ secrets.GARMIN_TOKENS }}
           GARMIN_EMAIL:    ${{ secrets.GARMIN_EMAIL }}
           GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
           APP_URL:         ${{ secrets.APP_URL }}

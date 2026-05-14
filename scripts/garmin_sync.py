@@ -19,15 +19,19 @@ import os
 import sys
 from datetime import date, timedelta
 
+import base64
+import io
+import tarfile
 import requests
 from garminconnect import Garmin, GarminConnectAuthenticationError
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-APP_URL       = os.environ["APP_URL"].rstrip("/")
-GARMIN_EMAIL  = os.environ["GARMIN_EMAIL"]
-GARMIN_PASSWORD = os.environ["GARMIN_PASSWORD"]
-SYNC_DAYS     = int(os.environ.get("SYNC_DAYS", "2"))
+APP_URL         = os.environ["APP_URL"].rstrip("/")
+GARMIN_EMAIL    = os.environ.get("GARMIN_EMAIL", "")
+GARMIN_PASSWORD = os.environ.get("GARMIN_PASSWORD", "")
+GARMIN_TOKENS   = os.environ.get("GARMIN_TOKENS", "")   # base64 token store (preferred)
+SYNC_DAYS       = int(os.environ.get("SYNC_DAYS", "2"))
 
 HEADERS = {"Content-Type": "application/json"}
 
@@ -174,18 +178,32 @@ def _fetch_wellness(api: Garmin, d: date) -> dict:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    # ── Login
-    print(f"Logging in to Garmin Connect ({GARMIN_EMAIL})…")
-    try:
-        api = Garmin(GARMIN_EMAIL, GARMIN_PASSWORD)
-        api.login()
-        print("  ✓ Logged in")
-    except GarminConnectAuthenticationError as exc:
-        print(f"  ✗ Authentication failed: {exc}")
-        print("    Check GARMIN_EMAIL / GARMIN_PASSWORD secrets.")
-        print("    If your account has 2-factor auth enabled, you must disable it")
-        print("    or create a secondary Garmin account without 2FA for automation.")
-        sys.exit(1)
+    # ── Login (token-based preferred; falls back to credentials)
+    TOKEN_DIR = "/tmp/garmin_token_store"
+
+    if GARMIN_TOKENS:
+        print("Logging in with saved tokens…")
+        try:
+            buf = io.BytesIO(base64.b64decode(GARMIN_TOKENS))
+            with tarfile.open(fileobj=buf, mode="r:gz") as tar:
+                tar.extractall("/tmp")
+            api = Garmin()
+            api.login(TOKEN_DIR)
+            print("  ✓ Logged in via saved tokens")
+        except Exception as exc:
+            print(f"  ✗ Token login failed: {exc}")
+            print("    Re-run scripts/garmin_get_tokens.py locally to refresh tokens.")
+            sys.exit(1)
+    else:
+        print(f"Logging in to Garmin Connect ({GARMIN_EMAIL})…")
+        try:
+            api = Garmin(GARMIN_EMAIL, GARMIN_PASSWORD)
+            api.login()
+            print("  ✓ Logged in via credentials")
+        except GarminConnectAuthenticationError as exc:
+            print(f"  ✗ Authentication failed: {exc}")
+            print("    Run scripts/garmin_get_tokens.py locally to set up token auth.")
+            sys.exit(1)
 
     today = date.today()
     start = today - timedelta(days=SYNC_DAYS)
