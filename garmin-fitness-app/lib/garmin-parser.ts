@@ -189,9 +189,9 @@ export async function parseGarminZip(buffer: ArrayBuffer): Promise<ParsedGarminD
   let activitiesCSV: string | null = null;
   const wellnessFiles: Record<string, string> = {};
 
-  for (const [path, file] of Object.entries(zip.files)) {
+  for (const [filePath, file] of Object.entries(zip.files)) {
     if (file.dir) continue;
-    const lower = path.toLowerCase();
+    const lower = filePath.toLowerCase();
     const name = path.split('/').pop()?.toLowerCase() || '';
 
     if (name === 'activities.csv') {
