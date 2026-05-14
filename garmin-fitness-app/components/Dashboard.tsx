@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 
 interface Props { activities: Activity[]; wellness: WellnessRecord[]; }
 
-function StatCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent: string }) {
+function StatCard({ label, value, sub, accent, hint }: { label: string; value: string; sub?: string; accent: string; hint?: string }) {
   return (
     <div className="p-4 rounded-lg border border-border bg-card space-y-1">
       <p className="text-[10px] font-medium tracking-widest uppercase text-muted-foreground">{label}</p>
@@ -24,6 +24,7 @@ function StatCard({ label, value, sub, accent }: { label: string; value: string;
         <p className="text-2xl font-bold font-mono tracking-tight leading-none" style={{ color: accent }}>{value}</p>
       </div>
       {sub && <p className="text-[10px] text-muted-foreground">{sub}</p>}
+      {hint && <p className="text-[10px] text-muted-foreground/60 italic">{hint}</p>}
     </div>
   );
 }
@@ -54,12 +55,13 @@ export default function Dashboard({ activities, wellness }: Props) {
         <StatCard label="Runs 90d" value={`${summary.running.count}`} sub={`${summary.running.km} km`} accent="#3B82F6" />
         <StatCard label="Rides 90d" value={`${summary.cycling.count}`} sub={`${summary.cycling.km} km`} accent="#22C55E" />
         <StatCard label="Walks 90d" value={`${summary.walking.count}`} sub={`${summary.walking.km} km`} accent="#F59E0B" />
-        <StatCard label="Fitness CTL" value={latestLoad ? `${latestLoad.ctl.toFixed(0)}` : '—'} sub="42-day avg" accent="hsl(0 0% 98%)" />
-        <StatCard label="Week TSS" value={`${summary.current_week_tss}`} sub={`${summary.load_change_pct >= 0 ? '+' : ''}${summary.load_change_pct}% vs prev`} accent="hsl(0 0% 98%)" />
+        <StatCard label="Fitness (CTL)" value={latestLoad ? `${latestLoad.ctl.toFixed(0)}` : '—'} sub="42-day avg load" hint="Chronic Training Load — your long-term fitness base" accent="hsl(0 0% 98%)" />
+        <StatCard label="Week Load (TSS)" value={`${summary.current_week_tss}`} sub={`${summary.load_change_pct >= 0 ? '+' : ''}${summary.load_change_pct}% vs prev`} hint="Training Stress Score — total effort this week" accent="hsl(0 0% 98%)" />
         <div className="p-4 rounded-lg border border-border bg-card space-y-1">
-          <p className="text-[10px] font-medium tracking-widest uppercase text-muted-foreground">Form TSB</p>
+          <p className="text-[10px] font-medium tracking-widest uppercase text-muted-foreground">Form (TSB)</p>
           <p className="text-2xl font-bold font-mono tracking-tight leading-none">{latestLoad ? latestLoad.tsb.toFixed(1) : '—'}</p>
           {formBadge && <Badge variant={formBadge.variant}>{formBadge.label}</Badge>}
+          <p className="text-[10px] text-muted-foreground/60 italic">Training Stress Balance — fitness minus fatigue. Positive = fresh, negative = fatigued</p>
         </div>
       </div>
 
@@ -80,14 +82,14 @@ export default function Dashboard({ activities, wellness }: Props) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle>Training Load — ATL / CTL / Form</CardTitle>
+            <CardTitle>Training Load</CardTitle>
           </CardHeader>
           <CardContent>
             <TrainingLoadChart data={trainingLoad} />
-            <div className="flex gap-4 mt-1 text-[10px] text-muted-foreground">
-              <span><span className="text-blue-400 font-medium">CTL</span> fitness</span>
-              <span><span className="text-red-400 font-medium">ATL</span> fatigue</span>
-              <span><span className="text-green-400 font-medium">TSB</span> form</span>
+            <div className="flex flex-col gap-1 mt-2 text-[10px] text-muted-foreground">
+              <span><span className="text-blue-400 font-semibold">CTL</span> — Chronic Training Load (fitness): 42-day rolling average of daily stress. Higher = more base fitness.</span>
+              <span><span className="text-red-400 font-semibold">ATL</span> — Acute Training Load (fatigue): 7-day rolling average. Spikes when you train hard.</span>
+              <span><span className="text-green-400 font-semibold">TSB</span> — Training Stress Balance (form): CTL minus ATL. Positive = fresh &amp; ready to race. Negative = fatigued but building fitness.</span>
             </div>
           </CardContent>
         </Card>
