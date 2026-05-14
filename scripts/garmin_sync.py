@@ -105,7 +105,7 @@ def _fetch_wellness(client, display_name: str, ds: str) -> dict:
 
     # Steps + stress
     s = _api(client, f"/usersummary-service/usersummary/daily/{display_name}",
-             params={"calendarDate": ds}, label="steps/stress")
+             params={"calendarDate": ds})
     if s:
         if (s.get("totalSteps") or 0) > 0:
             rec["steps"] = int(s["totalSteps"])
@@ -143,16 +143,14 @@ def _fetch_wellness(client, display_name: str, ds: str) -> dict:
         if score:
             rec["sleep_score"] = int(score)
 
-    # Body battery (optional — not all devices support it)
-    try:
-        bb = _api(client, f"/wellness-service/wellness/bodyBattery/valuesByDate/{ds}/{ds}")
-        if bb and isinstance(bb, list) and bb:
-            vals = [v[1] for v in (bb[0].get("bodyBatteryValuesArray") or [])
-                    if isinstance(v, list) and len(v) > 1 and v[1] is not None]
-            if vals:
-                rec["body_battery"] = int(max(vals))
-    except Exception:
-        pass  # device doesn't support body battery
+    # Body battery — try both endpoint variants
+    bb = (_api(client, f"/wellness-service/wellness/bodyBattery/valuesByDate/{ds}/{ds}") or
+          _api(client, f"/wellness-service/wellness/bodyBattery/{display_name}/valuesByDate/{ds}/{ds}"))
+    if bb and isinstance(bb, list) and bb:
+        vals = [v[1] for v in (bb[0].get("bodyBatteryValuesArray") or [])
+                if isinstance(v, list) and len(v) > 1 and v[1] is not None]
+        if vals:
+            rec["body_battery"] = int(max(vals))
 
     return rec
 
