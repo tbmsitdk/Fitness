@@ -25,9 +25,9 @@ function Prose({ text }: { text: string }) {
 }
 
 export default function AICoach({ activities, wellness }: Props) {
-  const [section, setSection] = useState<'summary'|'chat'>('summary');
+  const [section, setSection] = useState<'chat'|'summary'>('chat');
   const [summary, setSummary] = useState<AISummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);  // not auto-started
   const [error, setError] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -35,7 +35,6 @@ export default function AICoach({ activities, wellness }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { fetchSummary(); }, []);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   async function fetchSummary(invalidate = false) {
@@ -78,11 +77,11 @@ export default function AICoach({ activities, wellness }: Props) {
     <div className="max-w-2xl mx-auto space-y-4">
       {/* Section tabs */}
       <div className="flex border-b border-border">
-        {(['summary','chat'] as const).map(t => (
+        {(['chat','summary'] as const).map(t => (
           <button key={t} onClick={() => setSection(t)} className={cn(
             'px-4 py-2.5 text-xs font-medium capitalize border-b-2 transition-colors -mb-px',
             section === t ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
-          )}>{t === 'summary' ? 'Weekly Summary' : 'Chat with data'}</button>
+          )}>{t === 'summary' ? 'AI Fitness Coach' : 'Chat With Data'}</button>
         ))}
       </div>
 
@@ -94,10 +93,25 @@ export default function AICoach({ activities, wellness }: Props) {
               <span className="text-sm font-medium">AI Fitness Coach</span>
               <Badge variant="outline">claude-sonnet-4-5</Badge>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => fetchSummary(true)} disabled={loading}>
-              <RefreshCw className={cn('w-3 h-3 mr-1.5', loading && 'animate-spin')} />Refresh
-            </Button>
+            {summary && (
+              <Button variant="ghost" size="sm" onClick={() => fetchSummary(true)} disabled={loading}>
+                <RefreshCw className={cn('w-3 h-3 mr-1.5', loading && 'animate-spin')} />Refresh
+              </Button>
+            )}
           </div>
+
+          {!summary && !loading && !error && (
+            <Card><CardContent className="py-12 text-center space-y-4">
+              <Bot className="w-8 h-8 text-muted-foreground mx-auto" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Get your coaching summary</p>
+                <p className="text-xs text-muted-foreground">Analyses your last 90 days of training and wellness data</p>
+              </div>
+              <Button onClick={() => fetchSummary()} className="mx-auto">
+                <Bot className="w-3.5 h-3.5 mr-2" />Generate coaching summary
+              </Button>
+            </CardContent></Card>
+          )}
 
           {loading ? (
             <Card><CardContent className="py-10 text-center space-y-2">
@@ -148,9 +162,6 @@ export default function AICoach({ activities, wellness }: Props) {
               )}
             </>
           )}
-          <Button variant="outline" className="w-full text-xs" onClick={() => setSection('chat')}>
-            <Bot className="w-3.5 h-3.5 mr-2" />Ask a question about your data
-          </Button>
         </div>
       )}
 
