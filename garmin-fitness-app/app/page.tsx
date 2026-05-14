@@ -1,21 +1,42 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Upload from '@/components/Upload';
 import Dashboard from '@/components/Dashboard';
 import AICoach from '@/components/AICoach';
 import { Activity, WellnessRecord } from '@/types';
 import { Activity as ActivityIcon, BarChart3, Sparkles, Upload as UploadIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { subDays, startOfYear, parseISO } from 'date-fns';
 
 type Tab = 'upload' | 'dashboard' | 'ai-coach';
 
+const PERIODS = [
+  { label: '1W',   days: 7 },
+  { label: '1M',   days: 30 },
+  { label: '3M',   days: 90 },
+  { label: '6M',   days: 180 },
+  { label: '1Y',   days: 365 },
+  { label: 'YTD',  days: -1 },   // special: since Jan 1
+  { label: 'All',  days: 99999 },
+] as const;
+
+type PeriodLabel = typeof PERIODS[number]['label'];
+
+function cutoffForPeriod(label: PeriodLabel): Date {
+  if (label === 'YTD') return startOfYear(new Date());
+  if (label === 'All') return new Date(0);
+  const p = PERIODS.find(p => p.label === label)!;
+  return subDays(new Date(), p.days);
+}
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('upload');
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [wellness, setWellness] = useState<WellnessRecord[]>([]);
+  const [allActivities, setAllActivities] = useState<Activity[]>([]);
+  const [allWellness, setAllWellness] = useState<WellnessRecord[]>([]);
   const [hasData, setHasData] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState<PeriodLabel>('1Y');
 
   useEffect(() => { loadData(); }, []);
 
@@ -28,8 +49,8 @@ export default function Home() {
       if (actRes.ok && wellRes.ok) {
         const acts: Activity[] = await actRes.json();
         const well: WellnessRecord[] = await wellRes.json();
-        setActivities(acts);
-        setWellness(well);
+        setAllActivities(acts);
+        setAllWellness(well);
         if (acts.length > 0) { setHasData(true); setActiveTab('dashboard'); }
       }
     } catch { /* DB not yet provisioned */ }
@@ -40,6 +61,19 @@ export default function Home() {
     await loadData();
     setActiveTab('dashboard');
   }
+
+  // Filter in-memory — instant, no server round-trip
+  const cutoff = useMemo(() => cutoffForPeriod(period), [period]);
+
+  const activities = useMemo(
+    () => allActivities.filter(a => parseISO(a.date) >= cutoff),
+    [allActivities, cutoff]
+  );
+
+  const wellness = useMemo(
+    () => allWellness.filter(w => new Date(w.date) >= cutoff),
+    [allWellness, cutoff]
+  );
 
   const tabs = [
     { id: 'upload' as Tab, label: 'Upload', icon: UploadIcon },
@@ -59,14 +93,16 @@ export default function Home() {
             <span className="text-sm font-semibold tracking-tight">Fitness Analytics</span>
           </div>
           {hasData && (
-            <span className="text-xs text-muted-foreground">{activities.length.toLocaleString()} activities</span>
+            <span className="text-xs text-muted-foreground">
+              {activities.length.toLocaleString()} of {allActivities.length.toLocaleString()} activities
+            </span>
           )}
         </div>
       </header>
 
-      {/* Tab nav */}
-      <div className="border-b border-border/60 bg-background">
-        <div className="max-w-7xl mx-auto px-6">
+      {/* Tab nav + period selector */}
+      <div className="border-b border-border/60 bg-background sticky top-12 z-10">
+        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
           <nav className="flex gap-0 -mb-px">
             {tabs.map(({ id, label, icon: Icon, disabled }) => (
               <button
@@ -87,6 +123,26 @@ export default function Home() {
               </button>
             ))}
           </nav>
+
+          {/* Period selector — only shown on dashboard */}
+          {activeTab === 'dashboard' && hasData && (
+            <div className="flex items-center gap-0.5 py-2">
+              {PERIODS.map(p => (
+                <button
+                  key={p.label}
+                  onClick={() => setPeriod(p.label)}
+                  className={cn(
+                    'px-2.5 py-1 text-[11px] font-medium rounded transition-colors',
+                    period === p.label
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -101,7 +157,7 @@ export default function Home() {
         ) : activeTab === 'dashboard' ? (
           <Dashboard activities={activities} wellness={wellness} />
         ) : (
-          <AICoach activities={activities} wellness={wellness} />
+          <AICoach activities={allActivities} wellness={allWellness} />
         )}
       </main>
     </div>
