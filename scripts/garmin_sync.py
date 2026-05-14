@@ -103,7 +103,7 @@ def _api(client, path, params=None):
 def _fetch_wellness(client, display_name: str, ds: str) -> dict:
     rec: dict = {"date": ds}
 
-    # Steps + stress
+    # Steps + stress + body battery (all in daily summary)
     s = _api(client, f"/usersummary-service/usersummary/daily/{display_name}",
              params={"calendarDate": ds})
     if s:
@@ -112,6 +112,10 @@ def _fetch_wellness(client, display_name: str, ds: str) -> dict:
         stress = s.get("averageStressLevel", -1) or -1
         if stress > 0:
             rec["stress_score"] = int(stress)
+        # Body battery peak is often in the daily summary
+        bb_high = s.get("bodyBatteryHighestValue") or s.get("bodyBatteryMostRecentValue")
+        if bb_high and int(bb_high) > 0:
+            rec["body_battery"] = int(bb_high)
 
     # RHR
     rhr = _api(client, f"/userstats-service/wellness/daily/{display_name}",
@@ -143,14 +147,15 @@ def _fetch_wellness(client, display_name: str, ds: str) -> dict:
         if score:
             rec["sleep_score"] = int(score)
 
-    # Body battery — try both endpoint variants
-    bb = (_api(client, f"/wellness-service/wellness/bodyBattery/valuesByDate/{ds}/{ds}") or
-          _api(client, f"/wellness-service/wellness/bodyBattery/{display_name}/valuesByDate/{ds}/{ds}"))
-    if bb and isinstance(bb, list) and bb:
-        vals = [v[1] for v in (bb[0].get("bodyBatteryValuesArray") or [])
-                if isinstance(v, list) and len(v) > 1 and v[1] is not None]
-        if vals:
-            rec["body_battery"] = int(max(vals))
+    # Body battery — dedicated endpoint as fallback if not in daily summary
+    if "body_battery" not in rec:
+        bb = (_api(client, f"/wellness-service/wellness/bodyBattery/valuesByDate/{ds}/{ds}") or
+              _api(client, f"/wellness-service/wellness/bodyBattery/{display_name}/valuesByDate/{ds}/{ds}"))
+        if bb and isinstance(bb, list) and bb:
+            vals = [v[1] for v in (bb[0].get("bodyBatteryValuesArray") or [])
+                    if isinstance(v, list) and len(v) > 1 and v[1] is not None]
+            if vals:
+                rec["body_battery"] = int(max(vals))
 
     return rec
 
