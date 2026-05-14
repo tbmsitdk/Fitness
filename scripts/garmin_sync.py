@@ -22,9 +22,12 @@ import requests
 GARMIN_TOKENS = os.environ["GARMIN_TOKENS"]
 APP_URL       = os.environ["APP_URL"].rstrip("/")
 SYNC_DAYS     = int(os.environ.get("SYNC_DAYS", "2"))
+SYNC_SECRET   = os.environ.get("SYNC_SECRET", "")
 
 TOKEN_DIR = "/tmp/garmin_token_store"
 HEADERS   = {"Content-Type": "application/json"}
+if SYNC_SECRET:
+    HEADERS["Authorization"] = f"Bearer {SYNC_SECRET}"
 
 # ── Activity type normalisation ───────────────────────────────────────────────
 

@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { upsertActivities, upsertWellness } from '@/lib/db';
 
+function authorized(req: NextRequest): boolean {
+  const secret = process.env.SYNC_SECRET;
+  if (!secret) return true;
+  const auth = req.headers.get('authorization') ?? '';
+  return auth === `Bearer ${secret}`;
+}
+
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  if (!authorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   try {
     const body = await request.json();
     const { activities = [], wellness = [] } = body as {
