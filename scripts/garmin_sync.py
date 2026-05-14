@@ -91,11 +91,13 @@ def _parse_activities(raw: list) -> list:
 
 # ── Garth API helper ──────────────────────────────────────────────────────────
 
-def _api(client, path, params=None):
+def _api(client, path, params=None, label=""):
     """Call Garmin Connect API using garth's authenticated session."""
     try:
         return client.connectapi(path, params=params)
-    except Exception:
+    except Exception as exc:
+        if label:
+            print(f"  ⚠  API error [{label}]: {exc}")
         return None
 
 # ── Wellness per day ──────────────────────────────────────────────────────────
@@ -104,63 +106,65 @@ def _fetch_wellness(client, display_name: str, ds: str) -> dict:
     rec: dict = {"date": ds}
 
     # Steps + stress
-    try:
-        s = _api(client, f"/usersummary-service/usersummary/daily/{display_name}",
-                 params={"calendarDate": ds})
-        if s:
-            if (s.get("totalSteps") or 0) > 0:
-                rec["steps"] = int(s["totalSteps"])
-            stress = s.get("averageStressLevel", -1) or -1
-            if stress > 0:
-                rec["stress_score"] = int(stress)
-    except Exception as exc:
-        print(f"  ⚠  Steps/stress {ds}: {exc}")
+    s = _api(client, f"/usersummary-service/usersummary/daily/{display_name}",
+             params={"calendarDate": ds}, label="steps/stress")
+    if s:
+        if (s.get("totalSteps") or 0) > 0:
+            rec["steps"] = int(s["totalSteps"])
+        stress = s.get("averageStressLevel", -1) or -1
+        if stress > 0:
+            rec["stress_score"] = int(stress)
 
     # RHR
-    try:
-        rhr = _api(client, f"/userstats-service/wellness/daily/{display_name}",
-                   params={"fromDate": ds, "untilDate": ds})
-        if rhr and rhr.get("allMetrics", {}).get("metricsMap", {}).get("WELLNESS_RESTING_HEART_RATE"):
-            vals = rhr["allMetrics"]["metricsMap"]["WELLNESS_RESTING_HEART_RATE"]
-            if vals:
-                rec["resting_hr"] = int(vals[-1].get("value", 0)) or None
-    except Exception as exc:
-        print(f"  ⚠  RHR {ds}: {exc}")
+    rhr = _api(client, f"/userstats-service/wellness/daily/{display_name}",
+               params={"fromDate": ds, "untilDate": ds}, label="RHR")
+    if rhr:
+        metrics = (rhr.get("allMetrics") or {}).get("metricsMap") or {}
+        vals = metrics.get("WELLNESS_RESTING_HEART_RATE") or []
+        if vals:
+            v = int(vals[-1].get("value", 0) or 0)
+            if v > 0:
+                rec["resting_hr"] = v
+        else:
+            print(f"    RHR keys: {list(metrics.keys())[:5]}")
+    else:
+        print(f"    RHR: no response")
 
     # HRV
-    try:
-        hrv = _api(client, f"/hrv-service/hrv/{ds}")
-        if hrv and hrv.get("hrvSummary"):
-            val = hrv["hrvSummary"].get("lastNight") or hrv["hrvSummary"].get("weeklyAvg")
-            if val and float(val) > 0:
-                rec["hrv_rmssd"] = round(float(val), 2)
-    except Exception as exc:
-        print(f"  ⚠  HRV {ds}: {exc}")
+    hrv = _api(client, f"/hrv-service/hrv/{ds}", label="HRV")
+    if hrv:
+        summary = hrv.get("hrvSummary") or {}
+        val = summary.get("lastNight") or summary.get("weeklyAvg")
+        if val and float(val) > 0:
+            rec["hrv_rmssd"] = round(float(val), 2)
+        else:
+            print(f"    HRV summary keys: {list(summary.keys())}")
+    else:
+        print(f"    HRV: no response")
 
     # Sleep
-    try:
-        sleep = _api(client, f"/wellness-service/wellness/dailySleepData/{display_name}",
-                     params={"date": ds, "nonSleepBufferMinutes": 60})
-        dto = (sleep or {}).get("dailySleepDTO") or {}
-        secs = dto.get("sleepTimeSeconds") or 0
-        if secs > 0:
-            rec["sleep_hours"] = round(secs / 3600, 2)
-            score = ((dto.get("sleepScores") or {}).get("overall") or {}).get("value")
-            if score:
-                rec["sleep_score"] = int(score)
-    except Exception as exc:
-        print(f"  ⚠  Sleep {ds}: {exc}")
+    sleep = _api(client, f"/wellness-service/wellness/dailySleepData/{display_name}",
+                 params={"date": ds, "nonSleepBufferMinutes": 60}, label="sleep")
+    dto = (sleep or {}).get("dailySleepDTO") or {}
+    secs = dto.get("sleepTimeSeconds") or 0
+    if secs > 0:
+        rec["sleep_hours"] = round(secs / 3600, 2)
+        score = ((dto.get("sleepScores") or {}).get("overall") or {}).get("value")
+        if score:
+            rec["sleep_score"] = int(score)
 
     # Body battery
-    try:
-        bb = _api(client, f"/wellness-service/wellness/bodyBattery/valuesByDate/{ds}/{ds}")
-        if bb and isinstance(bb, list) and bb:
-            vals = [v[1] for v in (bb[0].get("bodyBatteryValuesArray") or [])
-                    if isinstance(v, list) and len(v) > 1 and v[1] is not None]
-            if vals:
-                rec["body_battery"] = int(max(vals))
-    except Exception as exc:
-        print(f"  ⚠  Body battery {ds}: {exc}")
+    bb = _api(client, f"/wellness-service/wellness/bodyBattery/valuesByDate/{ds}/{ds}",
+              label="body battery")
+    if bb and isinstance(bb, list) and bb:
+        vals = [v[1] for v in (bb[0].get("bodyBatteryValuesArray") or [])
+                if isinstance(v, list) and len(v) > 1 and v[1] is not None]
+        if vals:
+            rec["body_battery"] = int(max(vals))
+        else:
+            print(f"    Body battery: response received but no values array")
+    elif bb is not None:
+        print(f"    Body battery: unexpected response type {type(bb)}")
 
     return rec
 
@@ -187,8 +191,19 @@ def main():
     # ── Get display name (needed for some endpoints)
     try:
         profile = client.connectapi("/userprofile-service/userprofile/user-settings")
-        display_name = (profile.get("userData") or {}).get("displayName") or ""
-        print(f"  ✓ Logged in as: {display_name}")
+        ud = profile.get("userData") or {}
+        # Try multiple fields — Garmin uses displayName or userName depending on account type
+        display_name = (ud.get("displayName") or ud.get("userName") or
+                        ud.get("userId") or "")
+        if not display_name:
+            # Fallback: social profile
+            try:
+                sp = client.connectapi("/userprofile-service/socialProfile")
+                display_name = sp.get("displayName") or sp.get("userName") or ""
+            except Exception:
+                pass
+        print(f"  ✓ Logged in as: {display_name!r}")
+        print(f"    (profile keys: {list(ud.keys())[:8]})")
     except Exception as exc:
         print(f"  ✗ Could not fetch profile: {exc}")
         sys.exit(1)
