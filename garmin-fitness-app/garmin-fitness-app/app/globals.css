@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --foreground-rgb: 15, 23, 42;
+  --background-start-rgb: 248, 250, 252;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-start-rgb));
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.recharts-tooltip-wrapper {
+  @apply !shadow-lg !rounded-xl !border-0;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-slate-100 rounded-full;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 rounded-full;
+}
+
+/* Prose in AI responses */
+.ai-prose p { @apply mb-3 leading-relaxed; }
+.ai-prose h2 { @apply text-base font-semibold mt-4 mb-2 text-slate-800; }
+.ai-prose ul { @apply list-disc list-inside space-y-1 mb-3; }
+.ai-prose strong { @apply font-semibold text-slate-900; }
