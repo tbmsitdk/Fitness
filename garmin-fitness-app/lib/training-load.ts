@@ -26,7 +26,7 @@ export function computeTrainingLoad(activities: Activity[]): TrainingLoad[] {
   // Build daily TSS map
   const dailyTSS = new Map<string, number>();
   for (const a of sorted) {
-    const dateStr = a.date.split('T')[0];
+    const dateStr = new Date(a.date).toISOString().split('T')[0];
     const tss = estimateTSS(a);
     dailyTSS.set(dateStr, (dailyTSS.get(dateStr) ?? 0) + tss);
   }
@@ -167,7 +167,7 @@ export function computePersonalBests(activities: Activity[]): PersonalBest[] {
       return pace < bestPace ? a : best;
     });
     const paceStr = formatPace(fastest.duration_seconds / fastest.distance_km);
-    bests.push({ label: 'Fastest 5K pace', value: paceStr + '/km', date: fastest.date.split('T')[0], activity_type: 'running' });
+    bests.push({ label: 'Fastest 5K pace', value: paceStr + '/km', date: new Date(fastest.date).toISOString().split('T')[0], activity_type: 'running' });
   }
 
   // Fastest 10K
@@ -178,40 +178,40 @@ export function computePersonalBests(activities: Activity[]): PersonalBest[] {
       return pace < best.duration_seconds / best.distance_km ? a : best;
     });
     const paceStr = formatPace(fastest.duration_seconds / fastest.distance_km);
-    bests.push({ label: 'Fastest 10K pace', value: paceStr + '/km', date: fastest.date.split('T')[0], activity_type: 'running' });
+    bests.push({ label: 'Fastest 10K pace', value: paceStr + '/km', date: new Date(fastest.date).toISOString().split('T')[0], activity_type: 'running' });
   }
 
   // Longest run
   if (runs.length > 0) {
     const longest = runs.reduce((best, a) => a.distance_km > best.distance_km ? a : best);
-    bests.push({ label: 'Longest run', value: `${longest.distance_km.toFixed(1)} km`, date: longest.date.split('T')[0], activity_type: 'running' });
+    bests.push({ label: 'Longest run', value: `${longest.distance_km.toFixed(1)} km`, date: new Date(longest.date).toISOString().split('T')[0], activity_type: 'running' });
   }
 
   // Longest ride
   if (rides.length > 0) {
     const longest = rides.reduce((best, a) => a.distance_km > best.distance_km ? a : best);
-    bests.push({ label: 'Longest ride', value: `${longest.distance_km.toFixed(1)} km`, date: longest.date.split('T')[0], activity_type: 'cycling' });
+    bests.push({ label: 'Longest ride', value: `${longest.distance_km.toFixed(1)} km`, date: new Date(longest.date).toISOString().split('T')[0], activity_type: 'cycling' });
   }
 
   // Most elevation in a single activity
   const withElev = activities.filter(a => (a.elevation_gain ?? 0) > 0);
   if (withElev.length > 0) {
     const most = withElev.reduce((best, a) => (a.elevation_gain ?? 0) > (best.elevation_gain ?? 0) ? a : best);
-    bests.push({ label: 'Most elevation', value: `${most.elevation_gain?.toFixed(0)} m`, date: most.date.split('T')[0], activity_type: most.activity_type });
+    bests.push({ label: 'Most elevation', value: `${most.elevation_gain?.toFixed(0)} m`, date: new Date(most.date).toISOString().split('T')[0], activity_type: most.activity_type });
   }
 
   // Highest single-ride avg power
   const withPower = rides.filter(a => (a.avg_power ?? 0) > 0);
   if (withPower.length > 0) {
     const strongest = withPower.reduce((best, a) => (a.avg_power ?? 0) > (best.avg_power ?? 0) ? a : best);
-    bests.push({ label: 'Peak avg power (ride)', value: `${strongest.avg_power} W`, date: strongest.date.split('T')[0], activity_type: 'cycling' });
+    bests.push({ label: 'Peak avg power (ride)', value: `${strongest.avg_power} W`, date: new Date(strongest.date).toISOString().split('T')[0], activity_type: 'cycling' });
   }
 
   // Highest calorie burn
   const withCal = activities.filter(a => (a.calories ?? 0) > 0);
   if (withCal.length > 0) {
     const max = withCal.reduce((best, a) => (a.calories ?? 0) > (best.calories ?? 0) ? a : best);
-    bests.push({ label: 'Most calories burned', value: `${max.calories} kcal`, date: max.date.split('T')[0], activity_type: max.activity_type });
+    bests.push({ label: 'Most calories burned', value: `${max.calories} kcal`, date: new Date(max.date).toISOString().split('T')[0], activity_type: max.activity_type });
   }
 
   return bests.slice(0, 8);
