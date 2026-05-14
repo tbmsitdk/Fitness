@@ -31,6 +31,7 @@ jobs:
           GARMIN_EMAIL:    ${{ secrets.GARMIN_EMAIL }}
           GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
           APP_URL:         ${{ secrets.APP_URL }}
-          SYNC_SECRET:     ${{ secrets.SYNC_SECRET }}
+          SYNC_SECRET:          ${{ secrets.SYNC_SECRET }}
+          VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_BYPASS_SECRET }}
           SYNC_DAYS:       2
         run: python scripts/garmin_sync.py
