@@ -117,60 +117,84 @@ def _enrich_power_details(client, activities: list) -> None:
             a["normalized_power"] = int(float(np))
         if ftp and float(ftp) > 0:
             a["ftp"] = int(float(ftp))
-        if np or ftp:
-            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP={a['ftp']}W")
+        # Always log what we found; show dto power keys when FTP missing
+        if not ftp:
+            power_keys = [k for k in dto if any(x in k.lower() for x in ('power','ftp','threshold','watt'))]
+            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP=None  (dto power keys: {power_keys})")
         else:
-            # Debug: show available summaryDTO keys to locate FTP field
-            power_keys = [k for k in dto if 'power' in k.lower() or 'ftp' in k.lower() or 'threshold' in k.lower()]
-            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP keys found: {power_keys}")
+            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP={a['ftp']}W")
 
-def _fetch_ftp_fallback(client, activities: list) -> None:
+def _fetch_ftp_fallback(client, activities: list, display_name: str = "") -> None:
     """Try profile-level endpoints to find the user's current FTP."""
     ftp = None
 
-    # 1. Cycling performance stats
-    stats = _api(client, "/fitnessstats-service/fitnessStats")
-    if stats and isinstance(stats, list):
-        for entry in stats:
-            v = (entry.get("value") or entry.get("bikeFtp") or
-                 entry.get("functionalThresholdPower"))
-            if v and float(v) > 0:
-                ftp = int(float(v))
-                break
-    elif isinstance(stats, dict):
-        ftp = (stats.get("bikeFtp") or stats.get("functionalThresholdPower") or
-               stats.get("cyclingFtp"))
+    # 1. Fitness stats with display_name (garminconnect uses this path)
+    for path in (
+        f"/fitnessstats-service/fitnessStats/{display_name}" if display_name else None,
+        "/fitnessstats-service/fitnessStats",
+    ):
+        if not path or ftp:
+            continue
+        stats = _api(client, path)
+        if isinstance(stats, list):
+            for entry in stats:
+                v = (entry.get("value") or entry.get("bikeFtp") or
+                     entry.get("functionalThresholdPower"))
+                if v and float(v) > 0:
+                    ftp = int(float(v)); break
+        elif isinstance(stats, dict):
+            for key in ("bikeFtp", "functionalThresholdPower", "cyclingFtp", "value"):
+                v = stats.get(key)
+                if v and float(v) > 0:
+                    ftp = int(float(v)); break
         if ftp:
-            ftp = int(float(ftp))
+            print(f"  ✓ FTP from {path}: {ftp}W")
 
-    # 2. User settings (cyclingFTPSetting)
+    # 2. User settings
     if not ftp:
         profile = _api(client, "/userprofile-service/userprofile/user-settings")
         ud = (profile or {}).get("userData") or profile or {}
         for key in ("cyclingFTPSetting", "cyclingFtp", "bikeFtp", "functionalThresholdPower"):
             val = ud.get(key)
-            if val and float(val) > 0:
-                ftp = int(float(val))
-                break
+            if val:
+                try:
+                    v = float(val)
+                    if v > 0:
+                        ftp = int(v)
+                        print(f"  ✓ FTP from user-settings.{key}: {ftp}W")
+                        break
+                except (TypeError, ValueError):
+                    pass
 
-    # 3. Personal record stats
+    # 3. Personal record / max metrics
     if not ftp:
-        pr = _api(client, "/personalrecord-service/personalrecord/prs")
-        if pr and isinstance(pr, list):
+        pr = _api(client, f"/personalrecord-service/personalrecord/prs/{display_name}" if display_name else "/personalrecord-service/personalrecord/prs")
+        if isinstance(pr, list):
             for rec in pr:
                 if "ftp" in str(rec.get("prTypeLabelKey", "")).lower():
                     val = rec.get("value")
                     if val and float(val) > 0:
                         ftp = int(float(val))
+                        print(f"  ✓ FTP from PR: {ftp}W")
                         break
 
+    # 4. Max metrics endpoint (used by some garminconnect versions)
+    if not ftp:
+        mx = _api(client, f"/fitnessstats-service/fitnessStats/{display_name}/maxMetrics" if display_name else None)
+        if isinstance(mx, list):
+            for m in mx:
+                v = m.get("genericVO", {}).get("value") if isinstance(m.get("genericVO"), dict) else None
+                if v and "ftp" in str(m.get("fitnessStatType", "")).lower():
+                    ftp = int(float(v))
+                    print(f"  ✓ FTP from maxMetrics: {ftp}W")
+                    break
+
     if ftp:
-        print(f"  ✓ FTP from profile: {ftp}W")
         for a in activities:
             if a["activity_type"] == "cycling" and not a.get("ftp"):
                 a["ftp"] = ftp
     else:
-        print("  ⚠  FTP not found in profile endpoints")
+        print("  ⚠  FTP not found in any profile endpoint")
 
 
 # ── Garth API helper ──────────────────────────────────────────────────────────
@@ -298,7 +322,7 @@ def main():
         _enrich_power_details(client, activities)
         # If FTP not found in activity details, try the fitness stats endpoint
         if any(a["activity_type"] == "cycling" and a.get("ftp") is None for a in activities):
-            _fetch_ftp_fallback(client, activities)
+            _fetch_ftp_fallback(client, activities, display_name)
     except Exception as exc:
         print(f"  ✗ Activities fetch failed: {exc}")
         activities = []
