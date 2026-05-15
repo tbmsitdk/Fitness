@@ -15,7 +15,7 @@ Optional:
   SYNC_DAYS      — days back to fetch (default 2)
 """
 
-import base64, io, json, os, sys, tarfile
+import base64, io, json, os, sys, tarfile, time
 
 import requests
 
@@ -293,7 +293,10 @@ def main():
                 display_name = sp.get("displayName") or sp.get("userName") or ""
             except Exception:
                 pass
-        print(f"  ✓ Logged in as: {display_name}")
+        # Weight in grams → kg
+        weight_g = ud.get("weight")
+        weight_kg = round(float(weight_g) / 1000, 1) if weight_g else None
+        print(f"  ✓ Logged in as: {display_name}  weight: {weight_kg}kg")
     except Exception as exc:
         print(f"  ✗ Could not fetch profile: {exc}")
         sys.exit(1)
@@ -301,32 +304,57 @@ def main():
     today = date.today()
     start = today - timedelta(days=SYNC_DAYS)
 
-    # ── Activities
+    # ── Activities (paginated — 100 per page)
     print(f"\nFetching activities {start} → {today}…")
     try:
-        raw = client.connectapi(
-            "/activitylist-service/activities/search/activities",
-            params={"startDate": start.isoformat(), "endDate": today.isoformat(),
-                    "limit": 100, "start": 0}
-        ) or []
+        raw, offset = [], 0
+        while True:
+            page = client.connectapi(
+                "/activitylist-service/activities/search/activities",
+                params={"startDate": start.isoformat(), "endDate": today.isoformat(),
+                        "limit": 100, "start": offset}
+            ) or []
+            raw.extend(page)
+            if len(page) < 100:
+                break
+            offset += 100
+            time.sleep(0.5)  # avoid rate-limiting on large backfills
         activities = _parse_activities(raw)
         print(f"  ✓ {len(activities)} activities")
         _enrich_power_details(client, activities)
+        # Stamp weight_kg onto cycling activities for W/kg (not stored in DB, used by insert API)
+        if weight_kg:
+            for a in activities:
+                if a["activity_type"] == "cycling":
+                    a["weight_kg"] = weight_kg
     except Exception as exc:
         print(f"  ✗ Activities fetch failed: {exc}")
         activities = []
 
-    # ── Wellness
+    # ── Wellness (batch upsert every 30 days on large backfills)
     print("\nFetching wellness data…")
     wellness = []
+    BATCH_UPSERT = 30  # flush to DB every N days to avoid memory issues
     for i in range(SYNC_DAYS + 1):
         d  = start + timedelta(days=i)
         ds = d.isoformat()
         print(f"  {ds}…", end=" ", flush=True)
         rec = _fetch_wellness(client, display_name, ds)
+        if weight_kg:
+            rec["weight_kg"] = weight_kg
         wellness.append(rec)
         fields = [k for k in rec if k != "date"]
         print(f"({', '.join(fields) or 'no data'})")
+        # Throttle on large backfills
+        if SYNC_DAYS > 7:
+            time.sleep(0.3)
+        # Intermediate flush every BATCH_UPSERT days
+        if len(wellness) >= BATCH_UPSERT and SYNC_DAYS > 30:
+            r = requests.post(f"{APP_URL}/api/insert", headers=HEADERS,
+                              json={"activities": [], "wellness": wellness}, timeout=60)
+            if r.ok:
+                print(f"  → flushed {len(wellness)} wellness records")
+            wellness = []
 
     # ── Ensure DB tables exist
     print("\nInitialising database…")

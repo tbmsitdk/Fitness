@@ -10,6 +10,7 @@ import ConsistencyChart from './charts/ConsistencyChart';
 import PersonalBests from './charts/PersonalBests';
 import StepsChart from './charts/StepsChart';
 import PowerChart from './charts/PowerChart';
+import PowerZonesChart from './charts/PowerZonesChart';
 import CaloriesChart from './charts/CaloriesChart';
 import CadenceChart from './charts/CadenceChart';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -53,6 +54,21 @@ export default function Dashboard({ activities, allActivities, wellness, cutoff 
   const consistency = useMemo(() => computeConsistency(activities), [activities]);
   const summary = useMemo(() => compute90DaySummary(activities), [activities]);
   const sortedWellness = useMemo(() => [...wellness].sort((a,b) => a.date.localeCompare(b.date)), [wellness]);
+
+  // Most recent weight from wellness records (wellness is already sorted asc, so last non-null wins)
+  const weightKg = useMemo(() => {
+    for (let i = sortedWellness.length - 1; i >= 0; i--) {
+      if (sortedWellness[i].weight_kg != null) return sortedWellness[i].weight_kg as number;
+    }
+    return null;
+  }, [sortedWellness]);
+
+  // FTP from most recent cycling activity that has one
+  const latestFtp = useMemo(() => {
+    const cycling = activities.filter(a => a.activity_type === 'cycling' && a.ftp && a.ftp > 0);
+    if (!cycling.length) return null;
+    return cycling.reduce((best, a) => (a.date > (best?.date ?? '') ? a : best), null as Activity | null)?.ftp ?? null;
+  }, [activities]);
 
   const latestLoad = trainingLoad[trainingLoad.length - 1];
   const formBadge = latestLoad
@@ -148,13 +164,27 @@ export default function Dashboard({ activities, allActivities, wellness, cutoff 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2"><CardTitle>Cycling Power</CardTitle></CardHeader>
-          <CardContent><PowerChart activities={activities} /></CardContent>
+          <CardContent><PowerChart activities={activities} weightKg={weightKg} /></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle>Weekly Calories</CardTitle></CardHeader>
           <CardContent><CaloriesChart activities={activities} /></CardContent>
         </Card>
       </div>
+
+      {/* Power Zones + HR Zones */}
+      {latestFtp && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="pb-2"><CardTitle>Power Zone Distribution</CardTitle></CardHeader>
+            <CardContent><PowerZonesChart activities={activities} ftp={latestFtp} /></CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2"><CardTitle>HR Zone Distribution</CardTitle></CardHeader>
+            <CardContent><HRZoneChart data={hrZones} /></CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Cadence */}
       <Card>

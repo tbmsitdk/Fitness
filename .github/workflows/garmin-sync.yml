@@ -3,13 +3,18 @@ name: Daily Garmin Sync
 on:
   schedule:
     - cron: '0 4 * * *'   # 4 AM UTC — after Garmin devices have synced overnight
-  workflow_dispatch:        # allow manual trigger from GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      sync_days:
+        description: 'Days back to sync (default 2, use 1825 for full 5-year backfill)'
+        required: false
+        default: '2'
 
 jobs:
   sync:
     name: Sync Garmin data
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -27,11 +32,11 @@ jobs:
 
       - name: Run sync
         env:
-          GARMIN_TOKENS:   ${{ secrets.GARMIN_TOKENS }}
-          GARMIN_EMAIL:    ${{ secrets.GARMIN_EMAIL }}
-          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
-          APP_URL:         ${{ secrets.APP_URL }}
+          GARMIN_TOKENS:        ${{ secrets.GARMIN_TOKENS }}
+          GARMIN_EMAIL:         ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD:      ${{ secrets.GARMIN_PASSWORD }}
+          APP_URL:              ${{ secrets.APP_URL }}
           SYNC_SECRET:          ${{ secrets.SYNC_SECRET }}
           VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_BYPASS_SECRET }}
-          SYNC_DAYS:       2
+          SYNC_DAYS:            ${{ github.event.inputs.sync_days || '2' }}
         run: python scripts/garmin_sync.py

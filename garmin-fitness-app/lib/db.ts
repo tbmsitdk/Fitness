@@ -42,6 +42,7 @@ export async function initializeDatabase() {
   // Additive migrations — safe to run repeatedly
   await sql`ALTER TABLE activities ADD COLUMN IF NOT EXISTS normalized_power INTEGER`;
   await sql`ALTER TABLE activities ADD COLUMN IF NOT EXISTS ftp INTEGER`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS weight_kg DECIMAL(5,2)`;
 
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_type ON activities(activity_type)`;
@@ -78,6 +79,7 @@ type WellnessRow = {
   sleep_score: number | null;
   stress_score: number | null;
   body_battery: number | null;
+  weight_kg: number | null;
 };
 
 const BATCH = 50; // rows per INSERT statement
@@ -143,13 +145,13 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
       const rows: string[] = [];
 
       batch.forEach((r, j) => {
-        const b = j * 8;
-        rows.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8})`);
-        values.push(r.date, r.steps, r.resting_hr, r.hrv_rmssd, r.sleep_hours, r.sleep_score, r.stress_score, r.body_battery);
+        const b = j * 9;
+        rows.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9})`);
+        values.push(r.date, r.steps, r.resting_hr, r.hrv_rmssd, r.sleep_hours, r.sleep_score, r.stress_score, r.body_battery, r.weight_kg ?? null);
       });
 
       await client.query(
-        `INSERT INTO wellness (date,steps,resting_hr,hrv_rmssd,sleep_hours,sleep_score,stress_score,body_battery)
+        `INSERT INTO wellness (date,steps,resting_hr,hrv_rmssd,sleep_hours,sleep_score,stress_score,body_battery,weight_kg)
          VALUES ${rows.join(',')}
          ON CONFLICT (date) DO UPDATE SET
            steps=COALESCE(EXCLUDED.steps,wellness.steps),
@@ -158,7 +160,8 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
            sleep_hours=COALESCE(EXCLUDED.sleep_hours,wellness.sleep_hours),
            sleep_score=COALESCE(EXCLUDED.sleep_score,wellness.sleep_score),
            stress_score=COALESCE(EXCLUDED.stress_score,wellness.stress_score),
-           body_battery=COALESCE(EXCLUDED.body_battery,wellness.body_battery)`,
+           body_battery=COALESCE(EXCLUDED.body_battery,wellness.body_battery),
+           weight_kg=COALESCE(EXCLUDED.weight_kg,wellness.weight_kg)`,
         values
       );
       inserted += batch.length;
@@ -209,5 +212,6 @@ export function coerceWellness(row: any) {
     sleep_score:  row.sleep_score  != null ? Number(row.sleep_score)  : null,
     stress_score: row.stress_score != null ? Number(row.stress_score) : null,
     body_battery: row.body_battery != null ? Number(row.body_battery) : null,
+    weight_kg:    row.weight_kg    != null ? Number(row.weight_kg)    : null,
   };
 }

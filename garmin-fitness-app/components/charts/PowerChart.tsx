@@ -20,7 +20,7 @@ function linearTrend(values: number[]): (number | null)[] {
   return values.map((_, i) => Math.round(slope * i + intercept));
 }
 
-export default function PowerChart({ activities }: { activities: Activity[] }) {
+export default function PowerChart({ activities, weightKg }: { activities: Activity[]; weightKg?: number | null }) {
   const { chartData, ftp, avgAll, tickInterval } = useMemo(() => {
     const cycling = activities
       .filter(a => a.activity_type === 'cycling' && a.avg_power && a.avg_power > 0)
@@ -80,13 +80,23 @@ export default function PowerChart({ activities }: { activities: Activity[] }) {
 
   const hasNP = chartData.some(d => d.np != null);
 
+  const ftpWkg = ftp && weightKg ? (ftp / weightKg).toFixed(2) : null;
+
   return (
     <div>
       {ftp && (
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-[11px] text-muted-foreground">Est. FTP:</span>
-          <span className="text-sm font-bold font-mono text-yellow-400">{ftp} W</span>
-          <span className="text-[10px] text-muted-foreground/60 italic">(best 20-min power × 0.95)</span>
+        <div className="flex items-center gap-3 mb-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground">Est. FTP:</span>
+            <span className="text-sm font-bold font-mono text-yellow-400">{ftp} W</span>
+          </div>
+          {ftpWkg && (
+            <div className="flex items-center gap-1">
+              <span className="text-sm font-bold font-mono text-orange-400">{ftpWkg} W/kg</span>
+              <span className="text-[10px] text-muted-foreground/60">@ {weightKg}kg</span>
+            </div>
+          )}
+          <span className="text-[10px] text-muted-foreground/60 italic">(best 20-min × 0.95)</span>
         </div>
       )}
       <ResponsiveContainer width="100%" height={220}>
