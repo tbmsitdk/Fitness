@@ -28,11 +28,13 @@ const CADENCE_REF = {
 
 export default function CadenceChart({ activities, sport }: { activities: Activity[]; sport: 'running' | 'cycling' }) {
   const data = useMemo(() => {
-    return activities
+    const sorted = activities
       .filter(a => a.activity_type === sport && a.avg_cadence && a.avg_cadence > 0)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map(a => ({
-        date: format(parseISO(a.date), 'MMM d'),
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const spanYears = new Set(sorted.map(a => a.date.substring(0, 4))).size > 1;
+    const dateFmt = spanYears ? "MMM ''yy" : 'MMM d';
+    return sorted.map(a => ({
+        date: format(parseISO(a.date), dateFmt),
         cadence: a.avg_cadence as number,
         title: a.title,
       }));

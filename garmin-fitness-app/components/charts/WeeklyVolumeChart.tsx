@@ -33,9 +33,11 @@ export default function WeeklyVolumeChart({ data, metric }: { data: WeeklyVolume
   const trend = linearTrend(totals);
 
   const tickInterval = Math.max(1, Math.floor(data.length / 12));
+  const spanYears = new Set(data.map(d => d.week.substring(0, 4))).size > 1;
+  const dateFmt = spanYears ? "MMM ''yy" : 'MMM d';
 
   const display = data.map((d, i) => ({
-    week: format(parseISO(d.week), 'MMM d'),
+    week: format(parseISO(d.week), dateFmt),
     Running: metric === 'km' ? Math.round(d.running_km * 10) / 10 : Math.round(d.running_hours * 10) / 10,
     Cycling: metric === 'km' ? Math.round(d.cycling_km * 10) / 10 : Math.round(d.cycling_hours * 10) / 10,
     Walking: metric === 'km' ? Math.round(d.walking_km * 10) / 10 : Math.round(d.walking_hours * 10) / 10,

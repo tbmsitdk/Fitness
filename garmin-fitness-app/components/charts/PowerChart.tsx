@@ -54,8 +54,11 @@ export default function PowerChart({ activities, weightKg }: { activities: Activ
       byWeek.set(week, ex);
     }
 
-    const data = Array.from(byWeek.entries()).map(([week, v]) => ({
-      label: format(parseISO(week), 'MMM d'),
+    const weekKeys = Array.from(byWeek.keys());
+    const spanYears = new Set(weekKeys.map(w => w.substring(0, 4))).size > 1;
+    const dateFmt = spanYears ? "MMM ''yy" : 'MMM d';
+    const data = weekKeys.map(week => ({ week, v: byWeek.get(week)! })).map(({ week, v }) => ({
+      label: format(parseISO(week), dateFmt),
       avgPower: Math.round(v.totalWattSeconds / v.totalSeconds),
       np: v.npCount > 0 ? Math.round(v.npWattSeconds / v.npCount) : null,
       maxPower: v.maxPower || null,

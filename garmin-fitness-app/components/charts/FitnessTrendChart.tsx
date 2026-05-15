@@ -48,10 +48,13 @@ export default function FitnessTrendChart({ wellness, metric }: { wellness: Well
   const values = filtered.map(w => w[cfg.key] as number);
   const trend = linearTrend(values);
 
+  const spanYears = new Set(filtered.map(w => w.date.substring(0, 4))).size > 1;
+  const dateFmt = spanYears ? "MMM ''yy" : 'MMM d';
+
   const data = filtered.map((w, i) => {
     const raw = w[cfg.key];
     return {
-      date: format(parseISO(w.date), 'MMM d'),
+      date: format(parseISO(w.date), dateFmt),
       [cfg.label]: typeof raw === 'number' ? raw : null,
       Trend: trend[i],
     };

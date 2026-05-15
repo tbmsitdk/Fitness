@@ -34,9 +34,12 @@ export default function CaloriesChart({ activities }: { activities: Activity[] }
       byWeek.set(week, existing);
     }
 
-    return Array.from(byWeek.entries()).map(([week, v]) => ({
+    const weeks = Array.from(byWeek.keys());
+    const spanYears = new Set(weeks.map(w => w.substring(0, 4))).size > 1;
+    const dateFmt = spanYears ? "MMM ''yy" : 'MMM d';
+    return weeks.map(week => ({ week, v: byWeek.get(week)! })).map(({ week, v }) => ({
       week,
-      label: format(parseISO(week), 'MMM d'),
+      label: format(parseISO(week), dateFmt),
       Running: v.running,
       Cycling: v.cycling,
       Walking: v.walking,

@@ -26,8 +26,11 @@ export default function StepsChart({ wellness }: { wellness: WellnessRecord[] })
   const values = filtered.map(w => w.steps ?? 0);
   const trend = linearTrend(values);
 
+  const spanYears = new Set(filtered.map(w => w.date.substring(0, 4))).size > 1;
+  const dateFmt = spanYears ? "MMM ''yy" : 'MMM d';
+
   const data = filtered.map((w, i) => ({
-    date: format(parseISO(w.date), 'MMM d'),
+    date: format(parseISO(w.date), dateFmt),
     Steps: w.steps ?? 0,
     Trend: trend[i],
   }));

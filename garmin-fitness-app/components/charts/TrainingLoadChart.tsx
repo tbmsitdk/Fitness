@@ -9,9 +9,11 @@ const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(24
 export default function TrainingLoadChart({ data }: { data: TrainingLoad[] }) {
   const bench = getPeerBenchmarks();
   const tickInterval = Math.max(1, Math.floor(data.length / 10));
+  const spanYears = new Set(data.map(d => d.date.substring(0, 4))).size > 1;
+  const dateFmt = spanYears ? "MMM ''yy" : 'MMM d';
 
   const display = data.map(d => ({
-    date: format(parseISO(d.date), 'MMM d'),
+    date: format(parseISO(d.date), dateFmt),
     'Fitness (CTL)': d.ctl,
     'Fatigue (ATL)': d.atl,
     'Form (TSB)': d.tsb,
