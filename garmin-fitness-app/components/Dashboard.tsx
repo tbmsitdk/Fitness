@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { Activity, WellnessRecord } from '@/types';
-import { computeWeeklyVolume, computeTrainingLoad, computeHRZoneDistribution, computePersonalBests, computeConsistency, compute90DaySummary } from '@/lib/training-load';
+import { computeWeeklyVolume, computeTrainingLoad, computeHRZoneDistribution, computePersonalBests, computeConsistency, computePeriodSummary } from '@/lib/training-load';
 import WeeklyVolumeChart from './charts/WeeklyVolumeChart';
 import FitnessTrendChart, { WellnessMetric } from './charts/FitnessTrendChart';
 import TrainingLoadChart from './charts/TrainingLoadChart';
@@ -38,6 +38,17 @@ function StatCard({ label, value, sub, accent, hint }: { label: string; value: s
   );
 }
 
+function periodLabel(cutoff: Date): string {
+  const days = Math.round((Date.now() - cutoff.getTime()) / 86400000);
+  if (days <= 8)   return '7d';
+  if (days <= 32)  return '30d';
+  if (days <= 95)  return '90d';
+  if (days <= 185) return '6M';
+  if (days <= 370) return '1Y';
+  if (cutoff.getFullYear() === new Date().getFullYear()) return 'YTD';
+  return 'All';
+}
+
 export default function Dashboard({ activities, allActivities, wellness, cutoff }: Props) {
   const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
   const [wellMetric, setWellMetric] = useState<WellnessMetric>('rhr');
@@ -52,7 +63,7 @@ export default function Dashboard({ activities, allActivities, wellness, cutoff 
   const hrZones = useMemo(() => computeHRZoneDistribution(activities), [activities]);
   const personalBests = useMemo(() => computePersonalBests(activities), [activities]);
   const consistency = useMemo(() => computeConsistency(activities), [activities]);
-  const summary = useMemo(() => compute90DaySummary(activities), [activities]);
+  const summary = useMemo(() => computePeriodSummary(activities, cutoff), [activities, cutoff]);
   const sortedWellness = useMemo(() => [...wellness].sort((a,b) => a.date.localeCompare(b.date)), [wellness]);
 
   // Most recent weight from wellness records (wellness is already sorted asc, so last non-null wins)
@@ -81,9 +92,9 @@ export default function Dashboard({ activities, allActivities, wellness, cutoff 
     <div className="space-y-4">
       {/* KPI row */}
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        <StatCard label="Runs 90d" value={`${summary.running.count}`} sub={`${summary.running.km} km`} accent="#3B82F6" />
-        <StatCard label="Rides 90d" value={`${summary.cycling.count}`} sub={`${summary.cycling.km} km`} accent="#22C55E" />
-        <StatCard label="Walks 90d" value={`${summary.walking.count}`} sub={`${summary.walking.km} km`} accent="#F59E0B" />
+        <StatCard label={`Runs ${periodLabel(cutoff)}`} value={`${summary.running.count}`} sub={`${summary.running.km} km`} accent="#3B82F6" />
+        <StatCard label={`Rides ${periodLabel(cutoff)}`} value={`${summary.cycling.count}`} sub={`${summary.cycling.km} km`} accent="#22C55E" />
+        <StatCard label={`Walks ${periodLabel(cutoff)}`} value={`${summary.walking.count}`} sub={`${summary.walking.km} km`} accent="#F59E0B" />
         <StatCard label="Fitness (CTL)" value={latestLoad ? `${latestLoad.ctl.toFixed(0)}` : '—'} sub="42-day avg load" hint="Chronic Training Load — your long-term fitness base" accent="hsl(0 0% 98%)" />
         <StatCard label="Week Load (TSS)" value={`${summary.current_week_tss}`} sub={`${summary.load_change_pct >= 0 ? '+' : ''}${summary.load_change_pct}% vs prev`} hint="Training Stress Score — total effort this week" accent="hsl(0 0% 98%)" />
         <div className="p-4 rounded-lg border border-border bg-card space-y-1">

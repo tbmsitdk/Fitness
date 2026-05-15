@@ -268,11 +268,12 @@ export function computeConsistency(activities: Activity[]): ConsistencyData[] {
   return Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month));
 }
 
-export function compute90DaySummary(activities: Activity[]) {
-  const cutoff = subDays(new Date(), 90);
-  const recent = activities.filter(a => parseISO(a.date) >= cutoff);
+export function computePeriodSummary(activities: Activity[], cutoff: Date) {
+  // activities are already filtered to the selected period — no internal re-filter needed
+  const period_days = Math.max(1, Math.round((Date.now() - cutoff.getTime()) / 86400000));
+  const period_weeks = Math.max(1, period_days / 7);
 
-  const byType = (type: string) => recent.filter(a => a.activity_type === type);
+  const byType = (type: string) => activities.filter(a => a.activity_type === type);
   const totalKm = (acts: Activity[]) => acts.reduce((s, a) => s + a.distance_km, 0);
   const totalHours = (acts: Activity[]) => acts.reduce((s, a) => s + a.duration_seconds / 3600, 0);
   const avgHr = (acts: Activity[]) => {
@@ -285,22 +286,26 @@ export function compute90DaySummary(activities: Activity[]) {
   const rides = byType('cycling');
   const walks = byType('walking');
 
-  const weeklyLoads = computeWeeklyVolume(recent);
+  const weeklyLoads = computeWeeklyVolume(activities);
   const currentWeek = weeklyLoads[weeklyLoads.length - 1];
   const prevWeek = weeklyLoads[weeklyLoads.length - 2];
-  const loadChange = prevWeek
-    ? ((currentWeek?.total_tss - prevWeek.total_tss) / (prevWeek.total_tss || 1)) * 100
+  const loadChange = prevWeek && prevWeek.total_tss > 0
+    ? ((currentWeek?.total_tss - prevWeek.total_tss) / prevWeek.total_tss) * 100
     : 0;
 
   return {
-    period_days: 90,
-    total_activities: recent.length,
+    period_days,
+    total_activities: activities.length,
     running: { count: runs.length, km: Math.round(totalKm(runs) * 10) / 10, hours: Math.round(totalHours(runs) * 10) / 10, avg_hr: avgHr(runs) },
     cycling: { count: rides.length, km: Math.round(totalKm(rides) * 10) / 10, hours: Math.round(totalHours(rides) * 10) / 10, avg_hr: avgHr(rides) },
     walking: { count: walks.length, km: Math.round(totalKm(walks) * 10) / 10, hours: Math.round(totalHours(walks) * 10) / 10, avg_hr: avgHr(walks) },
     current_week_tss: Math.round(currentWeek?.total_tss ?? 0),
     load_change_pct: Math.round(loadChange),
-    avg_weekly_km_run: Math.round((totalKm(runs) / 13) * 10) / 10,
-    avg_weekly_km_ride: Math.round((totalKm(rides) / 13) * 10) / 10,
+    avg_weekly_km_run: Math.round((totalKm(runs) / period_weeks) * 10) / 10,
+    avg_weekly_km_ride: Math.round((totalKm(rides) / period_weeks) * 10) / 10,
   };
 }
+
+/** @deprecated use computePeriodSummary */
+export const compute90DaySummary = (activities: Activity[]) =>
+  computePeriodSummary(activities, new Date(Date.now() - 90 * 86400000));
