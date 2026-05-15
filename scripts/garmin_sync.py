@@ -104,13 +104,74 @@ def _enrich_power_details(client, activities: list) -> None:
             continue
         dto = detail.get("summaryDTO") or {}
         np = dto.get("normalizedPower") or dto.get("np")
-        ftp = dto.get("functionalThresholdPower") or dto.get("ftp")
+        # FTP can live in several places depending on Garmin firmware/account type
+        ftp = (dto.get("functionalThresholdPower") or dto.get("ftp") or
+               dto.get("bikeFtp") or dto.get("thresholdPower") or
+               (detail.get("metaData") or {}).get("associatedWorkoutId") and None or
+               None)
+        # Also check sport-specific settings block
+        for block in (detail.get("fullDetailedSport") or {}, detail.get("sportSettings") or {}):
+            if not ftp:
+                ftp = block.get("functionalThresholdPower") or block.get("bikeFtp")
         if np and float(np) > 0:
             a["normalized_power"] = int(float(np))
         if ftp and float(ftp) > 0:
             a["ftp"] = int(float(ftp))
         if np or ftp:
             print(f"    {a['title']}: NP={a['normalized_power']}W  FTP={a['ftp']}W")
+        else:
+            # Debug: show available summaryDTO keys to locate FTP field
+            power_keys = [k for k in dto if 'power' in k.lower() or 'ftp' in k.lower() or 'threshold' in k.lower()]
+            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP keys found: {power_keys}")
+
+def _fetch_ftp_fallback(client, activities: list) -> None:
+    """Try profile-level endpoints to find the user's current FTP."""
+    ftp = None
+
+    # 1. Cycling performance stats
+    stats = _api(client, "/fitnessstats-service/fitnessStats")
+    if stats and isinstance(stats, list):
+        for entry in stats:
+            v = (entry.get("value") or entry.get("bikeFtp") or
+                 entry.get("functionalThresholdPower"))
+            if v and float(v) > 0:
+                ftp = int(float(v))
+                break
+    elif isinstance(stats, dict):
+        ftp = (stats.get("bikeFtp") or stats.get("functionalThresholdPower") or
+               stats.get("cyclingFtp"))
+        if ftp:
+            ftp = int(float(ftp))
+
+    # 2. User settings (cyclingFTPSetting)
+    if not ftp:
+        profile = _api(client, "/userprofile-service/userprofile/user-settings")
+        ud = (profile or {}).get("userData") or profile or {}
+        for key in ("cyclingFTPSetting", "cyclingFtp", "bikeFtp", "functionalThresholdPower"):
+            val = ud.get(key)
+            if val and float(val) > 0:
+                ftp = int(float(val))
+                break
+
+    # 3. Personal record stats
+    if not ftp:
+        pr = _api(client, "/personalrecord-service/personalrecord/prs")
+        if pr and isinstance(pr, list):
+            for rec in pr:
+                if "ftp" in str(rec.get("prTypeLabelKey", "")).lower():
+                    val = rec.get("value")
+                    if val and float(val) > 0:
+                        ftp = int(float(val))
+                        break
+
+    if ftp:
+        print(f"  ✓ FTP from profile: {ftp}W")
+        for a in activities:
+            if a["activity_type"] == "cycling" and not a.get("ftp"):
+                a["ftp"] = ftp
+    else:
+        print("  ⚠  FTP not found in profile endpoints")
+
 
 # ── Garth API helper ──────────────────────────────────────────────────────────
 
@@ -235,6 +296,9 @@ def main():
         activities = _parse_activities(raw)
         print(f"  ✓ {len(activities)} activities")
         _enrich_power_details(client, activities)
+        # If FTP not found in activity details, try the fitness stats endpoint
+        if any(a["activity_type"] == "cycling" and a.get("ftp") is None for a in activities):
+            _fetch_ftp_fallback(client, activities)
     except Exception as exc:
         print(f"  ✗ Activities fetch failed: {exc}")
         activities = []
