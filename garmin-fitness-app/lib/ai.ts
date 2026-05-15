@@ -49,7 +49,7 @@ export async function generateWeeklySummary(
       avg_hrv_rmssd: avgHRV,
       avg_sleep_hours: avgSleep,
     },
-    load_spike_warning: Math.abs(summary.load_change_pct) > 10,
+    avg_weekly_tss: summary.avg_weekly_tss,
   };
 
   const response = await client.messages.create({
