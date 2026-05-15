@@ -103,26 +103,18 @@ def _enrich_power_details(client, activities: list) -> None:
         if not detail:
             continue
         dto = detail.get("summaryDTO") or {}
-        np = dto.get("normalizedPower") or dto.get("np")
-        # FTP can live in several places depending on Garmin firmware/account type
-        ftp = (dto.get("functionalThresholdPower") or dto.get("ftp") or
-               dto.get("bikeFtp") or dto.get("thresholdPower") or
-               (detail.get("metaData") or {}).get("associatedWorkoutId") and None or
-               None)
-        # Also check sport-specific settings block
-        for block in (detail.get("fullDetailedSport") or {}, detail.get("sportSettings") or {}):
-            if not ftp:
-                ftp = block.get("functionalThresholdPower") or block.get("bikeFtp")
+        np  = dto.get("normalizedPower")
+        # Garmin doesn't expose FTP directly in activity detail; estimate from
+        # peak 20-minute power using the standard 95% protocol
+        p20 = dto.get("maxPowerTwentyMinutes")
+        ftp = int(float(p20) * 0.95) if p20 and float(p20) > 0 else None
         if np and float(np) > 0:
             a["normalized_power"] = int(float(np))
-        if ftp and float(ftp) > 0:
-            a["ftp"] = int(float(ftp))
-        # Always log what we found; show dto power keys when FTP missing
-        if not ftp:
-            power_keys = [k for k in dto if any(x in k.lower() for x in ('power','ftp','threshold','watt'))]
-            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP=None  (dto power keys: {power_keys})")
+        if ftp:
+            a["ftp"] = ftp
+            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP~{ftp}W (20min×0.95, p20={int(float(p20))}W)")
         else:
-            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP={a['ftp']}W")
+            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP=None (no 20min power in this ride)")
 
 def _fetch_ftp_fallback(client, activities: list, display_name: str = "") -> None:
     """Try profile-level endpoints to find the user's current FTP."""
@@ -320,9 +312,6 @@ def main():
         activities = _parse_activities(raw)
         print(f"  ✓ {len(activities)} activities")
         _enrich_power_details(client, activities)
-        # If FTP not found in activity details, try the fitness stats endpoint
-        if any(a["activity_type"] == "cycling" and a.get("ftp") is None for a in activities):
-            _fetch_ftp_fallback(client, activities, display_name)
     except Exception as exc:
         print(f"  ✗ Activities fetch failed: {exc}")
         activities = []

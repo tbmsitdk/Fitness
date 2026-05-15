@@ -84,9 +84,9 @@ export default function PowerChart({ activities }: { activities: Activity[] }) {
     <div>
       {ftp && (
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-[11px] text-muted-foreground">Current FTP:</span>
+          <span className="text-[11px] text-muted-foreground">Est. FTP:</span>
           <span className="text-sm font-bold font-mono text-yellow-400">{ftp} W</span>
-          <span className="text-[10px] text-muted-foreground/60 italic">(from last Garmin ride)</span>
+          <span className="text-[10px] text-muted-foreground/60 italic">(best 20-min power × 0.95)</span>
         </div>
       )}
       <ResponsiveContainer width="100%" height={220}>
