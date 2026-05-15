@@ -9,7 +9,7 @@ interface Row { month: string; 'Running': number; 'Cycling': number; 'Walking': 
 const labelFmt = (label: string, payload: any[]) => { const pct = payload?.[0]?.payload?.pct; return `${label}${pct != null ? ` · ${pct}% active` : ''}`; };
 
 export default function ConsistencyChart({ data }: { data: ConsistencyData[] }) {
-  const rows: Row[] = data.slice(-12).map(d => ({
+  const rows: Row[] = data.slice(-24).map(d => ({
     month: format(parseISO(d.month + '-01'), 'MMM yy'),
     Running: d.running_days, Cycling: d.cycling_days, Walking: d.walking_days,
     pct: Math.round((d.active_days / d.total_days) * 100),
