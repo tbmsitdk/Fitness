@@ -21,49 +21,74 @@ function linearTrend(values: number[]): (number | null)[] {
 }
 
 export default function PowerChart({ activities }: { activities: Activity[] }) {
-  const data = useMemo(() => {
-    // Filter to cycling activities with power data
+  const { chartData, ftp, avgAll, tickInterval } = useMemo(() => {
     const cycling = activities
       .filter(a => a.activity_type === 'cycling' && a.avg_power && a.avg_power > 0)
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    if (!cycling.length) return [];
+    if (!cycling.length) return { chartData: [], ftp: null, avgAll: 0, tickInterval: 1 };
 
-    // Group by week, duration-weighted average power
-    const byWeek = new Map<string, { totalWattSeconds: number; totalSeconds: number; maxPower: number }>();
+    // Most recent FTP across all cycling activities
+    const ftpVal = cycling.reduce((latest, a) => {
+      if (a.ftp && a.ftp > 0 && a.date > (latest?.date ?? '')) return a;
+      return latest;
+    }, null as Activity | null)?.ftp ?? null;
+
+    // Group by week — duration-weighted avg power and max NP
+    const byWeek = new Map<string, {
+      totalWattSeconds: number; totalSeconds: number;
+      maxPower: number; npWattSeconds: number; npCount: number;
+    }>();
+
     for (const a of cycling) {
       const week = format(startOfWeek(parseISO(a.date), { weekStartsOn: 1 }), 'yyyy-MM-dd');
-      const existing = byWeek.get(week) ?? { totalWattSeconds: 0, totalSeconds: 0, maxPower: 0 };
+      const ex = byWeek.get(week) ?? { totalWattSeconds: 0, totalSeconds: 0, maxPower: 0, npWattSeconds: 0, npCount: 0 };
       const secs = a.duration_seconds || 1;
-      existing.totalWattSeconds += (a.avg_power ?? 0) * secs;
-      existing.totalSeconds += secs;
-      existing.maxPower = Math.max(existing.maxPower, a.max_power ?? 0);
-      byWeek.set(week, existing);
+      ex.totalWattSeconds += (a.avg_power ?? 0) * secs;
+      ex.totalSeconds += secs;
+      ex.maxPower = Math.max(ex.maxPower, a.max_power ?? 0);
+      if (a.normalized_power && a.normalized_power > 0) {
+        ex.npWattSeconds += a.normalized_power * secs;
+        ex.npCount += secs;
+      }
+      byWeek.set(week, ex);
     }
 
-    return Array.from(byWeek.entries()).map(([week, v]) => ({
-      week,
+    const data = Array.from(byWeek.entries()).map(([week, v]) => ({
       label: format(parseISO(week), 'MMM d'),
       avgPower: Math.round(v.totalWattSeconds / v.totalSeconds),
+      np: v.npCount > 0 ? Math.round(v.npWattSeconds / v.npCount) : null,
       maxPower: v.maxPower || null,
     }));
+
+    const trend = linearTrend(data.map(d => d.avgPower));
+    const all = Math.round(data.reduce((s, d) => s + d.avgPower, 0) / data.length);
+
+    return {
+      chartData: data.map((d, i) => ({ ...d, Trend: trend[i] })),
+      ftp: ftpVal,
+      avgAll: all,
+      tickInterval: Math.max(1, Math.floor(data.length / 12)),
+    };
   }, [activities]);
 
-  const trend = linearTrend(data.map(d => d.avgPower));
-  const chartData = data.map((d, i) => ({ ...d, Trend: trend[i] }));
-
-  const tickInterval = Math.max(1, Math.floor(data.length / 12));
-
-  if (!data.length) return (
-    <div className="h-[220px] flex items-center justify-center text-xs text-muted-foreground">
+  if (!chartData.length) return (
+    <div className="h-[240px] flex items-center justify-center text-xs text-muted-foreground">
       No cycling power data in selected period
     </div>
   );
 
-  const avgAll = Math.round(data.reduce((s, d) => s + d.avgPower, 0) / data.length);
+  const hasNP = chartData.some(d => d.np != null);
 
   return (
     <div>
+      {ftp && (
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[11px] text-muted-foreground">Current FTP:</span>
+          <span className="text-sm font-bold font-mono text-yellow-400">{ftp} W</span>
+          <span className="text-[10px] text-muted-foreground/60 italic">(from last Garmin ride)</span>
+        </div>
+      )}
       <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
@@ -71,20 +96,25 @@ export default function PowerChart({ activities }: { activities: Activity[] }) {
           <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} tickFormatter={v => `${v}W`} domain={['auto', 'auto']} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }}
             formatter={(v: number, n: string) => {
-              if (n === 'Trend') return [`${v} W`, 'Trend'];
+              if (n === 'Trend')    return [`${v} W`, 'Trend'];
               if (n === 'avgPower') return [`${v} W`, 'Avg Power'];
+              if (n === 'np')       return [`${v} W`, 'Norm. Power (NP)'];
               if (n === 'maxPower') return [`${v} W`, 'Peak Power'];
               return [v, n];
             }} />
-          <ReferenceLine y={avgAll} stroke="hsl(240 5% 50%)" strokeDasharray="4 2" strokeWidth={1}
-            label={{ value: `Period avg ${avgAll}W`, position: 'insideTopLeft', fontSize: 9, fill: 'hsl(240 5% 64.9%)' }} />
-          <Bar dataKey="avgPower" name="avgPower" fill="#22C55E" opacity={0.85} radius={[3, 3, 0, 0]} />
-          <Line dataKey="maxPower" name="maxPower" stroke="#86EFAC" strokeWidth={1.5} dot={false} strokeDasharray="3 2" />
+          {ftp && (
+            <ReferenceLine y={ftp} stroke="hsl(45 93% 58%)" strokeDasharray="5 3" strokeWidth={1.5}
+              label={{ value: `FTP ${ftp}W`, position: 'insideTopRight', fontSize: 9, fill: 'hsl(45 93% 58%)' }} />
+          )}
+          <ReferenceLine y={avgAll} stroke="hsl(240 5% 50%)" strokeDasharray="3 2" strokeWidth={1}
+            label={{ value: `Avg ${avgAll}W`, position: 'insideTopLeft', fontSize: 9, fill: 'hsl(240 5% 64.9%)' }} />
+          <Bar dataKey="avgPower" name="avgPower" fill="#22C55E" opacity={0.75} radius={[3, 3, 0, 0]} />
+          {hasNP && <Line dataKey="np" name="np" stroke="#4ADE80" strokeWidth={2} dot={{ r: 3, fill: '#4ADE80' }} />}
           <Line dataKey="Trend" stroke="hsl(0 0% 55%)" strokeWidth={1.5} dot={false} strokeDasharray="5 3" legendType="none" />
         </ComposedChart>
       </ResponsiveContainer>
       <p className="text-[10px] text-muted-foreground/60 mt-1 italic">
-        Green bars = duration-weighted avg power per week. Dashed green = weekly peak power. Grey dashed = trend.
+        Green bars = duration-weighted avg power/week.{hasNP ? ' Bright green line = Normalized Power (NP) — better measure of true effort.' : ''} Yellow = FTP. Grey dashed = trend.
       </p>
     </div>
   );

@@ -68,26 +68,49 @@ def _parse_activities(raw: list) -> list:
                           a.get("avgBikingCadenceInRevPerMinute") or
                           a.get("averageBikingCadenceInRevPerMinute"))
             out.append({
-                "garmin_id":        str(a["activityId"]),
-                "activity_type":    _map_type(type_key),
-                "date":             (a.get("startTimeLocal") or "")[:19],
-                "title":            a.get("activityName") or type_key,
-                "distance_km":      round(distance_m / 1000, 4),
-                "duration_seconds": int(duration_s),
-                "calories":         int(a.get("calories") or 0),
-                "avg_hr":           int(a["averageHR"])             if a.get("averageHR")             else None,
-                "max_hr":           int(a["maxHR"])                 if a.get("maxHR")                  else None,
-                "training_effect":  float(a["aerobicTrainingEffect"]) if a.get("aerobicTrainingEffect") else None,
-                "avg_cadence":      int(float(cadence))             if cadence                         else None,
-                "avg_speed_kmh":    round(speed_ms * 3.6, 4)       if speed_ms                        else None,
-                "tss":              float(a["trainingStressScore"]) if a.get("trainingStressScore")    else None,
-                "avg_power":        int(a["avgPower"])              if a.get("avgPower")               else None,
-                "max_power":        int(a["maxPower"])              if a.get("maxPower")               else None,
-                "elevation_gain":   float(a["elevationGain"])       if a.get("elevationGain")          else None,
+                "garmin_id":         str(a["activityId"]),
+                "activity_type":     _map_type(type_key),
+                "date":              (a.get("startTimeLocal") or "")[:19],
+                "title":             a.get("activityName") or type_key,
+                "distance_km":       round(distance_m / 1000, 4),
+                "duration_seconds":  int(duration_s),
+                "calories":          int(a.get("calories") or 0),
+                "avg_hr":            int(a["averageHR"])               if a.get("averageHR")             else None,
+                "max_hr":            int(a["maxHR"])                   if a.get("maxHR")                  else None,
+                "training_effect":   float(a["aerobicTrainingEffect"]) if a.get("aerobicTrainingEffect") else None,
+                "avg_cadence":       int(float(cadence))               if cadence                         else None,
+                "avg_speed_kmh":     round(speed_ms * 3.6, 4)         if speed_ms                        else None,
+                "tss":               float(a["trainingStressScore"])   if a.get("trainingStressScore")    else None,
+                "avg_power":         int(a["avgPower"])                if a.get("avgPower")               else None,
+                "max_power":         int(a["maxPower"])                if a.get("maxPower")               else None,
+                "elevation_gain":    float(a["elevationGain"])         if a.get("elevationGain")          else None,
+                "normalized_power":  None,  # enriched later via activity detail
+                "ftp":               None,  # enriched later via activity detail
             })
         except Exception as exc:
             print(f"  ⚠  Skipping activity {a.get('activityId')}: {exc}")
     return out
+
+
+def _enrich_power_details(client, activities: list) -> None:
+    """Fetch NP and FTP from the activity detail endpoint for cycling activities."""
+    cycling = [a for a in activities if a["activity_type"] == "cycling" and a.get("avg_power")]
+    if not cycling:
+        return
+    print(f"  Fetching power details for {len(cycling)} cycling activity/activities…")
+    for a in cycling:
+        detail = _api(client, f"/activity-service/activity/{a['garmin_id']}")
+        if not detail:
+            continue
+        dto = detail.get("summaryDTO") or {}
+        np = dto.get("normalizedPower") or dto.get("np")
+        ftp = dto.get("functionalThresholdPower") or dto.get("ftp")
+        if np and float(np) > 0:
+            a["normalized_power"] = int(float(np))
+        if ftp and float(ftp) > 0:
+            a["ftp"] = int(float(ftp))
+        if np or ftp:
+            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP={a['ftp']}W")
 
 # ── Garth API helper ──────────────────────────────────────────────────────────
 
@@ -211,6 +234,7 @@ def main():
         ) or []
         activities = _parse_activities(raw)
         print(f"  ✓ {len(activities)} activities")
+        _enrich_power_details(client, activities)
     except Exception as exc:
         print(f"  ✗ Activities fetch failed: {exc}")
         activities = []

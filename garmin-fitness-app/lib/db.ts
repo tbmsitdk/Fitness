@@ -39,6 +39,10 @@ export async function initializeDatabase() {
     )
   `;
 
+  // Additive migrations — safe to run repeatedly
+  await sql`ALTER TABLE activities ADD COLUMN IF NOT EXISTS normalized_power INTEGER`;
+  await sql`ALTER TABLE activities ADD COLUMN IF NOT EXISTS ftp INTEGER`;
+
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_type ON activities(activity_type)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_wellness_date ON wellness(date)`;
@@ -61,6 +65,8 @@ type ActivityRow = {
   avg_power: number | null;
   max_power: number | null;
   elevation_gain: number | null;
+  normalized_power: number | null;
+  ftp: number | null;
 };
 
 type WellnessRow = {
@@ -87,22 +93,24 @@ export async function upsertActivities(activities: ActivityRow[]): Promise<numbe
       const rows: string[] = [];
 
       batch.forEach((a, j) => {
-        const b = j * 16;
+        const b = j * 18;
         rows.push(
-          `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16})`
+          `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16},$${b+17},$${b+18})`
         );
         values.push(
           a.garmin_id, a.activity_type, a.date, a.title,
           a.distance_km, a.duration_seconds, a.calories,
           a.avg_hr, a.max_hr, a.training_effect, a.avg_cadence,
-          a.avg_speed_kmh, a.tss, a.avg_power, a.max_power, a.elevation_gain
+          a.avg_speed_kmh, a.tss, a.avg_power, a.max_power, a.elevation_gain,
+          a.normalized_power, a.ftp
         );
       });
 
       await client.query(
         `INSERT INTO activities
            (garmin_id,activity_type,date,title,distance_km,duration_seconds,calories,
-            avg_hr,max_hr,training_effect,avg_cadence,avg_speed_kmh,tss,avg_power,max_power,elevation_gain)
+            avg_hr,max_hr,training_effect,avg_cadence,avg_speed_kmh,tss,avg_power,max_power,
+            elevation_gain,normalized_power,ftp)
          VALUES ${rows.join(',')}
          ON CONFLICT (garmin_id) DO UPDATE SET
            activity_type=EXCLUDED.activity_type, title=EXCLUDED.title,
@@ -111,7 +119,9 @@ export async function upsertActivities(activities: ActivityRow[]): Promise<numbe
            training_effect=EXCLUDED.training_effect, avg_cadence=EXCLUDED.avg_cadence,
            avg_speed_kmh=EXCLUDED.avg_speed_kmh, tss=EXCLUDED.tss,
            avg_power=EXCLUDED.avg_power, max_power=EXCLUDED.max_power,
-           elevation_gain=EXCLUDED.elevation_gain`,
+           elevation_gain=EXCLUDED.elevation_gain,
+           normalized_power=COALESCE(EXCLUDED.normalized_power,activities.normalized_power),
+           ftp=COALESCE(EXCLUDED.ftp,activities.ftp)`,
         values
       );
       inserted += batch.length;
@@ -181,6 +191,8 @@ export function coerceActivity(row: any) {
     avg_power:        row.avg_power        != null ? Number(row.avg_power)        : null,
     max_power:        row.max_power        != null ? Number(row.max_power)        : null,
     elevation_gain:   row.elevation_gain   != null ? Number(row.elevation_gain)   : null,
+    normalized_power: row.normalized_power != null ? Number(row.normalized_power) : null,
+    ftp:              row.ftp              != null ? Number(row.ftp)              : null,
   };
 }
 

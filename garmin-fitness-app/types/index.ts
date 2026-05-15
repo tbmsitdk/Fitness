@@ -16,6 +16,8 @@ export interface Activity {
   avg_power: number | null;
   max_power: number | null;
   elevation_gain: number | null;
+  normalized_power: number | null;
+  ftp: number | null;
 }
 
 export interface WellnessRecord {
