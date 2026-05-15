@@ -81,7 +81,19 @@ export default function Dashboard({ activities, allActivities, wellness, cutoff 
     return cycling.reduce((best, a) => (a.date > (best?.date ?? '') ? a : best), null as Activity | null)?.ftp ?? null;
   }, [activities]);
 
+  // trainingLoad is already sliced to the selected period (but computed from full history for EWMA warmup)
+  const firstLoad = trainingLoad[0];
   const latestLoad = trainingLoad[trainingLoad.length - 1];
+
+  // CTL delta: how much fitness changed from the start to the end of the period
+  const ctlDelta = firstLoad && latestLoad && firstLoad !== latestLoad
+    ? Math.round(latestLoad.ctl - firstLoad.ctl)
+    : null;
+  // TSB delta: form change over the period
+  const tsbDelta = firstLoad && latestLoad && firstLoad !== latestLoad
+    ? parseFloat((latestLoad.tsb - firstLoad.tsb).toFixed(1))
+    : null;
+
   const formBadge = latestLoad
     ? latestLoad.tsb > 5 ? { label: 'Fresh', variant: 'fresh' as const }
     : latestLoad.tsb < -10 ? { label: 'Fatigued', variant: 'fatigued' as const }
@@ -95,13 +107,28 @@ export default function Dashboard({ activities, allActivities, wellness, cutoff 
         <StatCard label={`Runs ${periodLabel(cutoff)}`} value={`${summary.running.count}`} sub={`${summary.running.km} km`} accent="#3B82F6" />
         <StatCard label={`Rides ${periodLabel(cutoff)}`} value={`${summary.cycling.count}`} sub={`${summary.cycling.km} km`} accent="#22C55E" />
         <StatCard label={`Walks ${periodLabel(cutoff)}`} value={`${summary.walking.count}`} sub={`${summary.walking.km} km`} accent="#F59E0B" />
-        <StatCard label="Fitness (CTL)" value={latestLoad ? `${latestLoad.ctl.toFixed(0)}` : '—'} sub="42-day avg load" hint="Chronic Training Load — your long-term fitness base" accent="hsl(0 0% 98%)" />
-        <StatCard label="Week Load (TSS)" value={`${summary.current_week_tss}`} sub={`${summary.load_change_pct >= 0 ? '+' : ''}${summary.load_change_pct}% vs prev`} hint="Training Stress Score — total effort this week" accent="hsl(0 0% 98%)" />
+        <StatCard
+          label="Fitness (CTL)"
+          value={latestLoad ? `${latestLoad.ctl.toFixed(0)}` : '—'}
+          sub={ctlDelta != null ? `${ctlDelta >= 0 ? '+' : ''}${ctlDelta} over period` : 'current'}
+          hint="Chronic Training Load — current fitness level (42-day avg). Delta = change across the selected period."
+          accent="hsl(0 0% 98%)"
+        />
+        <StatCard
+          label={`Load ${periodLabel(cutoff)} (TSS)`}
+          value={`${summary.period_tss}`}
+          sub={`~${summary.avg_weekly_tss} TSS/week avg`}
+          hint="Total Training Stress Score for the selected period. Higher = more training volume & intensity."
+          accent="hsl(0 0% 98%)"
+        />
         <div className="p-4 rounded-lg border border-border bg-card space-y-1">
           <p className="text-[10px] font-medium tracking-widest uppercase text-muted-foreground">Form (TSB)</p>
           <p className="text-2xl font-bold font-mono tracking-tight leading-none">{latestLoad ? latestLoad.tsb.toFixed(1) : '—'}</p>
           {formBadge && <Badge variant={formBadge.variant}>{formBadge.label}</Badge>}
-          <p className="text-[10px] text-muted-foreground/60 italic">Training Stress Balance — fitness minus fatigue. Positive = fresh, negative = fatigued</p>
+          <p className="text-[10px] text-muted-foreground/60 italic">
+            Training Stress Balance — fitness minus fatigue. Positive = fresh, negative = fatigued.
+            {tsbDelta != null && ` ${tsbDelta >= 0 ? '+' : ''}${tsbDelta} over period.`}
+          </p>
         </div>
       </div>
 

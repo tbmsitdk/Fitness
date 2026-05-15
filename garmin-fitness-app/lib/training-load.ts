@@ -287,11 +287,9 @@ export function computePeriodSummary(activities: Activity[], cutoff: Date) {
   const walks = byType('walking');
 
   const weeklyLoads = computeWeeklyVolume(activities);
-  const currentWeek = weeklyLoads[weeklyLoads.length - 1];
-  const prevWeek = weeklyLoads[weeklyLoads.length - 2];
-  const loadChange = prevWeek && prevWeek.total_tss > 0
-    ? ((currentWeek?.total_tss - prevWeek.total_tss) / prevWeek.total_tss) * 100
-    : 0;
+  // Total TSS across the whole period (uses estimated TSS where Garmin didn't provide one)
+  const period_tss = Math.round(weeklyLoads.reduce((s, w) => s + w.total_tss, 0));
+  const avg_weekly_tss = weeklyLoads.length > 0 ? Math.round(period_tss / weeklyLoads.length) : 0;
 
   return {
     period_days,
@@ -299,8 +297,8 @@ export function computePeriodSummary(activities: Activity[], cutoff: Date) {
     running: { count: runs.length, km: Math.round(totalKm(runs) * 10) / 10, hours: Math.round(totalHours(runs) * 10) / 10, avg_hr: avgHr(runs) },
     cycling: { count: rides.length, km: Math.round(totalKm(rides) * 10) / 10, hours: Math.round(totalHours(rides) * 10) / 10, avg_hr: avgHr(rides) },
     walking: { count: walks.length, km: Math.round(totalKm(walks) * 10) / 10, hours: Math.round(totalHours(walks) * 10) / 10, avg_hr: avgHr(walks) },
-    current_week_tss: Math.round(currentWeek?.total_tss ?? 0),
-    load_change_pct: Math.round(loadChange),
+    period_tss,
+    avg_weekly_tss,
     avg_weekly_km_run: Math.round((totalKm(runs) / period_weeks) * 10) / 10,
     avg_weekly_km_ride: Math.round((totalKm(rides) / period_weeks) * 10) / 10,
   };
