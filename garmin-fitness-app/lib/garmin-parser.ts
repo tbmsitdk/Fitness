@@ -84,6 +84,8 @@ function parseSummarizedActivities(json: string, out: ParsedGarminData['activiti
       avg_power: posNum(a.avgPower) ? Math.round(Number(a.avgPower)) : null,
       max_power: posNum(a.maxPower) ? Math.round(Number(a.maxPower)) : null,
       elevation_gain: elevGain != null && elevGain > 0 ? elevGain : null,
+      normalized_power: null,
+      ftp: null,
     });
   }
 }
