@@ -61,20 +61,35 @@ function fnv32(s: string): string {
   return h.toString(36);
 }
 
+// ── Locale-agnostic Apple Health XML finder ───────────────────────────────────
+// Apple Health exports use localized folder/file names on non-English iPhones
+// (e.g. Danish: apple_health_eksport/eksport.xml). We detect the export by
+// looking for any .xml file in the ZIP whose first 512 bytes contain "<HealthData".
+
+async function findAppleHealthXml(zip: JSZip): Promise<JSZip.JSZipObject | null> {
+  // 1. Try well-known English path first (fast, no I/O)
+  const known = zip.file('apple_health_export/export.xml');
+  if (known) return known;
+
+  // 2. Collect all .xml files (may be localized names)
+  const xmlFiles = zip.file(/\.xml$/i);
+  for (const f of xmlFiles) {
+    // Peek at first 512 bytes to check for HealthData root element
+    const head = await f.async('uint8array').then(b => new TextDecoder().decode(b.slice(0, 512)));
+    if (head.includes('<HealthData')) return f;
+  }
+  return null;
+}
+
 // ── Main export ────────────────────────────────────────────────────────────────
 
 export async function parseAppleHealthZip(buffer: ArrayBuffer): Promise<ParsedGarminData & { source: 'apple' }> {
   const zip = await JSZip.loadAsync(buffer);
-
-  // export.xml may sit at root or inside apple_health_export/
-  const xmlFile =
-    zip.file('apple_health_export/export.xml') ??
-    zip.file(/(?:^|\/)export\.xml$/)[0] ??
-    null;
+  const xmlFile = await findAppleHealthXml(zip);
 
   if (!xmlFile) {
     throw new Error(
-      'No export.xml found in this ZIP.\n' +
+      'No Apple Health export XML found in this ZIP.\n' +
       'Export via iPhone Health app → top-right avatar → Export All Health Data.'
     );
   }
@@ -88,10 +103,7 @@ export async function parseAppleHealthZip(buffer: ArrayBuffer): Promise<ParsedGa
 export async function isAppleHealthZip(buffer: ArrayBuffer): Promise<boolean> {
   try {
     const zip = await JSZip.loadAsync(buffer);
-    return (
-      zip.file('apple_health_export/export.xml') !== null ||
-      zip.file(/(?:^|\/)export\.xml$/).length > 0
-    );
+    return (await findAppleHealthXml(zip)) !== null;
   } catch {
     return false;
   }
