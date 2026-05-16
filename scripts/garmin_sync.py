@@ -191,16 +191,18 @@ def _fetch_ftp_fallback(client, activities: list, display_name: str = "") -> Non
 
 # ── Garth API helper ──────────────────────────────────────────────────────────
 
-def _api(client, path, params=None, _retries=3):
+_API_WAITS = [60, 120, 240, 360]  # seconds between retries on 429
+
+def _api(client, path, params=None):
     """Call Garmin Connect API using garth's authenticated session.
-    Retries up to _retries times on 429 rate-limit responses."""
-    for attempt in range(_retries):
+    Retries up to 4 times on 429 rate-limit responses with increasing backoff."""
+    for attempt in range(len(_API_WAITS) + 1):
         try:
             return client.connectapi(path, params=params)
         except Exception as exc:
-            if '429' in str(exc) and attempt < _retries - 1:
-                wait = 60 * (attempt + 1)   # 60s, then 120s
-                print(f"  ⚠  Rate limited (429), waiting {wait}s before retry {attempt + 2}/{_retries}…")
+            if '429' in str(exc) and attempt < len(_API_WAITS):
+                wait = _API_WAITS[attempt]
+                print(f"  ⚠  Rate limited (429), waiting {wait}s before retry {attempt + 2}/{len(_API_WAITS)+1}…")
                 time.sleep(wait)
             else:
                 return None
@@ -302,17 +304,22 @@ def main():
     client.load(TOKEN_DIR)
     print("  ✓ Tokens loaded")
 
-    # ── Get display name (needed for some endpoints) — retry on 429
+    # ── Get display name (needed for some endpoints)
+    # The 429 here is at the OAuth token-exchange level (oauth/exchange/user/2.0),
+    # not just the profile endpoint — garth must refresh the access token first.
+    # Garmin's OAuth exchange rate limit window appears to be > 3 minutes, so
+    # we use a longer exponential backoff: 120 s, 240 s, 360 s, 480 s (up to ~20 min).
+    _PROFILE_WAITS = [120, 240, 360, 480]
     try:
         profile = None
-        for attempt in range(3):
+        for attempt in range(len(_PROFILE_WAITS) + 1):
             try:
                 profile = client.connectapi("/userprofile-service/userprofile/user-settings")
                 break
             except Exception as exc:
-                if '429' in str(exc) and attempt < 2:
-                    wait = 60 * (attempt + 1)
-                    print(f"  ⚠  Rate limited on profile fetch, waiting {wait}s…")
+                if '429' in str(exc) and attempt < len(_PROFILE_WAITS):
+                    wait = _PROFILE_WAITS[attempt]
+                    print(f"  ⚠  Rate limited on OAuth/profile (attempt {attempt+1}/{len(_PROFILE_WAITS)+1}), waiting {wait}s…")
                     time.sleep(wait)
                 else:
                     raise
