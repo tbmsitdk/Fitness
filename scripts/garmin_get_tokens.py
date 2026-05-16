@@ -33,18 +33,23 @@ def main():
     email    = input("Garmin email: ").strip()
     password = getpass.getpass("Garmin password: ")
 
-    print("\nLogging in… (garth will prompt for MFA code if required)")
+    print("\nLogging in…")
+
+    def prompt_mfa() -> str:
+        return input("Enter the 6-digit MFA code from your authenticator: ").strip()
 
     try:
-        api = Garmin(email, password)
-        api.login()   # garth prompts for MFA interactively at the terminal
+        # garminconnect 0.3.x: prompt_mfa callback handles 2FA cleanly
+        api = Garmin(email, password, prompt_mfa=prompt_mfa)
+        # Save tokens to TOKEN_DIR during login (new tokenstore format)
+        os.makedirs(TOKEN_DIR, exist_ok=True)
+        api.login(tokenstore=TOKEN_DIR)
     except Exception as e:
         print(f"\n✗ Login failed: {e}")
         sys.exit(1)
 
-    # Save garth token store to disk
-    os.makedirs(TOKEN_DIR, exist_ok=True)
-    api.garth.dump(TOKEN_DIR)
+    # Ensure tokens are persisted to disk
+    api.client.dump(TOKEN_DIR)
     print(f"\n✓ Logged in — tokens saved to {TOKEN_DIR}")
 
     # Pack the directory into a base64-encoded tar.gz

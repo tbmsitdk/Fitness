@@ -225,43 +225,41 @@ def main():
         print("    Re-run scripts/garmin_get_tokens.py to generate new tokens.")
         sys.exit(1)
 
-    # ── Load tokens (disk-only, no network call)
+    # ── Login (loads tokens + fetches profile via SSO, not OAuth exchange)
+    # garminconnect 0.3.x uses its own SSO client — no garth, no rate-limited
+    # /oauth-service/oauth/exchange/user/2.0 endpoint.
     api = Garmin()
-    api.garth.load(TOKEN_DIR)
-    api.garth.timeout = 60
-    print("  ✓ Tokens loaded")
-
-    # ── Fetch profile (network call; may hit OAuth rate limit)
-    # IMPORTANT: this is NON-FATAL. Activities don't need display_name.
-    # Wellness endpoints that require it are guarded with `if api.display_name`.
-    # Retry with exponential backoff: 180 s / 360 s / 540 s (≤ 18 min total).
     weight_kg = None
-    _PROFILE_WAITS = [180, 360, 540]
-    for attempt in range(len(_PROFILE_WAITS) + 1):
+    _LOGIN_WAITS = [30, 60, 120]
+    for attempt in range(len(_LOGIN_WAITS) + 1):
         try:
-            api.display_name = api.garth.profile["displayName"]
-            settings = api.garth.connectapi(
-                "/userprofile-service/userprofile/user-settings"
-            )
-            api.unit_system = (settings.get("userData") or {}).get(
-                "measurementSystem", "metric"
-            )
-            weight_g  = (settings.get("userData") or {}).get("weight")
-            weight_kg = round(float(weight_g) / 1000, 1) if weight_g else None
-            print(f"  ✓ Logged in as: {api.display_name}  weight: {weight_kg}kg")
+            api.login(tokenstore=TOKEN_DIR)
+            print(f"  ✓ Logged in as: {api.display_name}")
             break
         except Exception as exc:
             s = str(exc).lower()
             is_429 = "429" in str(exc)
             is_net  = not is_429 and any(k in s for k in ("timed out", "timeout", "connection"))
-            if (is_429 or is_net) and attempt < len(_PROFILE_WAITS):
-                wait = _PROFILE_WAITS[attempt]
+            if (is_429 or is_net) and attempt < len(_LOGIN_WAITS):
+                wait = _LOGIN_WAITS[attempt]
                 kind = "rate limited" if is_429 else "network error"
-                print(f"  ⚠  {kind} on profile (attempt {attempt+1}/{len(_PROFILE_WAITS)+1}), waiting {wait}s…")
+                print(f"  ⚠  {kind} on login (attempt {attempt+1}/{len(_LOGIN_WAITS)+1}), retrying in {wait}s…")
                 time.sleep(wait)
             else:
-                print(f"  ⚠  Profile unavailable ({exc}); continuing without display_name/weight")
-                break  # non-fatal — activities still sync
+                print(f"  ✗ Login failed: {exc}")
+                print("    If this persists, re-run scripts/garmin_get_tokens.py with garminconnect>=0.3.0")
+                print("    to regenerate the token store (0.3.x uses a new format).")
+                sys.exit(1)
+
+    # ── Weight from user settings (non-fatal)
+    try:
+        settings = api.connectapi("/userprofile-service/userprofile/user-settings") or {}
+        weight_g = (settings.get("userData") or {}).get("weight")
+        weight_kg = round(float(weight_g) / 1000, 1) if weight_g else None
+        if weight_kg:
+            print(f"  ✓ Weight: {weight_kg}kg")
+    except Exception as exc:
+        print(f"  ⚠  Could not fetch weight ({exc})")
 
     today = date.today()
     start = today - timedelta(days=SYNC_DAYS)
