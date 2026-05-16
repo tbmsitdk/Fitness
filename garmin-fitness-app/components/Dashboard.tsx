@@ -23,7 +23,8 @@ interface Props {
   activities: Activity[];
   allActivities: Activity[];   // full history for CTL/ATL EWMA accuracy
   wellness: WellnessRecord[];
-  cutoff: Date;                // start of the selected period
+  allWellness: WellnessRecord[]; // full history for weight lookup
+  cutoff: Date;                  // start of the selected period
   settings?: UserSettings;
 }
 
@@ -51,7 +52,7 @@ function periodLabel(cutoff: Date): string {
   return 'All';
 }
 
-export default function Dashboard({ activities, allActivities, wellness, cutoff, settings = DEFAULT_SETTINGS }: Props) {
+export default function Dashboard({ activities, allActivities, wellness, allWellness, cutoff, settings = DEFAULT_SETTINGS }: Props) {
   const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
   const [wellMetric, setWellMetric] = useState<WellnessMetric>('rhr');
   const [cadenceSport, setCadenceSport] = useState<'running' | 'cycling'>('running');
@@ -72,14 +73,28 @@ export default function Dashboard({ activities, allActivities, wellness, cutoff,
   const summary = useMemo(() => computePeriodSummary(activities, cutoff, thresholdHR), [activities, cutoff, thresholdHR]);
   const sortedWellness = useMemo(() => [...wellness].sort((a,b) => a.date.localeCompare(b.date)), [wellness]);
 
-  // Weight: prefer explicit settings, fall back to most recent wellness record
+  // Weight priority:
+  // 1. Most recent Garmin-synced weight that is less than 3 months old (most accurate, device-measured)
+  // 2. Settings weight (manual entry, used when Garmin data is stale or absent)
+  // 3. Any Garmin-synced weight regardless of age (last resort)
   const weightKg = useMemo(() => {
+    const threeMonthsAgo = Date.now() - 90 * 86400000;
+    const allSorted = [...allWellness].sort((a, b) => a.date.localeCompare(b.date));
+    // Search newest-first for a recent Garmin weight
+    for (let i = allSorted.length - 1; i >= 0; i--) {
+      const w = allSorted[i];
+      if (w.weight_kg != null && new Date(w.date).getTime() >= threeMonthsAgo) {
+        return w.weight_kg as number;
+      }
+    }
+    // No recent Garmin weight — use settings
     if (settings.weightKg && settings.weightKg > 0) return settings.weightKg;
-    for (let i = sortedWellness.length - 1; i >= 0; i--) {
-      if (sortedWellness[i].weight_kg != null) return sortedWellness[i].weight_kg as number;
+    // Fall back to any Garmin weight, however old
+    for (let i = allSorted.length - 1; i >= 0; i--) {
+      if (allSorted[i].weight_kg != null) return allSorted[i].weight_kg as number;
     }
     return null;
-  }, [sortedWellness, settings.weightKg]);
+  }, [allWellness, settings.weightKg]);
 
   // FTP from most recent cycling activity that has one
   const latestFtp = useMemo(() => {
