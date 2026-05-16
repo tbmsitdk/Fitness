@@ -64,6 +64,18 @@ export async function initializeDatabase() {
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_type ON activities(activity_type)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_wellness_date ON wellness(date)`;
+
+  // ── Short-lived MFA code drop-box used by the Garmin token regen flow.
+  // The GitHub Actions workflow initiates a Garmin login (which triggers an
+  // SMS), then polls this table for the user-submitted code. Codes auto-expire
+  // after 10 min so a stale code can never be reused by a later run.
+  await sql`
+    CREATE TABLE IF NOT EXISTS mfa_pending (
+      id          VARCHAR(20) PRIMARY KEY DEFAULT 'default',
+      code        VARCHAR(20),
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
 }
 
 type ActivityRow = {

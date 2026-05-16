@@ -1,28 +1,25 @@
 name: Regenerate Garmin Tokens
 
-# Manually-triggered token refresh — use this whenever the daily sync starts
-# failing with an authentication error.
+# Browser-only token refresh — no terminal needed, SMS 2FA supported.
 #
 # How to use:
-#   1. Open your Garmin authenticator app to read the current 6-digit code
-#   2. Click "Run workflow" below, paste the code, click the green button
-#   3. When the run finishes (~30 s), open it and scroll to the "Summary"
-#      page — it shows the new base64 token blob and a link to the secret
-#   4. Paste the blob into the GARMIN_TOKENS repo secret → Update
+#   1. Click "Run workflow" below (no inputs needed — just click the green button)
+#   2. Within ~5 s, Garmin will text you the SMS code
+#   3. On your phone (or any browser): open  <APP_URL>/garmin-setup
+#      and paste the SMS code. Tap "Submit".
+#   4. The workflow picks up the code automatically and finishes in a few seconds
+#   5. Open the completed run → "Summary" tab — it has the new token blob and
+#      a one-click link to the GARMIN_TOKENS secret
+#   6. Paste the blob into the secret. Done.
 
 on:
   workflow_dispatch:
-    inputs:
-      mfa_code:
-        description: '6-digit MFA code from your Garmin authenticator app'
-        required: true
-        type: string
 
 jobs:
   regenerate:
     name: Generate new tokens
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -40,7 +37,9 @@ jobs:
 
       - name: Generate tokens
         env:
-          GARMIN_EMAIL:    ${{ secrets.GARMIN_EMAIL }}
-          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
-          GARMIN_MFA:      ${{ github.event.inputs.mfa_code }}
+          GARMIN_EMAIL:         ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD:      ${{ secrets.GARMIN_PASSWORD }}
+          APP_URL:              ${{ secrets.APP_URL }}
+          SYNC_SECRET:          ${{ secrets.SYNC_SECRET }}
+          VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_BYPASS_SECRET }}
         run: python scripts/garmin_regenerate_tokens.py
