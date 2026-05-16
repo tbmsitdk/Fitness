@@ -228,22 +228,25 @@ def _fetch_wellness(client, display_name: str, ds: str) -> dict:
     rec: dict = {"date": ds}
 
     # Steps + stress + body battery (all in daily summary)
-    s = _api(client, f"/usersummary-service/usersummary/daily/{display_name}",
-             params={"calendarDate": ds})
-    if s:
-        if (s.get("totalSteps") or 0) > 0:
-            rec["steps"] = int(s["totalSteps"])
-        stress = s.get("averageStressLevel", -1) or -1
-        if stress > 0:
-            rec["stress_score"] = int(stress)
-        # Body battery peak is often in the daily summary
-        bb_high = s.get("bodyBatteryHighestValue") or s.get("bodyBatteryMostRecentValue")
-        if bb_high and int(bb_high) > 0:
-            rec["body_battery"] = int(bb_high)
+    # display_name may be empty if OAuth token exchange was rate-limited at startup;
+    # in that case, skip these endpoints gracefully.
+    if display_name:
+        s = _api(client, f"/usersummary-service/usersummary/daily/{display_name}",
+                 params={"calendarDate": ds})
+        if s:
+            if (s.get("totalSteps") or 0) > 0:
+                rec["steps"] = int(s["totalSteps"])
+            stress = s.get("averageStressLevel", -1) or -1
+            if stress > 0:
+                rec["stress_score"] = int(stress)
+            # Body battery peak is often in the daily summary
+            bb_high = s.get("bodyBatteryHighestValue") or s.get("bodyBatteryMostRecentValue")
+            if bb_high and int(bb_high) > 0:
+                rec["body_battery"] = int(bb_high)
 
     # RHR + VO2 max (both live in the same userstats metrics endpoint)
     rhr = _api(client, f"/userstats-service/wellness/daily/{display_name}",
-               params={"fromDate": ds, "untilDate": ds})
+               params={"fromDate": ds, "untilDate": ds}) if display_name else None
     if rhr:
         metrics = (rhr.get("allMetrics") or {}).get("metricsMap") or {}
         vals = metrics.get("WELLNESS_RESTING_HEART_RATE") or []
@@ -276,8 +279,9 @@ def _fetch_wellness(client, display_name: str, ds: str) -> dict:
             rec["hrv_rmssd"] = round(float(val), 2)
 
     # Sleep
-    sleep = _api(client, f"/wellness-service/wellness/dailySleepData/{display_name}",
-                 params={"date": ds, "nonSleepBufferMinutes": 60})
+    sleep = (_api(client, f"/wellness-service/wellness/dailySleepData/{display_name}",
+                  params={"date": ds, "nonSleepBufferMinutes": 60})
+             if display_name else None)
     dto = (sleep or {}).get("dailySleepDTO") or {}
     secs = dto.get("sleepTimeSeconds") or 0
     if secs > 0:
@@ -319,12 +323,15 @@ def main():
     client.timeout = 60  # default is 10s — too short after rate-limit waits
     print("  ✓ Tokens loaded")
 
-    # ── Get display name (needed for some endpoints)
-    # The 429 here is at the OAuth token-exchange level (oauth/exchange/user/2.0),
-    # not just the profile endpoint — garth must refresh the access token first.
-    # Garmin's OAuth exchange rate limit window appears to be > 3 minutes, so
-    # we use a longer exponential backoff: 120 s, 240 s, 360 s, 480 s (up to ~20 min).
-    _PROFILE_WAITS = [120, 240, 360, 480]
+    # ── Get display name (needed for some wellness endpoints)
+    # The 429 here is at the OAuth token-exchange level (oauth/exchange/user/2.0).
+    # Garmin's OAuth exchange rate limit window can be > 20 minutes; we use a
+    # longer backoff: 180 s, 360 s, 540 s (up to ~18 min before giving up).
+    # IMPORTANT: profile failure is NON-FATAL — activities don't need display_name.
+    # Wellness will be partial (steps/sleep skipped) but the sync continues.
+    _PROFILE_WAITS = [180, 360, 540]
+    display_name = ""
+    weight_kg    = None
     try:
         profile = None
         for attempt in range(len(_PROFILE_WAITS) + 1):
@@ -340,10 +347,11 @@ def main():
                     wait = _PROFILE_WAITS[attempt]
                     print(f"  ⚠  rate limited on OAuth/profile (attempt {attempt+1}/{len(_PROFILE_WAITS)+1}), waiting {wait}s…")
                     time.sleep(wait)
-                elif is_net and attempt == 0:
-                    # Transient network hiccup on profile — one quick retry
-                    print(f"  ⚠  network error on profile, retrying in 10s…")
-                    time.sleep(10)
+                elif is_net and attempt < len(_PROFILE_WAITS):
+                    # Transient network hiccup — quick retry
+                    wait = 15
+                    print(f"  ⚠  network error on profile (attempt {attempt+1}), retrying in {wait}s…")
+                    time.sleep(wait)
                 else:
                     raise
         ud = (profile or {}).get("userData") or {}
@@ -362,8 +370,9 @@ def main():
         weight_kg = round(float(weight_g) / 1000, 1) if weight_g else None
         print(f"  ✓ Logged in as: {display_name}  weight: {weight_kg}kg")
     except Exception as exc:
-        print(f"  ✗ Could not fetch profile: {exc}")
-        sys.exit(1)
+        # Non-fatal: activities sync doesn't need display_name.
+        # Wellness endpoints that require display_name will be skipped.
+        print(f"  ⚠  Could not fetch profile ({exc}); continuing without display_name/weight")
 
     today = date.today()
     start = today - timedelta(days=SYNC_DAYS)
