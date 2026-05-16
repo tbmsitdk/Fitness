@@ -54,9 +54,17 @@ export default function Settings({ settings, onSave }: Props) {
     setSaved(false);
   }
 
-  function handleSave() {
+  async function handleSave() {
+    // Persist to DB (durable across deployments & devices) + localStorage (instant on next load)
     saveSettings(form);
     onSave(form);
+    try {
+      await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+    } catch { /* non-fatal: localStorage copy already saved */ }
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   }

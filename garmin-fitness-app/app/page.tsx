@@ -42,7 +42,21 @@ export default function Home() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {
-    setSettings(loadSettings());
+    // Load settings: DB is source of truth, localStorage is the fast cache
+    async function initSettings() {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const s: UserSettings = await res.json();
+          setSettings(s);
+          // Keep localStorage in sync so next paint is instant
+          import('@/lib/settings').then(({ saveSettings }) => saveSettings(s));
+          return;
+        }
+      } catch { /* network error — fall through to localStorage */ }
+      setSettings(loadSettings());
+    }
+    initSettings();
     loadData();
   }, []);
 

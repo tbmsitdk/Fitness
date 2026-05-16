@@ -46,6 +46,21 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS vo2max DECIMAL(5,2)`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS fitness_age INTEGER`;
 
+  // User settings table — single row keyed by 'default', persists across deployments & devices
+  await sql`
+    CREATE TABLE IF NOT EXISTS user_settings (
+      id VARCHAR(50) PRIMARY KEY DEFAULT 'default',
+      birth_year INTEGER,
+      sex VARCHAR(10),
+      weight_kg DECIMAL(5,2),
+      height_cm DECIMAL(5,1),
+      max_hr INTEGER,
+      threshold_hr INTEGER,
+      daily_steps_goal INTEGER,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_type ON activities(activity_type)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_wellness_date ON wellness(date)`;
