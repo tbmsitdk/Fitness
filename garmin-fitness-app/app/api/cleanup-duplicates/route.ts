@@ -11,7 +11,7 @@ async function handler() {
   try {
     // Find Apple Health activities (ah_ prefix) that have a matching Garmin
     // activity of the same type within ±30 minutes. Garmin data wins.
-    const { rows: dupes } = await client.query<{ garmin_id: string; date: string; activity_type: string }>(`
+    const { rows: dupes } = await client.query<{ garmin_id: string; date: Date; activity_type: string }>(`
       SELECT ah.garmin_id, ah.date, ah.activity_type
       FROM activities ah
       JOIN activities g
@@ -34,7 +34,7 @@ async function handler() {
     return NextResponse.json({
       deleted: dupes.length,
       message: `Deleted ${dupes.length} Apple Health duplicate(s).`,
-      examples: dupes.slice(0, 5).map(d => `${d.date.substring(0, 10)} ${d.activity_type}`),
+      examples: dupes.slice(0, 5).map(d => `${new Date(d.date).toISOString().substring(0, 10)} ${d.activity_type}`),
     });
   } finally {
     client.release();
