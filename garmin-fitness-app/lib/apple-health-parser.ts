@@ -61,6 +61,20 @@ function fnv32(s: string): string {
   return h.toString(36);
 }
 
+// Parse Apple Health date strings to a JS Date.
+// Apple Health format: "2023-01-15 08:30:00 +0200"
+// The space between date/time and the timezone without colon both cause
+// "Invalid Date" in strict ECMAScript parsers. We normalise to ISO 8601.
+function parseAHDate(s: string): Date {
+  // "2023-01-15 08:30:00 +0200" → "2023-01-15T08:30:00+02:00"
+  const iso = s
+    .replace(/^(\d{4}-\d{2}-\d{2}) /, '$1T')          // space → T
+    .replace(/([+-])(\d{2})(\d{2})$/, '$1$2:$3');      // +0200 → +02:00
+  const d = new Date(iso);
+  // If still invalid (unexpected format), fall back to direct parsing
+  return isNaN(d.getTime()) ? new Date(s) : d;
+}
+
 // ── Locale-agnostic Apple Health XML finder ───────────────────────────────────
 // Apple Health exports use localized folder/file names on non-English iPhones
 // (e.g. Danish: apple_health_eksport/eksport.xml). We avoid content-peeking
@@ -156,7 +170,7 @@ function parseXML(xml: string): ParsedGarminData {
   const wellnessMap = new Map<string, WellnessRow>();
 
   function getOrCreate(date: string): WellnessRow {
-    const d = date.substring(0, 10);
+    const d = date.substring(0, 10); // "YYYY-MM-DD" — works on both "2023-01-15 …" and ISO strings
     if (!wellnessMap.has(d)) {
       wellnessMap.set(d, {
         date: d,
@@ -239,8 +253,8 @@ function parseXML(xml: string): ParsedGarminData {
       }
       case 'HKCategoryTypeIdentifierSleepAnalysis': {
         if (!SLEEP_ASLEEP_VALUES.has(value)) break;
-        const start = new Date(startDate);
-        const end   = new Date(endDate);
+        const start = parseAHDate(startDate);
+        const end   = parseAHDate(endDate);
         const hours = (end.getTime() - start.getTime()) / 3_600_000;
         if (hours <= 0 || hours > 14) break; // sanity check
         // Attribute sleep to the morning (wake-up) date
@@ -321,7 +335,7 @@ function parseXML(xml: string): ParsedGarminData {
     activities.push({
       garmin_id:        `ah_${fnv32(startDate + hkType)}`,
       activity_type:    activityType,
-      date:             new Date(startDate).toISOString(),
+      date:             parseAHDate(startDate).toISOString(),
       title:            humanLabel(hkType),
       distance_km:      Math.round(distKm * 10000) / 10000,
       duration_seconds: durationSec,
