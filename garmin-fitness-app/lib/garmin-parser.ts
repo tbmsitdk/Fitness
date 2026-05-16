@@ -27,7 +27,7 @@ function normalizeActivityType(sportType: string, activityType: string): string 
 type WellnessRow = ParsedGarminData['wellness'][0];
 
 function emptyWellness(date: string): WellnessRow {
-  return { date, steps: null, resting_hr: null, hrv_rmssd: null, sleep_hours: null, sleep_score: null, stress_score: null, body_battery: null, weight_kg: null, vo2max: null };
+  return { date, steps: null, resting_hr: null, hrv_rmssd: null, sleep_hours: null, sleep_score: null, stress_score: null, body_battery: null, weight_kg: null, vo2max: null, fitness_age: null };
 }
 
 // ─── activities parser ──────────────────────────────────────────────────────

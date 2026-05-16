@@ -44,6 +44,7 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE activities ADD COLUMN IF NOT EXISTS ftp INTEGER`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS weight_kg DECIMAL(5,2)`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS vo2max DECIMAL(5,2)`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS fitness_age INTEGER`;
 
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_type ON activities(activity_type)`;
@@ -82,6 +83,7 @@ type WellnessRow = {
   body_battery: number | null;
   weight_kg: number | null;
   vo2max: number | null;
+  fitness_age: number | null;
 };
 
 const BATCH = 50; // rows per INSERT statement
@@ -147,13 +149,13 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
       const rows: string[] = [];
 
       batch.forEach((r, j) => {
-        const b = j * 10;
-        rows.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10})`);
-        values.push(r.date, r.steps, r.resting_hr, r.hrv_rmssd, r.sleep_hours, r.sleep_score, r.stress_score, r.body_battery, r.weight_kg ?? null, r.vo2max ?? null);
+        const b = j * 11;
+        rows.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11})`);
+        values.push(r.date, r.steps, r.resting_hr, r.hrv_rmssd, r.sleep_hours, r.sleep_score, r.stress_score, r.body_battery, r.weight_kg ?? null, r.vo2max ?? null, r.fitness_age ?? null);
       });
 
       await client.query(
-        `INSERT INTO wellness (date,steps,resting_hr,hrv_rmssd,sleep_hours,sleep_score,stress_score,body_battery,weight_kg,vo2max)
+        `INSERT INTO wellness (date,steps,resting_hr,hrv_rmssd,sleep_hours,sleep_score,stress_score,body_battery,weight_kg,vo2max,fitness_age)
          VALUES ${rows.join(',')}
          ON CONFLICT (date) DO UPDATE SET
            steps=COALESCE(EXCLUDED.steps,wellness.steps),
@@ -164,7 +166,8 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
            stress_score=COALESCE(EXCLUDED.stress_score,wellness.stress_score),
            body_battery=COALESCE(EXCLUDED.body_battery,wellness.body_battery),
            weight_kg=COALESCE(EXCLUDED.weight_kg,wellness.weight_kg),
-           vo2max=COALESCE(EXCLUDED.vo2max,wellness.vo2max)`,
+           vo2max=COALESCE(EXCLUDED.vo2max,wellness.vo2max),
+           fitness_age=COALESCE(EXCLUDED.fitness_age,wellness.fitness_age)`,
         values
       );
       inserted += batch.length;
@@ -217,5 +220,6 @@ export function coerceWellness(row: any) {
     body_battery: row.body_battery != null ? Number(row.body_battery) : null,
     weight_kg:    row.weight_kg    != null ? Number(row.weight_kg)    : null,
     vo2max:       row.vo2max       != null ? Number(row.vo2max)       : null,
+    fitness_age:  row.fitness_age  != null ? Number(row.fitness_age)  : null,
   };
 }

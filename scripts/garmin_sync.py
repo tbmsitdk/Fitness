@@ -236,6 +236,7 @@ def _fetch_wellness(client, display_name: str, ds: str) -> dict:
             if v > 0:
                 rec["resting_hr"] = v
         # VO2 max — Garmin Firstbeat Analytics, supported on Vivosmart 5
+        # STAT_VO2_MAX_NO_RUNNING is the correct key for wrist-based optical HR (no GPS run needed)
         for vo2_key in ("STAT_VO2_MAX_NO_RUNNING", "WELLNESS_VO2_MAX", "STAT_VO2_MAX"):
             vo2_vals = metrics.get(vo2_key) or []
             if vo2_vals:
@@ -243,6 +244,12 @@ def _fetch_wellness(client, display_name: str, ds: str) -> dict:
                 if v2 > 0:
                     rec["vo2max"] = round(v2, 1)
                     break
+        # Fitness Age — integer years derived from VO2 max vs age cohort (Firstbeat)
+        fa_vals = metrics.get("STAT_FITNESSAGE") or []
+        if fa_vals:
+            fa = int(float(fa_vals[-1].get("value", 0) or 0))
+            if fa > 0:
+                rec["fitness_age"] = fa
 
     # HRV (optional — not all devices support it)
     hrv = _api(client, f"/hrv-service/hrv/{ds}")

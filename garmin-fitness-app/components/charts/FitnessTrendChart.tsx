@@ -7,13 +7,14 @@ import { getPeerBenchmarks } from '@/lib/benchmarks';
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
 
 const CONFIG = {
-  hrv:     { key: 'hrv_rmssd'     as keyof WellnessRecord, label: 'HRV',           color: '#8B5CF6', unit: 'ms'   },
-  rhr:     { key: 'resting_hr'    as keyof WellnessRecord, label: 'Resting HR',    color: '#EF4444', unit: 'bpm'  },
-  sleep:   { key: 'sleep_hours'   as keyof WellnessRecord, label: 'Sleep',         color: '#3B82F6', unit: 'h'    },
-  stress:  { key: 'stress_score'  as keyof WellnessRecord, label: 'Stress',        color: '#F97316', unit: ''     },
-  battery: { key: 'body_battery'  as keyof WellnessRecord, label: 'Body Battery',  color: '#22C55E', unit: '%'    },
-  score:   { key: 'sleep_score'   as keyof WellnessRecord, label: 'Sleep Score',   color: '#06B6D4', unit: ''     },
-  vo2max:  { key: 'vo2max'        as keyof WellnessRecord, label: 'VO₂ Max',       color: '#10B981', unit: 'ml/kg/min' },
+  hrv:         { key: 'hrv_rmssd'     as keyof WellnessRecord, label: 'HRV',           color: '#8B5CF6', unit: 'ms'         },
+  rhr:         { key: 'resting_hr'    as keyof WellnessRecord, label: 'Resting HR',    color: '#EF4444', unit: 'bpm'        },
+  sleep:       { key: 'sleep_hours'   as keyof WellnessRecord, label: 'Sleep',         color: '#3B82F6', unit: 'h'          },
+  stress:      { key: 'stress_score'  as keyof WellnessRecord, label: 'Stress',        color: '#F97316', unit: ''           },
+  battery:     { key: 'body_battery'  as keyof WellnessRecord, label: 'Body Battery',  color: '#22C55E', unit: '%'          },
+  score:       { key: 'sleep_score'   as keyof WellnessRecord, label: 'Sleep Score',   color: '#06B6D4', unit: ''           },
+  vo2max:      { key: 'vo2max'        as keyof WellnessRecord, label: 'VO₂ Max',       color: '#10B981', unit: 'ml/kg/min'  },
+  fitness_age: { key: 'fitness_age'   as keyof WellnessRecord, label: 'Fitness Age',   color: '#F59E0B', unit: 'yrs'        },
 };
 
 function linearTrend(values: number[]): (number | null)[] {
@@ -30,19 +31,20 @@ function linearTrend(values: number[]): (number | null)[] {
   return values.map((_, i) => Math.round((slope * i + intercept) * 100) / 100);
 }
 
-export type WellnessMetric = 'hrv' | 'rhr' | 'sleep' | 'stress' | 'battery' | 'score' | 'vo2max';
+export type WellnessMetric = 'hrv' | 'rhr' | 'sleep' | 'stress' | 'battery' | 'score' | 'vo2max' | 'fitness_age';
 
 export default function FitnessTrendChart({ wellness, metric, age }: { wellness: WellnessRecord[]; metric: WellnessMetric; age?: number }) {
   const cfg = CONFIG[metric];
   const peer = getPeerBenchmarks(age ?? 55);
   const BENCHMARKS: Record<WellnessMetric, { value: number; label: string; note: string } | null> = {
-    hrv:     { value: peer.hrv,   label: `Age ${peer.label} peer avg ${peer.hrv}ms`,  note: `Typical active adult age ${peer.label}` },
-    rhr:     { value: peer.rhr,   label: `Age ${peer.label} peer avg ${peer.rhr}bpm`, note: `Active adult age ${peer.label}` },
-    sleep:   { value: peer.sleep, label: `Age ${peer.label} target ${peer.sleep}h`,   note: 'Sleep science recommendation' },
-    stress:  { value: 25,  label: 'Target <25 (low stress)', note: 'Garmin stress 0–100; <25 = low' },
-    battery: { value: 75,  label: 'Target ≥75% charged',     note: 'High body battery = well recovered' },
-    score:   { value: 80,  label: 'Target ≥80 sleep score',  note: 'Garmin sleep score 0–100' },
-    vo2max:  { value: 45,  label: 'Target ≥45 (good fitness)', note: 'Peter Attia: VO₂max is the strongest predictor of longevity. Elite >55, Good >45, Average >35.' },
+    hrv:         { value: peer.hrv,   label: `Age ${peer.label} peer avg ${peer.hrv}ms`,  note: `Typical active adult age ${peer.label}` },
+    rhr:         { value: peer.rhr,   label: `Age ${peer.label} peer avg ${peer.rhr}bpm`, note: `Active adult age ${peer.label}` },
+    sleep:       { value: peer.sleep, label: `Age ${peer.label} target ${peer.sleep}h`,   note: 'Sleep science recommendation' },
+    stress:      { value: 25,  label: 'Target <25 (low stress)',    note: 'Garmin stress 0–100; <25 = low. On Vivosmart 5 this IS the HRV-derived metric (Firstbeat Analytics).' },
+    battery:     { value: 75,  label: 'Target ≥75% charged',        note: 'High body battery = well recovered' },
+    score:       { value: 80,  label: 'Target ≥80 sleep score',     note: 'Garmin sleep score 0–100' },
+    vo2max:      { value: 45,  label: 'Target ≥45 (good fitness)',  note: 'Peter Attia: VO₂max is the strongest predictor of longevity. Elite >55, Good >45, Average >35.' },
+    fitness_age: { value: peer.age, label: `Target = chronological age (${peer.age})`, note: 'Garmin Fitness Age: computed from VO₂max vs age-matched peers. Lower = fitter. Powers VO₂max tracking on Vivosmart 5.' },
   };
   const bench = BENCHMARKS[metric];
 
@@ -65,14 +67,19 @@ export default function FitnessTrendChart({ wellness, metric, age }: { wellness:
   const tickInterval = Math.max(1, Math.floor(data.length / 10));
 
   if (!data.length) {
-    const isHrv = metric === 'hrv';
     return (
       <div className="h-[200px] flex flex-col items-center justify-center gap-2 text-center px-6">
         <p className="text-xs text-muted-foreground">No {cfg.label} data in export</p>
-        {isHrv && (
-          <p className="text-[11px] text-muted-foreground/70 max-w-xs">
-            Your Garmin Vivosmart 5 records stress-based HRV (0–100 scale) but does not support full HRV RMSSD tracking.
-            HRV Status with RMSSD values is not available on this device.
+        {metric === 'hrv' && (
+          <p className="text-[11px] text-muted-foreground/70 max-w-sm">
+            Your Vivosmart 5 measures HRV internally but does not expose raw RMSSD values.
+            HRV is used indirectly — switch to <strong className="text-foreground/70">Stress</strong> to see your HRV-derived recovery score (0–100, Firstbeat Analytics).
+          </p>
+        )}
+        {(metric === 'vo2max' || metric === 'fitness_age') && (
+          <p className="text-[11px] text-muted-foreground/70 max-w-sm">
+            VO₂ Max and Fitness Age require a live Garmin sync (not available in ZIP export).
+            Run the daily sync to populate this data.
           </p>
         )}
       </div>
@@ -97,6 +104,16 @@ export default function FitnessTrendChart({ wellness, metric, age }: { wellness:
         </ComposedChart>
       </ResponsiveContainer>
       {bench && <p className="text-[10px] text-muted-foreground/60 mt-1 italic">Yellow = {bench.label} ({bench.note}). Grey dashed = your trend.</p>}
+      {metric === 'stress' && (
+        <p className="text-[10px] text-amber-400/70 mt-0.5 italic">
+          ⟳ On Garmin Vivosmart 5 this score IS the HRV metric — the device converts beat-to-beat intervals into a 0–100 stress index via Firstbeat Analytics.
+        </p>
+      )}
+      {metric === 'fitness_age' && (
+        <p className="text-[10px] text-amber-400/70 mt-0.5 italic">
+          ⟳ Fitness Age is computed from your VO₂ Max estimate. A fitness age below your chronological age means your cardio fitness is above average for your cohort.
+        </p>
+      )}
     </div>
   );
 }

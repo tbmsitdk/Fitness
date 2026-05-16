@@ -32,6 +32,7 @@ export interface WellnessRecord {
   body_battery: number | null;
   weight_kg: number | null;
   vo2max: number | null;
+  fitness_age: number | null;
 }
 
 export interface WeeklyVolume {

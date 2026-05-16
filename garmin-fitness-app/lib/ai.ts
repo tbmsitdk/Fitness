@@ -65,7 +65,7 @@ export async function generateWeeklySummary(
       latest_vo2max: recentVo2,
     },
     avg_weekly_tss: summary.avg_weekly_tss,
-    device_notes: 'Garmin Vivosmart 5: VO₂max is supported via Firstbeat Analytics. HRV is stress-scale only (0–100); RMSSD not available on this device.',
+    device_notes: 'Garmin Vivosmart 5: (1) HRV is measured internally and converted to a 0–100 Stress Score via Firstbeat Analytics — the stress_score field IS the HRV-derived metric; raw RMSSD is not exposed. (2) VO₂max estimate is supported and used by Garmin to compute Fitness Age (STAT_FITNESSAGE) — a lower fitness age vs chronological age indicates above-average cardiorespiratory fitness.',
   };
 
   const response = await client.messages.create({
@@ -148,7 +148,9 @@ ${JSON.stringify(recentWellness.map(w => ({
   })), null, 2)}
 
 ## Latest VO₂ Max: ${recentVo2 ?? 'not available'}
-## Device notes: Garmin Vivosmart 5 — VO₂max supported via Firstbeat; HRV is stress-scale (0–100) only, no RMSSD.
+## Device notes (Garmin Vivosmart 5):
+- HRV: measured internally via Firstbeat; exposed as 0–100 Stress Score (hrv_stress field). Raw RMSSD not available.
+- VO₂max: estimated via Firstbeat; Garmin derives Fitness Age from it. Lower fitness_age vs chronological age = above-average cardio fitness.
 `;
 
   const stream = await client.messages.stream({
