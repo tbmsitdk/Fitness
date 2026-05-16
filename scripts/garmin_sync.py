@@ -200,9 +200,13 @@ def _api(client, path, params=None):
         try:
             return client.connectapi(path, params=params)
         except Exception as exc:
-            if '429' in str(exc) and attempt < len(_API_WAITS):
+            s = str(exc).lower()
+            is_retryable = ('429' in str(exc) or 'timed out' in s or
+                            'timeout' in s or 'connection' in s)
+            if is_retryable and attempt < len(_API_WAITS):
                 wait = _API_WAITS[attempt]
-                print(f"  ⚠  Rate limited (429), waiting {wait}s before retry {attempt + 2}/{len(_API_WAITS)+1}…")
+                kind = '429' if '429' in str(exc) else 'timeout/network'
+                print(f"  ⚠  {kind}, waiting {wait}s before retry {attempt + 2}/{len(_API_WAITS)+1}…")
                 time.sleep(wait)
             else:
                 return None
@@ -300,7 +304,7 @@ def main():
         print(f"  ✗ Token directory not found at {TOKEN_DIR}")
         sys.exit(1)
 
-    client = garth.Client()
+    client = garth.Client(timeout=60)   # default is 10s — too short after rate-limit waits
     client.load(TOKEN_DIR)
     print("  ✓ Tokens loaded")
 
@@ -317,9 +321,14 @@ def main():
                 profile = client.connectapi("/userprofile-service/userprofile/user-settings")
                 break
             except Exception as exc:
-                if '429' in str(exc) and attempt < len(_PROFILE_WAITS):
+                is_retryable = ('429' in str(exc) or
+                                'timed out' in str(exc).lower() or
+                                'timeout' in str(exc).lower() or
+                                'connection' in str(exc).lower())
+                if is_retryable and attempt < len(_PROFILE_WAITS):
                     wait = _PROFILE_WAITS[attempt]
-                    print(f"  ⚠  Rate limited on OAuth/profile (attempt {attempt+1}/{len(_PROFILE_WAITS)+1}), waiting {wait}s…")
+                    kind = 'rate limited' if '429' in str(exc) else 'network error'
+                    print(f"  ⚠  {kind} on OAuth/profile (attempt {attempt+1}/{len(_PROFILE_WAITS)+1}), waiting {wait}s…")
                     time.sleep(wait)
                 else:
                     raise

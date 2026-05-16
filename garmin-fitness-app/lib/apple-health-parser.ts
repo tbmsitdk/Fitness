@@ -63,29 +63,49 @@ function fnv32(s: string): string {
 
 // ── Locale-agnostic Apple Health XML finder ───────────────────────────────────
 // Apple Health exports use localized folder/file names on non-English iPhones
-// (e.g. Danish: apple_health_eksport/eksport.xml). We detect the export by
-// looking for any .xml file in the ZIP whose first 512 bytes contain "<HealthData".
+// (e.g. Danish: apple_health_eksport/eksport.xml). We avoid content-peeking
+// (which decompresses the whole potentially-300MB XML just to read 512 bytes).
+// Instead we rely on filename heuristics — Apple Health ALWAYS exports two files:
+//   export.xml      (or localized: eksport.xml, etc.)  — the main data file
+//   export_cda.xml  (or localized: eksport_cda.xml)    — CDA companion
+// Finding the _cda.xml companion is a zero-decompression Apple Health marker.
 
-async function findAppleHealthXml(zip: JSZip): Promise<JSZip.JSZipObject | null> {
-  // 1. Try well-known English path first (fast, no I/O)
+function findAppleHealthXmlSync(zip: JSZip): JSZip.JSZipObject | null {
+  // 1. Try well-known English path first
   const known = zip.file('apple_health_export/export.xml');
   if (known) return known;
 
-  // 2. Collect all .xml files (may be localized names)
-  const xmlFiles = zip.file(/\.xml$/i);
-  for (const f of xmlFiles) {
-    // Peek at first 512 bytes to check for HealthData root element
-    const head = await f.async('uint8array').then(b => new TextDecoder().decode(b.slice(0, 512)));
-    if (head.includes('<HealthData')) return f;
+  // 2. Find the CDA companion file (zero decompression, just filename scan)
+  const cdaFiles = zip.file(/_cda\.xml$/i);
+  if (cdaFiles.length > 0) {
+    // Main export XML sits next to _cda.xml with same base name minus "_cda"
+    const mainPath = cdaFiles[0].name.replace(/_cda\.xml$/i, '.xml');
+    const main = zip.file(mainPath);
+    if (main) return main;
   }
-  return null;
+
+  // 3. Fallback: any top-level (depth ≤ 1) .xml that isn't a route/ECG/cda file
+  const candidates = zip.file(/\.xml$/i).filter(f => {
+    const n = f.name.toLowerCase();
+    return !n.includes('workout-routes') &&
+           !n.includes('electrocardiograms') &&
+           !n.includes('_cda');
+  });
+  // Single candidate → almost certainly the main export
+  if (candidates.length === 1) return candidates[0];
+  // Multiple: prefer the one in a folder whose name contains "health" or the export root
+  const preferred = candidates.find(f => {
+    const n = f.name.toLowerCase();
+    return n.includes('health') || n.includes('eksport') || n.includes('export');
+  });
+  return preferred ?? null;
 }
 
 // ── Main export ────────────────────────────────────────────────────────────────
 
 export async function parseAppleHealthZip(buffer: ArrayBuffer): Promise<ParsedGarminData & { source: 'apple' }> {
   const zip = await JSZip.loadAsync(buffer);
-  const xmlFile = await findAppleHealthXml(zip);
+  const xmlFile = findAppleHealthXmlSync(zip);
 
   if (!xmlFile) {
     throw new Error(
@@ -103,7 +123,7 @@ export async function parseAppleHealthZip(buffer: ArrayBuffer): Promise<ParsedGa
 export async function isAppleHealthZip(buffer: ArrayBuffer): Promise<boolean> {
   try {
     const zip = await JSZip.loadAsync(buffer);
-    return (await findAppleHealthXml(zip)) !== null;
+    return findAppleHealthXmlSync(zip) !== null;
   } catch {
     return false;
   }
