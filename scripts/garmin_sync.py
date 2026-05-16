@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
 """
-Daily Garmin Connect → Fitness App sync using garth directly.
+Daily Garmin Connect → Fitness App sync using python-garminconnect.
 
-Uses saved OAuth tokens (no login call, no MFA, no IP rate-limit issue).
-garth loads the token store and makes authenticated calls with the bearer
-token. If the access token is expired, garth refreshes it silently using
-the refresh token — no credentials or MFA needed.
+garminconnect wraps garth for auth. We split token-loading (disk-only, instant)
+from the profile API call (network, rate-limited). Profile failure is NON-FATAL:
+activities don't need display_name, wellness methods that require it are skipped.
 
 Required env vars:
-  GARMIN_TOKENS  — base64-encoded token store (from garmin_mfa_login.py)
+  GARMIN_TOKENS  — base64-encoded token store (from garmin_get_tokens.py)
   APP_URL        — base URL of the Vercel deployment
 
 Optional:
   SYNC_DAYS      — days back to fetch (default 2)
 """
 
-import base64, io, json, os, sys, tarfile, time
+import base64, io, os, sys, tarfile, time
 
 import requests
+from garminconnect import Garmin
 
-GARMIN_TOKENS = os.environ["GARMIN_TOKENS"]
-APP_URL       = os.environ["APP_URL"].rstrip("/")
-SYNC_DAYS     = int(os.environ.get("SYNC_DAYS", "2"))
+GARMIN_TOKENS        = os.environ["GARMIN_TOKENS"]
+APP_URL              = os.environ["APP_URL"].rstrip("/")
+SYNC_DAYS            = int(os.environ.get("SYNC_DAYS", "2"))
 SYNC_SECRET          = os.environ.get("SYNC_SECRET", "")
 VERCEL_BYPASS_SECRET = os.environ.get("VERCEL_BYPASS_SECRET", "")
 
@@ -67,6 +67,8 @@ def _parse_activities(raw: list) -> list:
             cadence    = (a.get("averageRunningCadenceInStepsPerMinute") or
                           a.get("avgBikingCadenceInRevPerMinute") or
                           a.get("averageBikingCadenceInRevPerMinute"))
+            avg_hr_raw = a.get("averageHR") or a.get("avgHR")
+            max_hr_raw = a.get("maxHR")
             out.append({
                 "garmin_id":         str(a["activityId"]),
                 "activity_type":     _map_type(type_key),
@@ -75,240 +77,144 @@ def _parse_activities(raw: list) -> list:
                 "distance_km":       round(distance_m / 1000, 4),
                 "duration_seconds":  int(duration_s),
                 "calories":          int(a.get("calories") or 0),
-                "avg_hr":            int(a["averageHR"])               if a.get("averageHR")             else None,
-                "max_hr":            int(a["maxHR"])                   if a.get("maxHR")                  else None,
-                "training_effect":   float(a["aerobicTrainingEffect"]) if a.get("aerobicTrainingEffect") else None,
-                "avg_cadence":       int(float(cadence))               if cadence                         else None,
-                "avg_speed_kmh":     round(speed_ms * 3.6, 4)         if speed_ms                        else None,
-                "tss":               float(a["trainingStressScore"])   if a.get("trainingStressScore")    else None,
-                "avg_power":         int(a["avgPower"])                if a.get("avgPower")               else None,
-                "max_power":         int(a["maxPower"])                if a.get("maxPower")               else None,
-                "elevation_gain":    float(a["elevationGain"])         if a.get("elevationGain")          else None,
-                "normalized_power":  None,  # enriched later via activity detail
-                "ftp":               None,  # enriched later via activity detail
+                "avg_hr":            int(avg_hr_raw)                    if avg_hr_raw                       else None,
+                "max_hr":            int(max_hr_raw)                    if max_hr_raw                       else None,
+                "training_effect":   float(a["aerobicTrainingEffect"])  if a.get("aerobicTrainingEffect")   else None,
+                "avg_cadence":       int(float(cadence))                if cadence                           else None,
+                "avg_speed_kmh":     round(speed_ms * 3.6, 4)          if speed_ms                          else None,
+                "tss":               float(a["trainingStressScore"])    if a.get("trainingStressScore")      else None,
+                "avg_power":         int(a["avgPower"])                 if a.get("avgPower")                 else None,
+                "max_power":         int(a["maxPower"])                 if a.get("maxPower")                 else None,
+                "elevation_gain":    float(a["elevationGain"])          if a.get("elevationGain")            else None,
+                "normalized_power":  None,
+                "ftp":               None,
             })
         except Exception as exc:
             print(f"  ⚠  Skipping activity {a.get('activityId')}: {exc}")
     return out
 
 
-def _enrich_power_details(client, activities: list) -> None:
+def _enrich_power_details(api: Garmin, activities: list) -> None:
     """Fetch NP and FTP from the activity detail endpoint for cycling activities."""
     cycling = [a for a in activities if a["activity_type"] == "cycling" and a.get("avg_power")]
     if not cycling:
         return
     print(f"  Fetching power details for {len(cycling)} cycling activity/activities…")
     for a in cycling:
-        detail = _api(client, f"/activity-service/activity/{a['garmin_id']}")
+        try:
+            detail = api.connectapi(f"/activity-service/activity/{a['garmin_id']}")
+        except Exception:
+            continue
         if not detail:
             continue
         dto = detail.get("summaryDTO") or {}
         np  = dto.get("normalizedPower")
-        # Garmin doesn't expose FTP directly in activity detail; estimate from
-        # peak 20-minute power using the standard 95% protocol
         p20 = dto.get("maxPowerTwentyMinutes")
         ftp = int(float(p20) * 0.95) if p20 and float(p20) > 0 else None
         if np and float(np) > 0:
             a["normalized_power"] = int(float(np))
         if ftp:
             a["ftp"] = ftp
-            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP~{ftp}W (20min×0.95, p20={int(float(p20))}W)")
+            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP~{ftp}W (p20={int(float(p20))}W)")
         else:
-            print(f"    {a['title']}: NP={a['normalized_power']}W  FTP=None (no 20min power in this ride)")
+            print(f"    {a['title']}: NP={a.get('normalized_power')}W  FTP=None")
 
-def _fetch_ftp_fallback(client, activities: list, display_name: str = "") -> None:
-    """Try profile-level endpoints to find the user's current FTP."""
-    ftp = None
-
-    # 1. Fitness stats with display_name (garminconnect uses this path)
-    for path in (
-        f"/fitnessstats-service/fitnessStats/{display_name}" if display_name else None,
-        "/fitnessstats-service/fitnessStats",
-    ):
-        if not path or ftp:
-            continue
-        stats = _api(client, path)
-        if isinstance(stats, list):
-            for entry in stats:
-                v = (entry.get("value") or entry.get("bikeFtp") or
-                     entry.get("functionalThresholdPower"))
-                if v and float(v) > 0:
-                    ftp = int(float(v)); break
-        elif isinstance(stats, dict):
-            for key in ("bikeFtp", "functionalThresholdPower", "cyclingFtp", "value"):
-                v = stats.get(key)
-                if v and float(v) > 0:
-                    ftp = int(float(v)); break
-        if ftp:
-            print(f"  ✓ FTP from {path}: {ftp}W")
-
-    # 2. User settings
-    if not ftp:
-        profile = _api(client, "/userprofile-service/userprofile/user-settings")
-        ud = (profile or {}).get("userData") or profile or {}
-        for key in ("cyclingFTPSetting", "cyclingFtp", "bikeFtp", "functionalThresholdPower"):
-            val = ud.get(key)
-            if val:
-                try:
-                    v = float(val)
-                    if v > 0:
-                        ftp = int(v)
-                        print(f"  ✓ FTP from user-settings.{key}: {ftp}W")
-                        break
-                except (TypeError, ValueError):
-                    pass
-
-    # 3. Personal record / max metrics
-    if not ftp:
-        pr = _api(client, f"/personalrecord-service/personalrecord/prs/{display_name}" if display_name else "/personalrecord-service/personalrecord/prs")
-        if isinstance(pr, list):
-            for rec in pr:
-                if "ftp" in str(rec.get("prTypeLabelKey", "")).lower():
-                    val = rec.get("value")
-                    if val and float(val) > 0:
-                        ftp = int(float(val))
-                        print(f"  ✓ FTP from PR: {ftp}W")
-                        break
-
-    # 4. Max metrics endpoint (used by some garminconnect versions)
-    if not ftp:
-        mx = _api(client, f"/fitnessstats-service/fitnessStats/{display_name}/maxMetrics" if display_name else None)
-        if isinstance(mx, list):
-            for m in mx:
-                v = m.get("genericVO", {}).get("value") if isinstance(m.get("genericVO"), dict) else None
-                if v and "ftp" in str(m.get("fitnessStatType", "")).lower():
-                    ftp = int(float(v))
-                    print(f"  ✓ FTP from maxMetrics: {ftp}W")
-                    break
-
-    if ftp:
-        for a in activities:
-            if a["activity_type"] == "cycling" and not a.get("ftp"):
-                a["ftp"] = ftp
-    else:
-        print("  ⚠  FTP not found in any profile endpoint")
-
-
-# ── Garth API helper ──────────────────────────────────────────────────────────
-
-# 429 rate-limit: long backoff (Garmin's window is several minutes)
-_API_WAITS_429 = [60, 120, 240, 360]
-# Timeout/network errors: short retry (transient glitch, don't waste time)
-_API_WAITS_NET = [5, 10]
-
-def _api(client, path, params=None):
-    """Call Garmin Connect API using garth's authenticated session.
-    - 429 rate-limit → up to 4 retries with 60/120/240/360 s backoff
-    - timeout/network → up to 2 quick retries with 5/10 s backoff"""
-    waits_429 = list(_API_WAITS_429)
-    waits_net = list(_API_WAITS_NET)
-    attempt = 0
-    while True:
-        try:
-            return client.connectapi(path, params=params)
-        except Exception as exc:
-            s = str(exc).lower()
-            is_429 = '429' in str(exc)
-            is_net  = not is_429 and ('timed out' in s or 'timeout' in s or 'connection' in s)
-            if is_429 and waits_429:
-                wait = waits_429.pop(0)
-                print(f"  ⚠  429 rate-limit, waiting {wait}s… (attempt {attempt+1})")
-                time.sleep(wait)
-            elif is_net and waits_net:
-                wait = waits_net.pop(0)
-                print(f"  ⚠  network error, retrying in {wait}s… (attempt {attempt+1})")
-                time.sleep(wait)
-            else:
-                return None
-    return None
 
 # ── Wellness per day ──────────────────────────────────────────────────────────
 
-def _fetch_wellness(client, display_name: str, ds: str) -> dict:
+def _fetch_wellness(api: Garmin, ds: str) -> dict:
     rec: dict = {"date": ds}
 
-    # Steps + stress + body battery (all in daily summary)
-    # display_name may be empty if OAuth token exchange was rate-limited at startup;
-    # in that case, skip these endpoints gracefully.
-    if display_name:
-        s = _api(client, f"/usersummary-service/usersummary/daily/{display_name}",
-                 params={"calendarDate": ds})
-        if s:
-            if (s.get("totalSteps") or 0) > 0:
-                rec["steps"] = int(s["totalSteps"])
-            stress = s.get("averageStressLevel", -1) or -1
+    # Daily summary: steps, stress, body battery, RHR
+    # get_stats() → get_user_summary() uses api.display_name internally.
+    # If display_name is set (login succeeded) this works. Otherwise skip.
+    if api.display_name:
+        try:
+            stats = api.get_stats(ds) or {}
+            steps = int(stats.get("totalSteps") or 0)
+            if steps > 0:
+                rec["steps"] = steps
+            stress = int(stats.get("averageStressLevel") or -1)
             if stress > 0:
-                rec["stress_score"] = int(stress)
-            # Body battery peak is often in the daily summary
-            bb_high = s.get("bodyBatteryHighestValue") or s.get("bodyBatteryMostRecentValue")
-            if bb_high and int(bb_high) > 0:
-                rec["body_battery"] = int(bb_high)
+                rec["stress_score"] = stress
+            rhr = int(stats.get("restingHeartRate") or 0)
+            if rhr > 0:
+                rec["resting_hr"] = rhr
+            bb = int(stats.get("bodyBatteryHighestValue") or
+                     stats.get("bodyBatteryMostRecentValue") or 0)
+            if bb > 0:
+                rec["body_battery"] = bb
+        except Exception:
+            pass
 
-    # RHR + VO2 max (both live in the same userstats metrics endpoint)
-    rhr = _api(client, f"/userstats-service/wellness/daily/{display_name}",
-               params={"fromDate": ds, "untilDate": ds}) if display_name else None
-    if rhr:
-        metrics = (rhr.get("allMetrics") or {}).get("metricsMap") or {}
-        vals = metrics.get("WELLNESS_RESTING_HEART_RATE") or []
-        if vals:
-            v = int(vals[-1].get("value", 0) or 0)
-            if v > 0:
-                rec["resting_hr"] = v
-        # VO2 max — Garmin Firstbeat Analytics, supported on Vivosmart 5
-        # STAT_VO2_MAX_NO_RUNNING is the correct key for wrist-based optical HR (no GPS run needed)
-        for vo2_key in ("STAT_VO2_MAX_NO_RUNNING", "WELLNESS_VO2_MAX", "STAT_VO2_MAX"):
-            vo2_vals = metrics.get(vo2_key) or []
-            if vo2_vals:
-                v2 = float(vo2_vals[-1].get("value", 0) or 0)
-                if v2 > 0:
-                    rec["vo2max"] = round(v2, 1)
-                    break
-        # Fitness Age — integer years derived from VO2 max vs age cohort (Firstbeat)
-        fa_vals = metrics.get("STAT_FITNESSAGE") or []
-        if fa_vals:
-            fa = int(float(fa_vals[-1].get("value", 0) or 0))
-            if fa > 0:
-                rec["fitness_age"] = fa
-
-    # HRV (optional — not all devices support it)
-    hrv = _api(client, f"/hrv-service/hrv/{ds}")
-    if hrv:
+    # HRV — endpoint doesn't require display_name
+    try:
+        hrv = api.get_hrv_data(ds) or {}
         summary = hrv.get("hrvSummary") or {}
         val = summary.get("lastNight") or summary.get("weeklyAvg")
         if val and float(val) > 0:
             rec["hrv_rmssd"] = round(float(val), 2)
+    except Exception:
+        pass
 
-    # Sleep
-    sleep = (_api(client, f"/wellness-service/wellness/dailySleepData/{display_name}",
-                  params={"date": ds, "nonSleepBufferMinutes": 60})
-             if display_name else None)
-    dto = (sleep or {}).get("dailySleepDTO") or {}
-    secs = dto.get("sleepTimeSeconds") or 0
-    if secs > 0:
-        rec["sleep_hours"] = round(secs / 3600, 2)
-        score = ((dto.get("sleepScores") or {}).get("overall") or {}).get("value")
-        if score:
-            rec["sleep_score"] = int(score)
+    # Sleep — garminconnect resolves display_name internally
+    if api.display_name:
+        try:
+            sleep = api.get_sleep_data(ds) or {}
+            dto   = sleep.get("dailySleepDTO") or {}
+            secs  = dto.get("sleepTimeSeconds") or 0
+            if secs > 0:
+                rec["sleep_hours"] = round(secs / 3600, 2)
+                score = ((dto.get("sleepScores") or {}).get("overall") or {}).get("value")
+                if score:
+                    rec["sleep_score"] = int(score)
+        except Exception:
+            pass
 
-    # Body battery — dedicated endpoint as fallback if not in daily summary
+    # VO2max + fitness age (raw endpoint, needs display_name)
+    if api.display_name:
+        try:
+            us = api.connectapi(
+                f"/userstats-service/wellness/daily/{api.display_name}",
+                params={"fromDate": ds, "untilDate": ds}
+            ) or {}
+            metrics = (us.get("allMetrics") or {}).get("metricsMap") or {}
+            for vo2_key in ("STAT_VO2_MAX_NO_RUNNING", "WELLNESS_VO2_MAX", "STAT_VO2_MAX"):
+                vo2_vals = metrics.get(vo2_key) or []
+                if vo2_vals:
+                    v2 = float(vo2_vals[-1].get("value", 0) or 0)
+                    if v2 > 0:
+                        rec["vo2max"] = round(v2, 1)
+                        break
+            fa_vals = metrics.get("STAT_FITNESSAGE") or []
+            if fa_vals:
+                fa = int(float(fa_vals[-1].get("value", 0) or 0))
+                if fa > 0:
+                    rec["fitness_age"] = fa
+        except Exception:
+            pass
+
+    # Body battery fallback (doesn't need display_name)
     if "body_battery" not in rec:
-        bb = (_api(client, f"/wellness-service/wellness/bodyBattery/valuesByDate/{ds}/{ds}") or
-              _api(client, f"/wellness-service/wellness/bodyBattery/{display_name}/valuesByDate/{ds}/{ds}"))
-        if bb and isinstance(bb, list) and bb:
-            vals = [v[1] for v in (bb[0].get("bodyBatteryValuesArray") or [])
-                    if isinstance(v, list) and len(v) > 1 and v[1] is not None]
-            if vals:
-                rec["body_battery"] = int(max(vals))
+        try:
+            bb_list = api.get_body_battery(ds, ds)
+            if bb_list and isinstance(bb_list, list):
+                vals = [v[1] for v in (bb_list[0].get("bodyBatteryValuesArray") or [])
+                        if isinstance(v, list) and len(v) > 1 and v[1] is not None]
+                if vals:
+                    rec["body_battery"] = int(max(vals))
+        except Exception:
+            pass
 
     return rec
+
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
     from datetime import date, timedelta
-    import garth
 
-    # ── Load tokens from base64 store
+    # ── Extract token store from base64 archive
     print("Loading Garmin auth tokens…")
     buf = io.BytesIO(base64.b64decode(GARMIN_TOKENS))
     with tarfile.open(fileobj=buf, mode="r:gz") as tar:
@@ -316,86 +222,73 @@ def main():
 
     if not os.path.exists(TOKEN_DIR):
         print(f"  ✗ Token directory not found at {TOKEN_DIR}")
+        print("    Re-run scripts/garmin_get_tokens.py to generate new tokens.")
         sys.exit(1)
 
-    client = garth.Client()
-    client.load(TOKEN_DIR)
-    client.timeout = 60  # default is 10s — too short after rate-limit waits
+    # ── Load tokens (disk-only, no network call)
+    api = Garmin()
+    api.garth.load(TOKEN_DIR)
+    api.garth.timeout = 60
     print("  ✓ Tokens loaded")
 
-    # ── Get display name (needed for some wellness endpoints)
-    # The 429 here is at the OAuth token-exchange level (oauth/exchange/user/2.0).
-    # Garmin's OAuth exchange rate limit window can be > 20 minutes; we use a
-    # longer backoff: 180 s, 360 s, 540 s (up to ~18 min before giving up).
-    # IMPORTANT: profile failure is NON-FATAL — activities don't need display_name.
-    # Wellness will be partial (steps/sleep skipped) but the sync continues.
+    # ── Fetch profile (network call; may hit OAuth rate limit)
+    # IMPORTANT: this is NON-FATAL. Activities don't need display_name.
+    # Wellness endpoints that require it are guarded with `if api.display_name`.
+    # Retry with exponential backoff: 180 s / 360 s / 540 s (≤ 18 min total).
+    weight_kg = None
     _PROFILE_WAITS = [180, 360, 540]
-    display_name = ""
-    weight_kg    = None
-    try:
-        profile = None
-        for attempt in range(len(_PROFILE_WAITS) + 1):
-            try:
-                profile = client.connectapi("/userprofile-service/userprofile/user-settings")
-                break
-            except Exception as exc:
-                s = str(exc).lower()
-                is_429 = '429' in str(exc)
-                is_net  = not is_429 and ('timed out' in s or 'timeout' in s or 'connection' in s)
-                if is_429 and attempt < len(_PROFILE_WAITS):
-                    # OAuth token-exchange rate limit — must wait long
-                    wait = _PROFILE_WAITS[attempt]
-                    print(f"  ⚠  rate limited on OAuth/profile (attempt {attempt+1}/{len(_PROFILE_WAITS)+1}), waiting {wait}s…")
-                    time.sleep(wait)
-                elif is_net and attempt < len(_PROFILE_WAITS):
-                    # Transient network hiccup — quick retry
-                    wait = 15
-                    print(f"  ⚠  network error on profile (attempt {attempt+1}), retrying in {wait}s…")
-                    time.sleep(wait)
-                else:
-                    raise
-        ud = (profile or {}).get("userData") or {}
-        # Try multiple fields — Garmin uses displayName or userName depending on account type
-        display_name = (ud.get("displayName") or ud.get("userName") or
-                        str(ud.get("userId") or ""))
-        if not display_name:
-            # Fallback: social profile
-            try:
-                sp = client.connectapi("/userprofile-service/socialProfile")
-                display_name = sp.get("displayName") or sp.get("userName") or ""
-            except Exception:
-                pass
-        # Weight in grams → kg
-        weight_g = ud.get("weight")
-        weight_kg = round(float(weight_g) / 1000, 1) if weight_g else None
-        print(f"  ✓ Logged in as: {display_name}  weight: {weight_kg}kg")
-    except Exception as exc:
-        # Non-fatal: activities sync doesn't need display_name.
-        # Wellness endpoints that require display_name will be skipped.
-        print(f"  ⚠  Could not fetch profile ({exc}); continuing without display_name/weight")
+    for attempt in range(len(_PROFILE_WAITS) + 1):
+        try:
+            api.display_name = api.garth.profile["displayName"]
+            settings = api.garth.connectapi(
+                "/userprofile-service/userprofile/user-settings"
+            )
+            api.unit_system = (settings.get("userData") or {}).get(
+                "measurementSystem", "metric"
+            )
+            weight_g  = (settings.get("userData") or {}).get("weight")
+            weight_kg = round(float(weight_g) / 1000, 1) if weight_g else None
+            print(f"  ✓ Logged in as: {api.display_name}  weight: {weight_kg}kg")
+            break
+        except Exception as exc:
+            s = str(exc).lower()
+            is_429 = "429" in str(exc)
+            is_net  = not is_429 and any(k in s for k in ("timed out", "timeout", "connection"))
+            if (is_429 or is_net) and attempt < len(_PROFILE_WAITS):
+                wait = _PROFILE_WAITS[attempt]
+                kind = "rate limited" if is_429 else "network error"
+                print(f"  ⚠  {kind} on profile (attempt {attempt+1}/{len(_PROFILE_WAITS)+1}), waiting {wait}s…")
+                time.sleep(wait)
+            else:
+                print(f"  ⚠  Profile unavailable ({exc}); continuing without display_name/weight")
+                break  # non-fatal — activities still sync
 
     today = date.today()
     start = today - timedelta(days=SYNC_DAYS)
 
-    # ── Activities (paginated — 100 per page)
+    # ── Activities
     print(f"\nFetching activities {start} → {today}…")
     try:
-        raw, offset = [], 0
-        while True:
-            page = client.connectapi(
-                "/activitylist-service/activities/search/activities",
-                params={"startDate": start.isoformat(), "endDate": today.isoformat(),
-                        "limit": 100, "start": offset}
-            ) or []
-            raw.extend(page)
-            if len(page) < 100:
-                break
-            offset += 100
-            time.sleep(0.5)  # avoid rate-limiting on large backfills
+        if SYNC_DAYS <= 30:
+            # garminconnect paginates automatically
+            raw = api.get_activities_by_date(start.isoformat(), today.isoformat()) or []
+        else:
+            # Use larger page size for big backfills to reduce round-trips
+            raw, offset = [], 0
+            while True:
+                page = api.connectapi(
+                    "/activitylist-service/activities/search/activities",
+                    params={"startDate": start.isoformat(), "endDate": today.isoformat(),
+                            "limit": 100, "start": offset}
+                ) or []
+                raw.extend(page)
+                if len(page) < 100:
+                    break
+                offset += 100
+                time.sleep(0.5)
         activities = _parse_activities(raw)
         print(f"  ✓ {len(activities)} activities")
-        _enrich_power_details(client, activities)
-        # Stamp weight_kg onto cycling activities for W/kg (not stored in DB, used by insert API)
+        _enrich_power_details(api, activities)
         if weight_kg:
             for a in activities:
                 if a["activity_type"] == "cycling":
@@ -404,24 +297,22 @@ def main():
         print(f"  ✗ Activities fetch failed: {exc}")
         activities = []
 
-    # ── Wellness (batch upsert every 30 days on large backfills)
+    # ── Wellness (one day at a time; batch-flush every 30 days on large backfills)
     print("\nFetching wellness data…")
     wellness = []
-    BATCH_UPSERT = 30  # flush to DB every N days to avoid memory issues
+    BATCH_UPSERT = 30
     for i in range(SYNC_DAYS + 1):
         d  = start + timedelta(days=i)
         ds = d.isoformat()
         print(f"  {ds}…", end=" ", flush=True)
-        rec = _fetch_wellness(client, display_name, ds)
+        rec = _fetch_wellness(api, ds)
         if weight_kg:
             rec["weight_kg"] = weight_kg
         wellness.append(rec)
         fields = [k for k in rec if k != "date"]
         print(f"({', '.join(fields) or 'no data'})")
-        # Throttle on large backfills
         if SYNC_DAYS > 7:
             time.sleep(0.3)
-        # Intermediate flush every BATCH_UPSERT days
         if len(wellness) >= BATCH_UPSERT and SYNC_DAYS > 30:
             r = requests.post(f"{APP_URL}/api/insert", headers=HEADERS,
                               json={"activities": [], "wellness": wellness}, timeout=60)

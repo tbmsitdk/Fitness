@@ -4,10 +4,10 @@ One-time setup: log in to Garmin Connect, handle MFA interactively,
 and save session tokens to /tmp/garmin_tokens.b64
 
 Run this from your own machine (not GitHub Actions):
+    pip3 install garminconnect
     python3 scripts/garmin_get_tokens.py
 
-Then wait — the other script will pick up the tokens and store them
-in GitHub Secrets automatically.
+Then copy the printed base64 string into the GARMIN_TOKENS GitHub secret.
 """
 
 import base64
@@ -18,7 +18,7 @@ import sys
 import tarfile
 
 try:
-    from garminconnect import Garmin, GarminConnectAuthenticationError
+    from garminconnect import Garmin
 except ImportError:
     print("Install garminconnect first:  pip3 install garminconnect")
     sys.exit(1)
@@ -33,19 +33,13 @@ def main():
     email    = input("Garmin email: ").strip()
     password = getpass.getpass("Garmin password: ")
 
-    print("\nLogging in…")
-
-    def prompt_mfa():
-        return input("Enter the 6-digit MFA code from your authenticator app: ").strip()
+    print("\nLogging in… (garth will prompt for MFA code if required)")
 
     try:
-        api = Garmin(email, password, prompt_mfa=prompt_mfa)
-        api.login()
-    except GarminConnectAuthenticationError as e:
-        print(f"\n✗ Login failed: {e}")
-        sys.exit(1)
+        api = Garmin(email, password)
+        api.login()   # garth prompts for MFA interactively at the terminal
     except Exception as e:
-        print(f"\n✗ Unexpected error: {e}")
+        print(f"\n✗ Login failed: {e}")
         sys.exit(1)
 
     # Save garth token store to disk
@@ -62,8 +56,9 @@ def main():
     with open(TOKEN_FILE, "w") as f:
         f.write(encoded)
 
-    print(f"✓ Tokens written to {TOKEN_FILE}")
-    print("\nAll done — the setup script will now store these in GitHub Secrets.")
+    print(f"✓ Token archive written to {TOKEN_FILE}")
+    print("\nCopy the string below into the GARMIN_TOKENS GitHub secret:\n")
+    print(encoded)
 
 
 if __name__ == "__main__":
