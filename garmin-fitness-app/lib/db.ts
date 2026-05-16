@@ -105,12 +105,58 @@ const BATCH = 50; // rows per INSERT statement
 
 export async function upsertActivities(activities: ActivityRow[]): Promise<number> {
   if (activities.length === 0) return 0;
-  // Deduplicate by garmin_id within the incoming list — Postgres "ON CONFLICT DO UPDATE
-  // command cannot affect row a second time" if the same key appears twice in one batch.
+
+  // ── 1. Deduplicate within the incoming list (same garmin_id) ──────────────
+  // Postgres "ON CONFLICT DO UPDATE command cannot affect row a second time"
+  // if the same key appears twice in one batch.
   const seen = new Map<string, ActivityRow>();
   for (const a of activities) seen.set(a.garmin_id, a);
   activities = Array.from(seen.values());
 
+  // ── 2. Cross-source deduplication (Garmin vs Apple Health) ───────────────
+  // Apple Health activities use the "ah_" prefix. If the DB already has a
+  // Garmin activity (no "ah_" prefix) of the same type within ±30 minutes,
+  // the Apple Health record is a duplicate — skip it so Garmin data wins.
+  const ahActivities = activities.filter(a => a.garmin_id.startsWith('ah_'));
+  if (ahActivities.length > 0) {
+    const client0 = await db.connect();
+    try {
+      const dates = ahActivities.map(a => new Date(a.date));
+      const minDate = new Date(Math.min(...dates.map(d => d.getTime())) - 30 * 60_000);
+      const maxDate = new Date(Math.max(...dates.map(d => d.getTime())) + 30 * 60_000);
+
+      const { rows: existing } = await client0.query<{ activity_type: string; date: string }>(
+        `SELECT activity_type, date FROM activities
+         WHERE garmin_id NOT LIKE 'ah_%'
+           AND date >= $1 AND date <= $2`,
+        [minDate.toISOString(), maxDate.toISOString()]
+      );
+
+      if (existing.length > 0) {
+        const clashes = new Set<string>();
+        for (const ah of ahActivities) {
+          const ahMs = new Date(ah.date).getTime();
+          for (const ex of existing) {
+            if (
+              ah.activity_type === ex.activity_type &&
+              Math.abs(new Date(ex.date).getTime() - ahMs) <= 30 * 60_000
+            ) {
+              clashes.add(ah.garmin_id);
+              break;
+            }
+          }
+        }
+        if (clashes.size > 0) {
+          activities = activities.filter(a => !clashes.has(a.garmin_id));
+          console.log(`[upsertActivities] skipped ${clashes.size} Apple Health duplicates (Garmin copy exists)`);
+        }
+      }
+    } finally {
+      client0.release();
+    }
+  }
+
+  if (activities.length === 0) return 0;
   const client = await db.connect();
   try {
     let inserted = 0;
