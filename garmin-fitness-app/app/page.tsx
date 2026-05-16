@@ -4,12 +4,14 @@ import { useState, useEffect, useMemo } from 'react';
 import Upload from '@/components/Upload';
 import Dashboard from '@/components/Dashboard';
 import AICoach from '@/components/AICoach';
+import SettingsPanel from '@/components/Settings';
 import { Activity, WellnessRecord } from '@/types';
-import { Activity as ActivityIcon, BarChart3, Sparkles, Upload as UploadIcon } from 'lucide-react';
+import { Activity as ActivityIcon, BarChart3, Sparkles, Upload as UploadIcon, Settings as SettingsIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { subDays, startOfYear, parseISO } from 'date-fns';
+import { UserSettings, loadSettings, DEFAULT_SETTINGS } from '@/lib/settings';
 
-type Tab = 'upload' | 'dashboard' | 'ai-coach';
+type Tab = 'upload' | 'dashboard' | 'ai-coach' | 'settings';
 
 const PERIODS = [
   { label: '1W',   days: 7 },
@@ -37,8 +39,12 @@ export default function Home() {
   const [hasData, setHasData] = useState(false);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<PeriodLabel>('1Y');
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    setSettings(loadSettings());
+    loadData();
+  }, []);
 
   async function loadData() {
     try {
@@ -79,6 +85,7 @@ export default function Home() {
     { id: 'upload' as Tab, label: 'Upload', icon: UploadIcon },
     { id: 'dashboard' as Tab, label: 'Dashboard', icon: BarChart3, disabled: !hasData },
     { id: 'ai-coach' as Tab, label: 'AI Coach', icon: Sparkles, disabled: !hasData },
+    { id: 'settings' as Tab, label: 'Settings', icon: SettingsIcon },
   ];
 
   return (
@@ -155,9 +162,11 @@ export default function Home() {
         ) : activeTab === 'upload' ? (
           <Upload onUploadComplete={onUploadComplete} />
         ) : activeTab === 'dashboard' ? (
-          <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} cutoff={cutoff} />
+          <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} cutoff={cutoff} settings={settings} />
+        ) : activeTab === 'ai-coach' ? (
+          <AICoach activities={allActivities} wellness={allWellness} settings={settings} />
         ) : (
-          <AICoach activities={allActivities} wellness={allWellness} />
+          <SettingsPanel settings={settings} onSave={s => setSettings({ ...s })} />
         )}
       </main>
     </div>

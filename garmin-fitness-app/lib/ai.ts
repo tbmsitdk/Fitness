@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Activity, WellnessRecord, AISummary } from '@/types';
 import { compute90DaySummary } from '@/lib/training-load';
+import type { UserSettings } from '@/lib/settings';
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -26,7 +27,8 @@ Guidelines:
 
 export async function generateWeeklySummary(
   activities: Activity[],
-  wellness: WellnessRecord[]
+  wellness: WellnessRecord[],
+  userSettings?: Partial<UserSettings>
 ): Promise<AISummary> {
   const summary = compute90DaySummary(activities);
 
@@ -42,14 +44,28 @@ export async function generateWeeklySummary(
     ? (recentWellness.reduce((s, w) => s + (w.sleep_hours ?? 0), 0) / recentWellness.filter(w => w.sleep_hours).length).toFixed(1)
     : null;
 
+  // Most recent VO2 max from wellness
+  const recentVo2 = [...wellness].reverse().find(w => w.vo2max != null)?.vo2max ?? null;
+
   const contextData = {
+    user_profile: userSettings ? {
+      age:           userSettings.birthYear ? new Date().getFullYear() - userSettings.birthYear : null,
+      sex:           userSettings.sex,
+      weight_kg:     userSettings.weightKg,
+      height_cm:     userSettings.heightCm,
+      max_hr:        userSettings.maxHR,
+      threshold_hr:  userSettings.thresholdHR,
+      steps_goal:    userSettings.dailyStepsGoal,
+    } : null,
     summary_90_days: summary,
     recent_14_day_wellness: {
       avg_resting_hr: avgRHR,
       avg_hrv_rmssd: avgHRV,
       avg_sleep_hours: avgSleep,
+      latest_vo2max: recentVo2,
     },
     avg_weekly_tss: summary.avg_weekly_tss,
+    device_notes: 'Garmin Vivosmart 5: VO₂max is supported via Firstbeat Analytics. HRV is stress-scale only (0–100); RMSSD not available on this device.',
   };
 
   const response = await client.messages.create({
@@ -99,12 +115,25 @@ export async function generateWeeklySummary(
 export async function* streamChat(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   activities: Activity[],
-  wellness: WellnessRecord[]
+  wellness: WellnessRecord[],
+  userSettings?: Partial<UserSettings>
 ): AsyncGenerator<string> {
   const summary = compute90DaySummary(activities);
   const recentWellness = wellness.slice(-7);
+  const recentVo2 = [...wellness].reverse().find(w => w.vo2max != null)?.vo2max ?? null;
 
-  const dataContext = `
+  const profileSection = userSettings ? `
+## Athlete Profile
+${JSON.stringify({
+    age:          userSettings.birthYear ? new Date().getFullYear() - userSettings.birthYear : null,
+    sex:          userSettings.sex,
+    weight_kg:    userSettings.weightKg,
+    max_hr:       userSettings.maxHR,
+    threshold_hr: userSettings.thresholdHR,
+  }, null, 2)}
+` : '';
+
+  const dataContext = `${profileSection}
 ## Athlete Data Context (last 90 days)
 ${JSON.stringify(summary, null, 2)}
 
@@ -112,10 +141,14 @@ ${JSON.stringify(summary, null, 2)}
 ${JSON.stringify(recentWellness.map(w => ({
     date: w.date,
     resting_hr: w.resting_hr,
-    hrv: w.hrv_rmssd,
+    hrv_stress: w.hrv_rmssd,
     sleep_h: w.sleep_hours,
     steps: w.steps,
+    vo2max: w.vo2max,
   })), null, 2)}
+
+## Latest VO₂ Max: ${recentVo2 ?? 'not available'}
+## Device notes: Garmin Vivosmart 5 — VO₂max supported via Firstbeat; HRV is stress-scale (0–100) only, no RMSSD.
 `;
 
   const stream = await client.messages.stream({

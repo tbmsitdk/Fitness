@@ -31,6 +31,7 @@ export interface WellnessRecord {
   stress_score: number | null;
   body_battery: number | null;
   weight_kg: number | null;
+  vo2max: number | null;
 }
 
 export interface WeeklyVolume {

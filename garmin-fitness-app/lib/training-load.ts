@@ -2,21 +2,20 @@ import { Activity, TrainingLoad, WeeklyVolume, HRZoneData, PersonalBest, Consist
 import { format, startOfWeek, eachWeekOfInterval, subDays, parseISO, isValid } from 'date-fns';
 
 // Estimate TSS when not provided by Garmin
-function estimateTSS(activity: Activity): number {
+function estimateTSS(activity: Activity, thresholdHR = 165): number {
   if (activity.tss != null && activity.tss > 0) return activity.tss;
   const durationHours = activity.duration_seconds / 3600;
   if (durationHours === 0) return 0;
 
   // Rough intensity factor based on activity type and HR
   const avgHr = activity.avg_hr ?? 140;
-  const thresholdHr = 165; // reasonable default
-  const hrFraction = avgHr / thresholdHr;
+  const hrFraction = avgHr / thresholdHR;
   const intensityFactor = Math.min(hrFraction * 0.9, 1.15);
 
   return durationHours * intensityFactor * intensityFactor * 100;
 }
 
-export function computeTrainingLoad(activities: Activity[]): TrainingLoad[] {
+export function computeTrainingLoad(activities: Activity[], thresholdHR = 165): TrainingLoad[] {
   if (activities.length === 0) return [];
 
   const sorted = [...activities].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -27,7 +26,7 @@ export function computeTrainingLoad(activities: Activity[]): TrainingLoad[] {
   const dailyTSS = new Map<string, number>();
   for (const a of sorted) {
     const dateStr = new Date(a.date).toISOString().split('T')[0];
-    const tss = estimateTSS(a);
+    const tss = estimateTSS(a, thresholdHR);
     dailyTSS.set(dateStr, (dailyTSS.get(dateStr) ?? 0) + tss);
   }
 
@@ -63,7 +62,7 @@ export function computeTrainingLoad(activities: Activity[]): TrainingLoad[] {
   return result;
 }
 
-export function computeWeeklyVolume(activities: Activity[]): WeeklyVolume[] {
+export function computeWeeklyVolume(activities: Activity[], thresholdHR = 165): WeeklyVolume[] {
   if (activities.length === 0) return [];
 
   const sorted = [...activities].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -87,7 +86,7 @@ export function computeWeeklyVolume(activities: Activity[]): WeeklyVolume[] {
     if (!entry) continue;
     const hours = a.duration_seconds / 3600;
     const km = a.distance_km;
-    const tss = estimateTSS(a);
+    const tss = estimateTSS(a, thresholdHR);
     if (a.activity_type === 'running') {
       entry.running_km += km;
       entry.running_hours += hours;
@@ -268,7 +267,7 @@ export function computeConsistency(activities: Activity[]): ConsistencyData[] {
   return Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month));
 }
 
-export function computePeriodSummary(activities: Activity[], cutoff: Date) {
+export function computePeriodSummary(activities: Activity[], cutoff: Date, thresholdHR = 165) {
   // activities are already filtered to the selected period — no internal re-filter needed
   const period_days = Math.max(1, Math.round((Date.now() - cutoff.getTime()) / 86400000));
   const period_weeks = Math.max(1, period_days / 7);
@@ -286,7 +285,7 @@ export function computePeriodSummary(activities: Activity[], cutoff: Date) {
   const rides = byType('cycling');
   const walks = byType('walking');
 
-  const weeklyLoads = computeWeeklyVolume(activities);
+  const weeklyLoads = computeWeeklyVolume(activities, thresholdHR);
   // Total TSS across the whole period (uses estimated TSS where Garmin didn't provide one)
   const period_tss = Math.round(weeklyLoads.reduce((s, w) => s + w.total_tss, 0));
   const avg_weekly_tss = weeklyLoads.length > 0 ? Math.round(period_tss / weeklyLoads.length) : 0;

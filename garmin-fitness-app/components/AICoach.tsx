@@ -6,8 +6,9 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import type { UserSettings } from '@/lib/settings';
 
-interface Props { activities: Activity[]; wellness: WellnessRecord[]; }
+interface Props { activities: Activity[]; wellness: WellnessRecord[]; settings?: UserSettings; }
 
 const QUICK = [
   'Am I overtraining?','How should I structure next week?',
@@ -24,7 +25,7 @@ function Prose({ text }: { text: string }) {
   return <div className="ai-prose text-sm" dangerouslySetInnerHTML={{ __html: `<p>${html}</p>` }} />;
 }
 
-export default function AICoach({ activities, wellness }: Props) {
+export default function AICoach({ activities, wellness, settings }: Props) {
   const [section, setSection] = useState<'chat'|'summary'>('chat');
   const [summary, setSummary] = useState<AISummary | null>(null);
   const [loading, setLoading] = useState(false);  // not auto-started
@@ -41,7 +42,11 @@ export default function AICoach({ activities, wellness }: Props) {
     setLoading(true); setError('');
     try {
       if (invalidate) await fetch('/api/ai-summary', { method: 'DELETE' });
-      const res = await fetch('/api/ai-summary');
+      const res = await fetch('/api/ai-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings }),
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed');
       setSummary(json);
@@ -56,7 +61,7 @@ export default function AICoach({ activities, wellness }: Props) {
     setMessages([...updated, { role: 'assistant', content: '' }]);
     setInput(''); setChatLoading(true);
     try {
-      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: updated }) });
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: updated, settings }) });
       if (!res.ok || !res.body) throw new Error('Chat failed');
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
       while (true) {

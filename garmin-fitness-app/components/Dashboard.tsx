@@ -17,12 +17,14 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { UserSettings, getAge, getMaxHR, getThresholdHR, DEFAULT_SETTINGS } from '@/lib/settings';
 
 interface Props {
   activities: Activity[];
   allActivities: Activity[];   // full history for CTL/ATL EWMA accuracy
   wellness: WellnessRecord[];
   cutoff: Date;                // start of the selected period
+  settings?: UserSettings;
 }
 
 function StatCard({ label, value, sub, accent, hint }: { label: string; value: string; sub?: string; accent: string; hint?: string }) {
@@ -49,30 +51,35 @@ function periodLabel(cutoff: Date): string {
   return 'All';
 }
 
-export default function Dashboard({ activities, allActivities, wellness, cutoff }: Props) {
+export default function Dashboard({ activities, allActivities, wellness, cutoff, settings = DEFAULT_SETTINGS }: Props) {
   const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
   const [wellMetric, setWellMetric] = useState<WellnessMetric>('rhr');
   const [cadenceSport, setCadenceSport] = useState<'running' | 'cycling'>('running');
 
-  const weeklyVolume = useMemo(() => computeWeeklyVolume(activities), [activities]);
+  const age        = getAge(settings);
+  const maxHR      = getMaxHR(settings);
+  const thresholdHR = getThresholdHR(settings);
+
+  const weeklyVolume = useMemo(() => computeWeeklyVolume(activities, thresholdHR), [activities, thresholdHR]);
   // Training load uses full history so EWMA starts warm, then sliced to selected period
   const trainingLoad = useMemo(() => {
-    const all = computeTrainingLoad(allActivities);
+    const all = computeTrainingLoad(allActivities, thresholdHR);
     return all.filter(d => new Date(d.date) >= cutoff);
-  }, [allActivities, cutoff]);
-  const hrZones = useMemo(() => computeHRZoneDistribution(activities), [activities]);
+  }, [allActivities, cutoff, thresholdHR]);
+  const hrZones = useMemo(() => computeHRZoneDistribution(activities, maxHR), [activities, maxHR]);
   const personalBests = useMemo(() => computePersonalBests(activities), [activities]);
   const consistency = useMemo(() => computeConsistency(activities), [activities]);
-  const summary = useMemo(() => computePeriodSummary(activities, cutoff), [activities, cutoff]);
+  const summary = useMemo(() => computePeriodSummary(activities, cutoff, thresholdHR), [activities, cutoff, thresholdHR]);
   const sortedWellness = useMemo(() => [...wellness].sort((a,b) => a.date.localeCompare(b.date)), [wellness]);
 
-  // Most recent weight from wellness records (wellness is already sorted asc, so last non-null wins)
+  // Weight: prefer explicit settings, fall back to most recent wellness record
   const weightKg = useMemo(() => {
+    if (settings.weightKg && settings.weightKg > 0) return settings.weightKg;
     for (let i = sortedWellness.length - 1; i >= 0; i--) {
       if (sortedWellness[i].weight_kg != null) return sortedWellness[i].weight_kg as number;
     }
     return null;
-  }, [sortedWellness]);
+  }, [sortedWellness, settings.weightKg]);
 
   // FTP from most recent cycling activity that has one
   const latestFtp = useMemo(() => {
@@ -178,12 +185,13 @@ export default function Dashboard({ activities, allActivities, wellness, cutoff 
               { id: 'score',   label: 'Sleep Score' },
               { id: 'stress',  label: 'Stress' },
               { id: 'battery', label: 'Body Battery' },
+              { id: 'vo2max',  label: 'VO₂ Max' },
             ] as const).map(m => (
               <Button key={m.id} variant={wellMetric === m.id ? 'default' : 'ghost'} size="sm" onClick={() => setWellMetric(m.id)}>{m.label}</Button>
             ))}
           </div>
         </CardHeader>
-        <CardContent><FitnessTrendChart wellness={sortedWellness} metric={wellMetric} /></CardContent>
+        <CardContent><FitnessTrendChart wellness={sortedWellness} metric={wellMetric} age={age} /></CardContent>
       </Card>
 
       {/* Consistency + Steps */}
@@ -194,7 +202,7 @@ export default function Dashboard({ activities, allActivities, wellness, cutoff 
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle>Daily Steps</CardTitle></CardHeader>
-          <CardContent><StepsChart wellness={sortedWellness} /></CardContent>
+          <CardContent><StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} /></CardContent>
         </Card>
       </div>
 

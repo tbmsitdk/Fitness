@@ -20,8 +20,9 @@ function linearTrend(values: number[]): (number | null)[] {
   return values.map((_, i) => Math.round(slope * i + intercept));
 }
 
-export default function StepsChart({ wellness }: { wellness: WellnessRecord[] }) {
-  const bench = getPeerBenchmarks();
+export default function StepsChart({ wellness, age, stepsGoal }: { wellness: WellnessRecord[]; age?: number; stepsGoal?: number }) {
+  const goal  = stepsGoal ?? 10000;
+  const bench = getPeerBenchmarks(age ?? 55);
   const filtered = wellness.filter(w => (w.steps ?? 0) > 0);
   const values = filtered.map(w => w.steps ?? 0);
   const trend = linearTrend(values);
@@ -52,15 +53,15 @@ export default function StepsChart({ wellness }: { wellness: WellnessRecord[] })
           <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${(v/1000).toFixed(0)}k`} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)' }}
             formatter={(v: number, n: string) => n === 'Trend' ? [v.toLocaleString(), 'Trend'] : [v.toLocaleString(), 'Steps']} />
-          <ReferenceLine y={10000} stroke="#22C55E" strokeDasharray="4 2" strokeWidth={1}
-            label={{ value: '10k goal', position: 'insideTopRight', fontSize: 9, fill: '#22C55E' }} />
+          <ReferenceLine y={goal} stroke="#22C55E" strokeDasharray="4 2" strokeWidth={1}
+            label={{ value: `${(goal/1000).toFixed(0)}k goal`, position: 'insideTopRight', fontSize: 9, fill: '#22C55E' }} />
           <ReferenceLine y={bench.stepsAvg} stroke="hsl(45 93% 58%)" strokeDasharray="4 2" strokeWidth={1}
             label={{ value: `Age ${bench.label} peer avg ${(bench.stepsAvg/1000).toFixed(1)}k`, position: 'insideBottomRight', fontSize: 9, fill: 'hsl(45 93% 58%)' }} />
           <Bar dataKey="Steps" fill="#3B82F6" fillOpacity={0.7} radius={[2,2,0,0]} />
           <Line dataKey="Trend" stroke="hsl(0 0% 55%)" strokeWidth={1.5} dot={false} strokeDasharray="5 3" legendType="none" />
         </ComposedChart>
       </ResponsiveContainer>
-      <p className="text-[10px] text-muted-foreground/60 mt-1 italic">Yellow = age {bench.label} peer avg ({bench.stepsAvg.toLocaleString()} steps/day). Green = 10k goal. Grey dashed = your trend.</p>
+      <p className="text-[10px] text-muted-foreground/60 mt-1 italic">Yellow = age {bench.label} peer avg ({bench.stepsAvg.toLocaleString()} steps/day). Green = {goal.toLocaleString()} goal. Grey dashed = your trend.</p>
     </div>
   );
 }

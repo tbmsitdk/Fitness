@@ -7,15 +7,6 @@
  * On the user's next birthday the correct bracket is picked automatically.
  */
 
-const BIRTHDATE = new Date('1969-07-10');
-
-export function getAge(): number {
-  const today = new Date();
-  let age = today.getFullYear() - BIRTHDATE.getFullYear();
-  const m = today.getMonth() - BIRTHDATE.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < BIRTHDATE.getDate())) age--;
-  return age;
-}
 
 export type AgeBracket = {
   label: string;         // e.g. "55–59"
@@ -39,9 +30,8 @@ const BRACKETS: (AgeBracket & { minAge: number; maxAge: number })[] = [
   { minAge: 70, maxAge: 99, label: '70+',   hrv: 26, rhr: 66, sleep: 6.5, ctlMin: 25, ctlMax: 45, weeklyKm: 38, weeklyHours: 3.0, stepsAvg: 7000 },
 ];
 
-/** Returns the benchmark values for the user's current age bracket. */
-export function getPeerBenchmarks(): AgeBracket & { age: number } {
-  const age = getAge();
+/** Returns the benchmark values for the given age bracket. Defaults to 55 if age not provided. */
+export function getPeerBenchmarks(age: number = 55): AgeBracket & { age: number } {
   const bracket =
     BRACKETS.find(b => age >= b.minAge && age <= b.maxAge) ??
     BRACKETS[BRACKETS.length - 1];

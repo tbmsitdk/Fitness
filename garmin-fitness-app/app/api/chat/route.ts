@@ -3,10 +3,11 @@ import { sql } from '@vercel/postgres';
 import { streamChat } from '@/lib/ai';
 import { coerceActivity, coerceWellness } from '@/lib/db';
 import { ChatMessage } from '@/types';
+import type { UserSettings } from '@/lib/settings';
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages }: { messages: ChatMessage[] } = await request.json();
+    const { messages, settings }: { messages: ChatMessage[]; settings?: UserSettings } = await request.json();
 
     if (!messages || messages.length === 0) {
       return NextResponse.json({ error: 'No messages provided' }, { status: 400 });
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          for await (const chunk of streamChat(messages, activities, wellness)) {
+          for await (const chunk of streamChat(messages, activities, wellness, settings)) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: chunk })}\n\n`));
           }
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));

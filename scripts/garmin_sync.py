@@ -225,7 +225,7 @@ def _fetch_wellness(client, display_name: str, ds: str) -> dict:
         if bb_high and int(bb_high) > 0:
             rec["body_battery"] = int(bb_high)
 
-    # RHR
+    # RHR + VO2 max (both live in the same userstats metrics endpoint)
     rhr = _api(client, f"/userstats-service/wellness/daily/{display_name}",
                params={"fromDate": ds, "untilDate": ds})
     if rhr:
@@ -235,6 +235,14 @@ def _fetch_wellness(client, display_name: str, ds: str) -> dict:
             v = int(vals[-1].get("value", 0) or 0)
             if v > 0:
                 rec["resting_hr"] = v
+        # VO2 max — Garmin Firstbeat Analytics, supported on Vivosmart 5
+        for vo2_key in ("STAT_VO2_MAX_NO_RUNNING", "WELLNESS_VO2_MAX", "STAT_VO2_MAX"):
+            vo2_vals = metrics.get(vo2_key) or []
+            if vo2_vals:
+                v2 = float(vo2_vals[-1].get("value", 0) or 0)
+                if v2 > 0:
+                    rec["vo2max"] = round(v2, 1)
+                    break
 
     # HRV (optional — not all devices support it)
     hrv = _api(client, f"/hrv-service/hrv/{ds}")
