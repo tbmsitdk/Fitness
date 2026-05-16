@@ -59,7 +59,7 @@ export default function CadenceChart({ activities, sport, height = 200 }: { acti
         <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />
-          <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} domain={['auto', 'auto']} tickFormatter={v => `${v}`} />
+          <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} domain={[(dataMin: number) => Math.floor(dataMin * 0.98), (dataMax: number) => Math.ceil(dataMax * 1.02)]} tickFormatter={v => `${v}`} tickCount={5} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }}
             formatter={(v: number, n: string) => n === 'Trend' ? [`${v} ${unit}`, 'Trend'] : [`${v} ${unit}`, 'Cadence']} />
           <ReferenceLine y={ref.value} stroke="hsl(45 93% 58%)" strokeDasharray="5 3" strokeWidth={1.5}

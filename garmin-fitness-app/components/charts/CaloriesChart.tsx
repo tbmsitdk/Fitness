@@ -67,7 +67,7 @@ export default function CaloriesChart({ activities, height = 220 }: { activities
         <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />
-          <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} tickFormatter={v => `${(v/1000).toFixed(v >= 1000 ? 1 : 0)}k`} />
+          <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} tickFormatter={(v: number) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : `${v}`} domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.15)]} tickCount={5} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }}
             formatter={(v: number, n: string) => n === 'Trend' ? [`${v} kcal`, 'Trend'] : [`${v.toLocaleString()} kcal`, n]} />
           <Legend wrapperStyle={{ fontSize: 11, color: 'hsl(240 5% 64.9%)', paddingTop: 8 }} iconType="circle" iconSize={6} />

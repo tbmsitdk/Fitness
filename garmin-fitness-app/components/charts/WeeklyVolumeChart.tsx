@@ -50,7 +50,7 @@ export default function WeeklyVolumeChart({ data, metric, height = 260 }: { data
         <ComposedChart data={display} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis dataKey="week" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />
-          <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} tickFormatter={v => `${v}${unit}`} />
+          <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} tickFormatter={v => `${v}${unit}`} domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.15)]} tickCount={5} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }} formatter={(v: number, n: string) => n === 'Trend' ? [`${v} ${unit}`, 'Trend'] : [`${v} ${unit}`, n]} />
           <Legend wrapperStyle={{ fontSize: 11, color: 'hsl(240 5% 64.9%)', paddingTop: 8 }} iconType="circle" iconSize={6} />
           <ReferenceLine y={peerRef} stroke="hsl(45 93% 58%)" strokeDasharray="5 3" strokeWidth={1.5}

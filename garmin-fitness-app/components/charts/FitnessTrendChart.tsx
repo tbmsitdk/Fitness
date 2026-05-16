@@ -92,7 +92,7 @@ export default function FitnessTrendChart({ wellness, metric, age, height = 200 
         <ComposedChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />
-          <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} domain={['auto','auto']} />
+          <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} domain={[(dataMin: number) => Math.floor(dataMin * 0.97), (dataMax: number) => Math.ceil(dataMax * 1.03)]} tickCount={5} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)' }}
             formatter={(v: number, n: string) => n === 'Trend' ? [`${v} ${cfg.unit}`, 'Trend'] : [`${v} ${cfg.unit}`, cfg.label]} />
           {bench && <ReferenceLine y={bench.value} stroke="hsl(45 93% 58%)" strokeDasharray="5 3" strokeWidth={1.5}

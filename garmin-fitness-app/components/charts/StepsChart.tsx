@@ -50,7 +50,7 @@ export default function StepsChart({ wellness, age, stepsGoal, height = 180 }: {
         <ComposedChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />
-          <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${(v/1000).toFixed(0)}k`} />
+          <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} tickFormatter={(v: number) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : `${v}`} domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.15)]} tickCount={5} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)' }}
             formatter={(v: number, n: string) => n === 'Trend' ? [v.toLocaleString(), 'Trend'] : [v.toLocaleString(), 'Steps']} />
           <ReferenceLine y={goal} stroke="#22C55E" strokeDasharray="4 2" strokeWidth={1}
