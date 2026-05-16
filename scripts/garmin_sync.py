@@ -191,22 +191,32 @@ def _fetch_ftp_fallback(client, activities: list, display_name: str = "") -> Non
 
 # ── Garth API helper ──────────────────────────────────────────────────────────
 
-_API_WAITS = [60, 120, 240, 360]  # seconds between retries on 429
+# 429 rate-limit: long backoff (Garmin's window is several minutes)
+_API_WAITS_429 = [60, 120, 240, 360]
+# Timeout/network errors: short retry (transient glitch, don't waste time)
+_API_WAITS_NET = [5, 10]
 
 def _api(client, path, params=None):
     """Call Garmin Connect API using garth's authenticated session.
-    Retries up to 4 times on 429 rate-limit responses with increasing backoff."""
-    for attempt in range(len(_API_WAITS) + 1):
+    - 429 rate-limit → up to 4 retries with 60/120/240/360 s backoff
+    - timeout/network → up to 2 quick retries with 5/10 s backoff"""
+    waits_429 = list(_API_WAITS_429)
+    waits_net = list(_API_WAITS_NET)
+    attempt = 0
+    while True:
         try:
             return client.connectapi(path, params=params)
         except Exception as exc:
             s = str(exc).lower()
-            is_retryable = ('429' in str(exc) or 'timed out' in s or
-                            'timeout' in s or 'connection' in s)
-            if is_retryable and attempt < len(_API_WAITS):
-                wait = _API_WAITS[attempt]
-                kind = '429' if '429' in str(exc) else 'timeout/network'
-                print(f"  ⚠  {kind}, waiting {wait}s before retry {attempt + 2}/{len(_API_WAITS)+1}…")
+            is_429 = '429' in str(exc)
+            is_net  = not is_429 and ('timed out' in s or 'timeout' in s or 'connection' in s)
+            if is_429 and waits_429:
+                wait = waits_429.pop(0)
+                print(f"  ⚠  429 rate-limit, waiting {wait}s… (attempt {attempt+1})")
+                time.sleep(wait)
+            elif is_net and waits_net:
+                wait = waits_net.pop(0)
+                print(f"  ⚠  network error, retrying in {wait}s… (attempt {attempt+1})")
                 time.sleep(wait)
             else:
                 return None
@@ -322,15 +332,18 @@ def main():
                 profile = client.connectapi("/userprofile-service/userprofile/user-settings")
                 break
             except Exception as exc:
-                is_retryable = ('429' in str(exc) or
-                                'timed out' in str(exc).lower() or
-                                'timeout' in str(exc).lower() or
-                                'connection' in str(exc).lower())
-                if is_retryable and attempt < len(_PROFILE_WAITS):
+                s = str(exc).lower()
+                is_429 = '429' in str(exc)
+                is_net  = not is_429 and ('timed out' in s or 'timeout' in s or 'connection' in s)
+                if is_429 and attempt < len(_PROFILE_WAITS):
+                    # OAuth token-exchange rate limit — must wait long
                     wait = _PROFILE_WAITS[attempt]
-                    kind = 'rate limited' if '429' in str(exc) else 'network error'
-                    print(f"  ⚠  {kind} on OAuth/profile (attempt {attempt+1}/{len(_PROFILE_WAITS)+1}), waiting {wait}s…")
+                    print(f"  ⚠  rate limited on OAuth/profile (attempt {attempt+1}/{len(_PROFILE_WAITS)+1}), waiting {wait}s…")
                     time.sleep(wait)
+                elif is_net and attempt == 0:
+                    # Transient network hiccup on profile — one quick retry
+                    print(f"  ⚠  network error on profile, retrying in 10s…")
+                    time.sleep(10)
                 else:
                     raise
         ud = (profile or {}).get("userData") or {}
