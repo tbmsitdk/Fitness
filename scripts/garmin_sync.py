@@ -191,12 +191,20 @@ def _fetch_ftp_fallback(client, activities: list, display_name: str = "") -> Non
 
 # ── Garth API helper ──────────────────────────────────────────────────────────
 
-def _api(client, path, params=None):
-    """Call Garmin Connect API using garth's authenticated session."""
-    try:
-        return client.connectapi(path, params=params)
-    except Exception:
-        return None
+def _api(client, path, params=None, _retries=3):
+    """Call Garmin Connect API using garth's authenticated session.
+    Retries up to _retries times on 429 rate-limit responses."""
+    for attempt in range(_retries):
+        try:
+            return client.connectapi(path, params=params)
+        except Exception as exc:
+            if '429' in str(exc) and attempt < _retries - 1:
+                wait = 60 * (attempt + 1)   # 60s, then 120s
+                print(f"  ⚠  Rate limited (429), waiting {wait}s before retry {attempt + 2}/{_retries}…")
+                time.sleep(wait)
+            else:
+                return None
+    return None
 
 # ── Wellness per day ──────────────────────────────────────────────────────────
 
@@ -279,10 +287,21 @@ def main():
     client.load(TOKEN_DIR)
     print("  ✓ Tokens loaded")
 
-    # ── Get display name (needed for some endpoints)
+    # ── Get display name (needed for some endpoints) — retry on 429
     try:
-        profile = client.connectapi("/userprofile-service/userprofile/user-settings")
-        ud = profile.get("userData") or {}
+        profile = None
+        for attempt in range(3):
+            try:
+                profile = client.connectapi("/userprofile-service/userprofile/user-settings")
+                break
+            except Exception as exc:
+                if '429' in str(exc) and attempt < 2:
+                    wait = 60 * (attempt + 1)
+                    print(f"  ⚠  Rate limited on profile fetch, waiting {wait}s…")
+                    time.sleep(wait)
+                else:
+                    raise
+        ud = (profile or {}).get("userData") or {}
         # Try multiple fields — Garmin uses displayName or userName depending on account type
         display_name = (ud.get("displayName") or ud.get("userName") or
                         str(ud.get("userId") or ""))
