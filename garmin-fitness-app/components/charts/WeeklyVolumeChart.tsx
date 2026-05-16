@@ -1,7 +1,7 @@
 'use client';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { WeeklyVolume } from '@/types';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, getISOWeek } from 'date-fns';
 import { getPeerBenchmarks } from '@/lib/benchmarks';
 
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
@@ -20,7 +20,14 @@ function linearTrend(values: number[]): (number | null)[] {
   return values.map((_, i) => Math.round((slope * i + intercept) * 10) / 10);
 }
 
-export default function WeeklyVolumeChart({ data, metric, height = 260 }: { data: WeeklyVolume[]; metric: 'km' | 'hours'; height?: number }) {
+interface Props {
+  data: WeeklyVolume[];
+  metric: 'km' | 'hours';
+  height?: number;
+  prevData?: WeeklyVolume[];
+}
+
+export default function WeeklyVolumeChart({ data, metric, height = 260, prevData }: Props) {
   const bench = getPeerBenchmarks();
   const unit = metric === 'km' ? 'km' : 'h';
   const peerRef = metric === 'km' ? bench.weeklyKm : bench.weeklyHours;
@@ -36,13 +43,33 @@ export default function WeeklyVolumeChart({ data, metric, height = 260 }: { data
   const spanYears = new Set(data.map(d => d.week.substring(0, 4))).size > 1;
   const dateFmt = spanYears ? "MMM ''yy" : 'MMM d';
 
-  const display = data.map((d, i) => ({
-    week: format(parseISO(d.week), dateFmt),
-    Running: metric === 'km' ? Math.round(d.running_km * 10) / 10 : Math.round(d.running_hours * 10) / 10,
-    Cycling: metric === 'km' ? Math.round(d.cycling_km * 10) / 10 : Math.round(d.cycling_hours * 10) / 10,
-    Walking: metric === 'km' ? Math.round(d.walking_km * 10) / 10 : Math.round(d.walking_hours * 10) / 10,
-    Trend: trend[i],
-  }));
+  // Build prev year lookup by ISO week number
+  const prevByWeek = new Map<number, WeeklyVolume>();
+  if (prevData) {
+    for (const p of prevData) {
+      const wk = getISOWeek(parseISO(p.week));
+      prevByWeek.set(wk, p);
+    }
+  }
+
+  const display = data.map((d, i) => {
+    const isoWk = getISOWeek(parseISO(d.week));
+    const prev = prevByWeek.get(isoWk);
+    const prevTotal = prev
+      ? metric === 'km'
+        ? Math.round((prev.running_km + prev.cycling_km + prev.walking_km) * 10) / 10
+        : Math.round((prev.running_hours + prev.cycling_hours + prev.walking_hours) * 10) / 10
+      : null;
+
+    return {
+      week: format(parseISO(d.week), dateFmt),
+      Running: metric === 'km' ? Math.round(d.running_km * 10) / 10 : Math.round(d.running_hours * 10) / 10,
+      Cycling: metric === 'km' ? Math.round(d.cycling_km * 10) / 10 : Math.round(d.cycling_hours * 10) / 10,
+      Walking: metric === 'km' ? Math.round(d.walking_km * 10) / 10 : Math.round(d.walking_hours * 10) / 10,
+      Trend: trend[i],
+      'Prev Year': prevTotal,
+    };
+  });
 
   return (
     <div>
@@ -59,9 +86,15 @@ export default function WeeklyVolumeChart({ data, metric, height = 260 }: { data
           <Bar dataKey="Cycling" stackId="a" fill="#22C55E" radius={[0,0,0,0]} />
           <Bar dataKey="Walking" stackId="a" fill="#F59E0B" radius={[3,3,0,0]} />
           <Line dataKey="Trend" stroke="hsl(0 0% 70%)" strokeWidth={1.5} dot={false} strokeDasharray="4 2" legendType="none" />
+          {prevData && (
+            <Bar dataKey="Prev Year" stackId="b" fill="hsl(240 5% 64.9%)" fillOpacity={0.3} radius={[3,3,0,0]} strokeDasharray="3 2" stroke="hsl(240 5% 64.9%)" strokeWidth={1} />
+          )}
         </ComposedChart>
       </ResponsiveContainer>
-      <p className="text-[10px] text-muted-foreground/60 mt-1 italic">Yellow = peer avg for age {bench.label} ({peerRef}{unit}/week). Grey dashed = your trend.</p>
+      <p className="text-[10px] text-muted-foreground/60 mt-1 italic">
+        Yellow = peer avg for age {bench.label} ({peerRef}{unit}/week). Grey dashed = your trend.
+        {prevData && ' Outlined grey bars = same period prior year.'}
+      </p>
     </div>
   );
 }

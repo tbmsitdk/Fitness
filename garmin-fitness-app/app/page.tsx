@@ -5,6 +5,7 @@ import Upload from '@/components/Upload';
 import Dashboard from '@/components/Dashboard';
 import AICoach from '@/components/AICoach';
 import SettingsPanel from '@/components/Settings';
+import InsightCards from '@/components/InsightCards';
 import { Activity, WellnessRecord } from '@/types';
 import { Activity as ActivityIcon, BarChart3, Sparkles, Upload as UploadIcon, Settings as SettingsIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -176,7 +177,10 @@ export default function Home() {
         ) : activeTab === 'upload' ? (
           <Upload onUploadComplete={onUploadComplete} />
         ) : activeTab === 'dashboard' ? (
-          <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} />
+          <>
+            {hasData && <InsightCards />}
+            <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} />
+          </>
         ) : activeTab === 'ai-coach' ? (
           <AICoach activities={allActivities} wellness={allWellness} settings={settings} />
         ) : (

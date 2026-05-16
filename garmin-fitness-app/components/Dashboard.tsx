@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { Activity, WellnessRecord } from '@/types';
-import { computeWeeklyVolume, computeTrainingLoad, computeHRZoneDistribution, computePersonalBests, computeConsistency, computePeriodSummary } from '@/lib/training-load';
+import { computeWeeklyVolume, computeTrainingLoadWithForecast, computeEfficiencyFactor, computeHRZoneDistribution, computePersonalBests, computeConsistency, computePeriodSummary, TrainingLoadForecast, EfficiencyFactorPoint } from '@/lib/training-load';
 import WeeklyVolumeChart from './charts/WeeklyVolumeChart';
 import FitnessTrendChart, { WellnessMetric } from './charts/FitnessTrendChart';
 import TrainingLoadChart from './charts/TrainingLoadChart';
@@ -13,12 +13,14 @@ import PowerChart from './charts/PowerChart';
 import PowerZonesChart from './charts/PowerZonesChart';
 import CaloriesChart from './charts/CaloriesChart';
 import CadenceChart from './charts/CadenceChart';
+import EfficiencyFactorChart from './charts/EfficiencyFactorChart';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { UserSettings, getAge, getMaxHR, getThresholdHR, DEFAULT_SETTINGS } from '@/lib/settings';
 import ExpandableCard from '@/components/ExpandableCard';
+import { subDays, parseISO } from 'date-fns';
 
 interface Props {
   activities: Activity[];
@@ -57,22 +59,44 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
   const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
   const [wellMetric, setWellMetric] = useState<WellnessMetric>('rhr');
   const [cadenceSport, setCadenceSport] = useState<'running' | 'cycling'>('running');
+  const [efSport, setEfSport] = useState<'running' | 'cycling'>('running');
+  const [showYoY, setShowYoY] = useState(false);
 
   const age        = getAge(settings);
   const maxHR      = getMaxHR(settings);
   const thresholdHR = getThresholdHR(settings);
 
   const weeklyVolume = useMemo(() => computeWeeklyVolume(activities, thresholdHR), [activities, thresholdHR]);
+
   // Training load uses full history so EWMA starts warm, then sliced to selected period
-  const trainingLoad = useMemo(() => {
-    const all = computeTrainingLoad(allActivities, thresholdHR);
+  const trainingLoad = useMemo((): TrainingLoadForecast[] => {
+    const all = computeTrainingLoadWithForecast(allActivities, thresholdHR);
     return all.filter(d => new Date(d.date) >= cutoff);
   }, [allActivities, cutoff, thresholdHR]);
+
   const hrZones = useMemo(() => computeHRZoneDistribution(activities, maxHR), [activities, maxHR]);
   const personalBests = useMemo(() => computePersonalBests(activities), [activities]);
   const consistency = useMemo(() => computeConsistency(activities), [activities]);
   const summary = useMemo(() => computePeriodSummary(activities, cutoff, thresholdHR), [activities, cutoff, thresholdHR]);
   const sortedWellness = useMemo(() => [...wellness].sort((a,b) => a.date.localeCompare(b.date)), [wellness]);
+
+  // Efficiency Factor data computed from all activities for best trend
+  const efData = useMemo((): EfficiencyFactorPoint[] => computeEfficiencyFactor(activities), [activities]);
+
+  // YoY: same period one year ago
+  const prevActivities = useMemo(() => {
+    if (!showYoY) return [];
+    const oneYearBack = subDays(cutoff, 365);
+    return allActivities.filter(a => {
+      const d = parseISO(a.date);
+      return d >= oneYearBack && d < cutoff;
+    });
+  }, [allActivities, cutoff, showYoY]);
+
+  const prevWeeklyVolume = useMemo(() => {
+    if (!showYoY || prevActivities.length === 0) return undefined;
+    return computeWeeklyVolume(prevActivities, thresholdHR);
+  }, [prevActivities, thresholdHR, showYoY]);
 
   // Weight priority:
   // 1. Most recent Garmin-synced weight that is less than 3 months old (most accurate, device-measured)
@@ -159,14 +183,21 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       <ExpandableCard
         title="Weekly Volume"
         headerRight={
-          <div className="flex gap-1">
+          <div className="flex gap-1 flex-wrap">
             {(['km','hours'] as const).map(m => (
               <Button key={m} variant={volMetric === m ? 'default' : 'ghost'} size="sm" onClick={() => setVolMetric(m)}>{m}</Button>
             ))}
+            <Button
+              variant={showYoY ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setShowYoY(v => !v)}
+            >
+              YoY
+            </Button>
           </div>
         }
       >
-        {(expanded) => <WeeklyVolumeChart data={weeklyVolume} metric={volMetric} height={expanded ? 520 : undefined} />}
+        {(expanded) => <WeeklyVolumeChart data={weeklyVolume} metric={volMetric} height={expanded ? 520 : undefined} prevData={showYoY ? prevWeeklyVolume : undefined} />}
       </ExpandableCard>
 
       {/* Training load + HR zones */}
@@ -256,6 +287,21 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
         }
       >
         {(expanded) => <CadenceChart activities={activities} sport={cadenceSport} height={expanded ? 480 : undefined} />}
+      </ExpandableCard>
+
+      {/* Efficiency Factor */}
+      <ExpandableCard
+        title="Aerobic Efficiency (EF)"
+        headerRight={
+          <div className="flex gap-1">
+            {(['running', 'cycling'] as const).map(s => (
+              <Button key={s} variant={efSport === s ? 'default' : 'ghost'} size="sm"
+                onClick={() => setEfSport(s)} className="capitalize">{s}</Button>
+            ))}
+          </div>
+        }
+      >
+        {(expanded) => <EfficiencyFactorChart data={efData} sport={efSport} height={expanded ? 480 : undefined} />}
       </ExpandableCard>
 
       {/* Personal bests */}

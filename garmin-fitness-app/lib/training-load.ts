@@ -306,3 +306,95 @@ export function computePeriodSummary(activities: Activity[], cutoff: Date, thres
 /** @deprecated use computePeriodSummary */
 export const compute90DaySummary = (activities: Activity[]) =>
   computePeriodSummary(activities, new Date(Date.now() - 90 * 86400000));
+
+export interface EfficiencyFactorPoint {
+  date: string;
+  ef: number;
+  sport: string;
+  title: string;
+}
+
+export function computeEfficiencyFactor(activities: Activity[]): EfficiencyFactorPoint[] {
+  return activities
+    .filter(a => {
+      if (!a.avg_hr || a.avg_hr < 80) return false;
+      if (a.activity_type === 'running') {
+        return a.distance_km > 0.5 && a.duration_seconds > 300;
+      }
+      if (a.activity_type === 'cycling') {
+        return (a.avg_power != null || a.normalized_power != null) && a.duration_seconds > 300;
+      }
+      return false;
+    })
+    .map(a => {
+      let ef: number;
+      if (a.activity_type === 'running') {
+        // EF = speed (km/min) / avg HR — higher = more aerobically efficient
+        const speedKmMin = a.distance_km / (a.duration_seconds / 60);
+        ef = speedKmMin / (a.avg_hr as number);
+      } else {
+        // Cycling EF = normalized power (or avg power) / avg HR
+        const power = a.normalized_power ?? a.avg_power ?? 0;
+        ef = power / (a.avg_hr as number);
+      }
+      return {
+        date: new Date(a.date).toISOString().split('T')[0],
+        ef: Math.round(ef * 10000) / 10000,
+        sport: a.activity_type,
+        title: a.title || a.activity_type,
+      };
+    })
+    .filter(p => p.ef > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export interface TrainingLoadForecast extends TrainingLoad {
+  projected: boolean;
+}
+
+export function computeTrainingLoadWithForecast(
+  activities: Activity[],
+  thresholdHR = 165,
+  forecastDays = 14
+): TrainingLoadForecast[] {
+  const historical = computeTrainingLoad(activities, thresholdHR);
+  if (historical.length === 0) return [];
+
+  // Average daily TSS over the last 7 calendar days (including rest days as 0)
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
+  let recentTSS = 0;
+  for (const a of activities) {
+    if (new Date(a.date) >= sevenDaysAgo) {
+      recentTSS += estimateTSS(a, thresholdHR);
+    }
+  }
+  const avgDailyTSS = recentTSS / 7; // per calendar day, not per active day
+
+  const atl_k = 2 / (7 + 1);
+  const ctl_k = 2 / (42 + 1);
+  let { atl, ctl } = historical[historical.length - 1];
+
+  const result: TrainingLoadForecast[] = historical.map(d => ({ ...d, projected: false }));
+
+  for (let i = 1; i <= forecastDays; i++) {
+    const date = new Date(now);
+    date.setDate(date.getDate() + i);
+    const dateStr = format(date, 'yyyy-MM-dd');
+
+    atl = atl + atl_k * (avgDailyTSS - atl);
+    ctl = ctl + ctl_k * (avgDailyTSS - ctl);
+    const tsb = ctl - atl;
+
+    result.push({
+      date: dateStr,
+      ctl: Math.round(ctl * 10) / 10,
+      atl: Math.round(atl * 10) / 10,
+      tsb: Math.round(tsb * 10) / 10,
+      daily_tss: Math.round(avgDailyTSS),
+      projected: true,
+    });
+  }
+
+  return result;
+}
