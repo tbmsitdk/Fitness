@@ -66,12 +66,15 @@ function fnv32(s: string): string {
 // The space between date/time and the timezone without colon both cause
 // "Invalid Date" in strict ECMAScript parsers. We normalise to ISO 8601.
 function parseAHDate(s: string): Date {
-  // "2023-01-15 08:30:00 +0200" → "2023-01-15T08:30:00+02:00"
+  // Apple Health format: "2023-01-15 08:30:00 +0200"
+  // Step 1: "2023-01-15 08:30:00 +0200" → "2023-01-15T08:30:00 +0200"  (space→T)
+  // Step 2: "2023-01-15T08:30:00 +0200" → "2023-01-15T08:30:00+0200"   (drop space before tz)
+  // Step 3: "2023-01-15T08:30:00+0200"  → "2023-01-15T08:30:00+02:00"  (insert tz colon)
   const iso = s
-    .replace(/^(\d{4}-\d{2}-\d{2}) /, '$1T')          // space → T
-    .replace(/([+-])(\d{2})(\d{2})$/, '$1$2:$3');      // +0200 → +02:00
+    .replace(/^(\d{4}-\d{2}-\d{2}) /, '$1T')   // date/time separator
+    .replace(/ ([+-])/, '$1')                    // remove space before tz sign
+    .replace(/([+-]\d{2})(\d{2})$/, '$1:$2');   // +0200 → +02:00
   const d = new Date(iso);
-  // If still invalid (unexpected format), fall back to direct parsing
   return isNaN(d.getTime()) ? new Date(s) : d;
 }
 
