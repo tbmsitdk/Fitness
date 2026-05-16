@@ -3,7 +3,10 @@ import { db } from '@vercel/postgres';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+export async function GET() { return handler(); }
+export async function POST() { return handler(); }
+
+async function handler() {
   const client = await db.connect();
   try {
     // Find Apple Health activities (ah_ prefix) that have a matching Garmin
