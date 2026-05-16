@@ -304,8 +304,9 @@ def main():
         print(f"  ✗ Token directory not found at {TOKEN_DIR}")
         sys.exit(1)
 
-    client = garth.Client(timeout=60)   # default is 10s — too short after rate-limit waits
+    client = garth.Client()
     client.load(TOKEN_DIR)
+    client.timeout = 60  # default is 10s — too short after rate-limit waits
     print("  ✓ Tokens loaded")
 
     # ── Get display name (needed for some endpoints)
