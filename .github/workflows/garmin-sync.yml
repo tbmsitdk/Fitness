@@ -8,7 +8,7 @@ on:
       sync_days:
         description: 'Days back to sync (default 2, use 1825 for full 5-year backfill)'
         required: false
-        default: '2'
+        default: '14'
 
 jobs:
   sync:
