@@ -357,8 +357,15 @@ function parseXML(xml: string): ParsedGarminData {
     });
   }
 
+  // Deduplicate activities by garmin_id — Apple Health can export the same
+  // workout twice (e.g. merged from two devices), and two identical rows in
+  // one INSERT batch triggers "ON CONFLICT DO UPDATE command cannot affect
+  // row a second time". Last occurrence wins (most complete data).
+  const actMap = new Map<string, typeof activities[0]>();
+  for (const a of activities) actMap.set(a.garmin_id, a);
+
   return {
-    activities,
+    activities: Array.from(actMap.values()),
     wellness: Array.from(wellnessMap.values()),
   };
 }

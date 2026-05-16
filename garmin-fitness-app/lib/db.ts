@@ -105,6 +105,12 @@ const BATCH = 50; // rows per INSERT statement
 
 export async function upsertActivities(activities: ActivityRow[]): Promise<number> {
   if (activities.length === 0) return 0;
+  // Deduplicate by garmin_id within the incoming list — Postgres "ON CONFLICT DO UPDATE
+  // command cannot affect row a second time" if the same key appears twice in one batch.
+  const seen = new Map<string, ActivityRow>();
+  for (const a of activities) seen.set(a.garmin_id, a);
+  activities = Array.from(seen.values());
+
   const client = await db.connect();
   try {
     let inserted = 0;
