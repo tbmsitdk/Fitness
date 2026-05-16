@@ -20,7 +20,7 @@ function getZone(power: number, ftp: number): number {
   return ZONES.findIndex(z => pct < z.maxPct);
 }
 
-export default function PowerZonesChart({ activities, ftp }: { activities: Activity[]; ftp: number }) {
+export default function PowerZonesChart({ activities, ftp, height = 220 }: { activities: Activity[]; ftp: number; height?: number }) {
   const data = useMemo(() => {
     const seconds = new Array(6).fill(0);
 
@@ -47,7 +47,7 @@ export default function PowerZonesChart({ activities, ftp }: { activities: Activ
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={height}>
         <BarChart data={data} layout="vertical" margin={{ top: 4, right: 40, left: 8, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" horizontal={false} />
           <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false}

@@ -6,7 +6,7 @@ import { getPeerBenchmarks } from '@/lib/benchmarks';
 
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
 
-export default function TrainingLoadChart({ data }: { data: TrainingLoad[] }) {
+export default function TrainingLoadChart({ data, height = 240 }: { data: TrainingLoad[]; height?: number }) {
   const bench = getPeerBenchmarks();
   const tickInterval = Math.max(1, Math.floor(data.length / 10));
   const spanYears = new Set(data.map(d => d.date.substring(0, 4))).size > 1;
@@ -21,7 +21,7 @@ export default function TrainingLoadChart({ data }: { data: TrainingLoad[] }) {
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={display} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="ctlG" x1="0" y1="0" x2="0" y2="1">

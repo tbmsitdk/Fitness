@@ -8,14 +8,14 @@ interface Row { month: string; 'Running': number; 'Cycling': number; 'Walking': 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const labelFmt = (label: string, payload: any[]) => { const pct = payload?.[0]?.payload?.pct; return `${label}${pct != null ? ` · ${pct}% active` : ''}`; };
 
-export default function ConsistencyChart({ data }: { data: ConsistencyData[] }) {
+export default function ConsistencyChart({ data, height = 220 }: { data: ConsistencyData[]; height?: number }) {
   const rows: Row[] = data.map(d => ({
     month: format(parseISO(d.month + '-01'), 'MMM yy'),
     Running: d.running_days, Cycling: d.cycling_days, Walking: d.walking_days,
     pct: Math.round((d.active_days / d.total_days) * 100),
   }));
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={height}>
       <BarChart data={rows} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
         <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} />

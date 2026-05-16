@@ -33,7 +33,7 @@ function linearTrend(values: number[]): (number | null)[] {
 
 export type WellnessMetric = 'hrv' | 'rhr' | 'sleep' | 'stress' | 'battery' | 'score' | 'vo2max' | 'fitness_age';
 
-export default function FitnessTrendChart({ wellness, metric, age }: { wellness: WellnessRecord[]; metric: WellnessMetric; age?: number }) {
+export default function FitnessTrendChart({ wellness, metric, age, height = 200 }: { wellness: WellnessRecord[]; metric: WellnessMetric; age?: number; height?: number }) {
   const cfg = CONFIG[metric];
   const peer = getPeerBenchmarks(age ?? 55);
   const BENCHMARKS: Record<WellnessMetric, { value: number; label: string; note: string } | null> = {
@@ -88,7 +88,7 @@ export default function FitnessTrendChart({ wellness, metric, age }: { wellness:
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={200}>
+      <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />

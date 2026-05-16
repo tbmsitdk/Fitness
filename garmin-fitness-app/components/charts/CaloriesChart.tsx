@@ -20,7 +20,7 @@ function linearTrend(values: number[]): (number | null)[] {
   return values.map((_, i) => Math.round(slope * i + intercept));
 }
 
-export default function CaloriesChart({ activities }: { activities: Activity[] }) {
+export default function CaloriesChart({ activities, height = 220 }: { activities: Activity[]; height?: number }) {
   const data = useMemo(() => {
     const byWeek = new Map<string, { running: number; cycling: number; walking: number; other: number }>();
 
@@ -63,7 +63,7 @@ export default function CaloriesChart({ activities }: { activities: Activity[] }
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />

@@ -20,7 +20,7 @@ function linearTrend(values: number[]): (number | null)[] {
   return values.map((_, i) => Math.round(slope * i + intercept));
 }
 
-export default function StepsChart({ wellness, age, stepsGoal }: { wellness: WellnessRecord[]; age?: number; stepsGoal?: number }) {
+export default function StepsChart({ wellness, age, stepsGoal, height = 180 }: { wellness: WellnessRecord[]; age?: number; stepsGoal?: number; height?: number }) {
   const goal  = stepsGoal ?? 10000;
   const bench = getPeerBenchmarks(age ?? 55);
   const filtered = wellness.filter(w => (w.steps ?? 0) > 0);
@@ -46,7 +46,7 @@ export default function StepsChart({ wellness, age, stepsGoal }: { wellness: Wel
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={180}>
+      <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />

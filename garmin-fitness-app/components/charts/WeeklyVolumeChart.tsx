@@ -20,7 +20,7 @@ function linearTrend(values: number[]): (number | null)[] {
   return values.map((_, i) => Math.round((slope * i + intercept) * 10) / 10);
 }
 
-export default function WeeklyVolumeChart({ data, metric }: { data: WeeklyVolume[]; metric: 'km' | 'hours' }) {
+export default function WeeklyVolumeChart({ data, metric, height = 260 }: { data: WeeklyVolume[]; metric: 'km' | 'hours'; height?: number }) {
   const bench = getPeerBenchmarks();
   const unit = metric === 'km' ? 'km' : 'h';
   const peerRef = metric === 'km' ? bench.weeklyKm : bench.weeklyHours;
@@ -46,7 +46,7 @@ export default function WeeklyVolumeChart({ data, metric }: { data: WeeklyVolume
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={display} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis dataKey="week" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />

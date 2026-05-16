@@ -26,7 +26,7 @@ const CADENCE_REF = {
   cycling: { value: 90,  label: 'Target 85–95 rpm', color: '#22C55E' },
 };
 
-export default function CadenceChart({ activities, sport }: { activities: Activity[]; sport: 'running' | 'cycling' }) {
+export default function CadenceChart({ activities, sport, height = 200 }: { activities: Activity[]; sport: 'running' | 'cycling'; height?: number }) {
   const data = useMemo(() => {
     const sorted = activities
       .filter(a => a.activity_type === sport && a.avg_cadence && a.avg_cadence > 0)
@@ -55,7 +55,7 @@ export default function CadenceChart({ activities, sport }: { activities: Activi
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={200}>
+      <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />

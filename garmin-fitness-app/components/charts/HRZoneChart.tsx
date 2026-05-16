@@ -8,11 +8,11 @@ const fmt = (m: number) => { const h = Math.floor(m/60); const s = m%60; return 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ttFmt = (v: unknown, _: unknown, p: any) => [`${v}%${p?.payload?.minutes != null ? ` · ${fmt(p.payload.minutes)}` : ''}`, 'Zone time'];
 
-export default function HRZoneChart({ data }: { data: HRZoneData[] }) {
+export default function HRZoneChart({ data, height = 140 }: { data: HRZoneData[]; height?: number }) {
   if (data.every(d => d.minutes === 0)) return <div className="h-[180px] flex items-center justify-center text-xs text-muted-foreground">No HR data — activities recorded with heart rate monitor required</div>;
   return (
     <div className="space-y-3">
-      <ResponsiveContainer width="100%" height={140}>
+      <ResponsiveContainer width="100%" height={height}>
         <BarChart data={data} layout="vertical" margin={{ top: 0, right: 36, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" horizontal={false} />
           <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v}%`} domain={[0,100]} />

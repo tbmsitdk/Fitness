@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { UserSettings, getAge, getMaxHR, getThresholdHR, DEFAULT_SETTINGS } from '@/lib/settings';
+import ExpandableCard from '@/components/ExpandableCard';
 
 interface Props {
   activities: Activity[];
@@ -155,112 +156,107 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       </div>
 
       {/* Weekly volume */}
-      <Card>
-        <CardHeader className="flex-row items-center justify-between pb-2">
-          <CardTitle>Weekly Volume</CardTitle>
+      <ExpandableCard
+        title="Weekly Volume"
+        headerRight={
           <div className="flex gap-1">
             {(['km','hours'] as const).map(m => (
               <Button key={m} variant={volMetric === m ? 'default' : 'ghost'} size="sm" onClick={() => setVolMetric(m)}>{m}</Button>
             ))}
           </div>
-        </CardHeader>
-        <CardContent><WeeklyVolumeChart data={weeklyVolume} metric={volMetric} /></CardContent>
-      </Card>
+        }
+      >
+        {(expanded) => <WeeklyVolumeChart data={weeklyVolume} metric={volMetric} height={expanded ? 520 : undefined} />}
+      </ExpandableCard>
 
       {/* Training load + HR zones */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle>Training Load</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TrainingLoadChart data={trainingLoad} />
-            <div className="flex flex-col gap-1 mt-2 text-[10px] text-muted-foreground">
-              <span><span className="text-blue-400 font-semibold">CTL</span> — Chronic Training Load (fitness): 42-day rolling average of daily stress. Higher = more base fitness.</span>
-              <span><span className="text-red-400 font-semibold">ATL</span> — Acute Training Load (fatigue): 7-day rolling average. Spikes when you train hard.</span>
-              <span><span className="text-green-400 font-semibold">TSB</span> — Training Stress Balance (form): CTL minus ATL. Positive = fresh &amp; ready to race. Negative = fatigued but building fitness.</span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle>HR Zone Distribution</CardTitle></CardHeader>
-          <CardContent><HRZoneChart data={hrZones} /></CardContent>
-        </Card>
+        <ExpandableCard title="Training Load">
+          {(expanded) => (
+            <>
+              <TrainingLoadChart data={trainingLoad} height={expanded ? 500 : undefined} />
+              <div className="flex flex-col gap-1 mt-2 text-[10px] text-muted-foreground">
+                <span><span className="text-blue-400 font-semibold">CTL</span> — Chronic Training Load (fitness): 42-day rolling average of daily stress. Higher = more base fitness.</span>
+                <span><span className="text-red-400 font-semibold">ATL</span> — Acute Training Load (fatigue): 7-day rolling average. Spikes when you train hard.</span>
+                <span><span className="text-green-400 font-semibold">TSB</span> — Training Stress Balance (form): CTL minus ATL. Positive = fresh &amp; ready to race. Negative = fatigued but building fitness.</span>
+              </div>
+            </>
+          )}
+        </ExpandableCard>
+        <ExpandableCard title="HR Zone Distribution">
+          {(expanded) => <HRZoneChart data={hrZones} height={expanded ? 360 : undefined} />}
+        </ExpandableCard>
       </div>
 
       {/* Wellness */}
-      <Card>
-        <CardHeader className="flex-row items-center justify-between pb-2">
-          <CardTitle>Wellness Trends</CardTitle>
+      <ExpandableCard
+        title="Wellness Trends"
+        headerRight={
           <div className="flex flex-wrap gap-1">
             {([
-              { id: 'rhr',     label: 'Resting HR' },
-              { id: 'hrv',     label: 'HRV' },
-              { id: 'sleep',   label: 'Sleep h' },
-              { id: 'score',   label: 'Sleep Score' },
-              { id: 'stress',  label: 'Stress' },
-              { id: 'battery', label: 'Body Battery' },
+              { id: 'rhr',         label: 'Resting HR' },
+              { id: 'hrv',         label: 'HRV' },
+              { id: 'sleep',       label: 'Sleep h' },
+              { id: 'score',       label: 'Sleep Score' },
+              { id: 'stress',      label: 'Stress' },
+              { id: 'battery',     label: 'Body Battery' },
               { id: 'vo2max',      label: 'VO₂ Max' },
               { id: 'fitness_age', label: 'Fitness Age' },
             ] as const).map(m => (
               <Button key={m.id} variant={wellMetric === m.id ? 'default' : 'ghost'} size="sm" onClick={() => setWellMetric(m.id)}>{m.label}</Button>
             ))}
           </div>
-        </CardHeader>
-        <CardContent><FitnessTrendChart wellness={sortedWellness} metric={wellMetric} age={age} /></CardContent>
-      </Card>
+        }
+      >
+        {(expanded) => <FitnessTrendChart wellness={sortedWellness} metric={wellMetric} age={age} height={expanded ? 500 : undefined} />}
+      </ExpandableCard>
 
       {/* Consistency + Steps */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle>Monthly Consistency</CardTitle></CardHeader>
-          <CardContent><ConsistencyChart data={consistency} /></CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle>Daily Steps</CardTitle></CardHeader>
-          <CardContent><StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} /></CardContent>
-        </Card>
+        <ExpandableCard title="Monthly Consistency">
+          {(expanded) => <ConsistencyChart data={consistency} height={expanded ? 480 : undefined} />}
+        </ExpandableCard>
+        <ExpandableCard title="Daily Steps">
+          {(expanded) => <StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} height={expanded ? 460 : undefined} />}
+        </ExpandableCard>
       </div>
 
       {/* Power & Performance */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle>Cycling Power</CardTitle></CardHeader>
-          <CardContent><PowerChart activities={activities} weightKg={weightKg} /></CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle>Weekly Calories</CardTitle></CardHeader>
-          <CardContent><CaloriesChart activities={activities} /></CardContent>
-        </Card>
+        <ExpandableCard title="Cycling Power">
+          {(expanded) => <PowerChart activities={activities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
+        </ExpandableCard>
+        <ExpandableCard title="Weekly Calories">
+          {(expanded) => <CaloriesChart activities={activities} height={expanded ? 480 : undefined} />}
+        </ExpandableCard>
       </div>
 
       {/* Power Zones + HR Zones */}
       {latestFtp && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader className="pb-2"><CardTitle>Power Zone Distribution</CardTitle></CardHeader>
-            <CardContent><PowerZonesChart activities={activities} ftp={latestFtp} /></CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2"><CardTitle>HR Zone Distribution</CardTitle></CardHeader>
-            <CardContent><HRZoneChart data={hrZones} /></CardContent>
-          </Card>
+          <ExpandableCard title="Power Zone Distribution">
+            {(expanded) => <PowerZonesChart activities={activities} ftp={latestFtp} height={expanded ? 480 : undefined} />}
+          </ExpandableCard>
+          <ExpandableCard title="HR Zone Distribution">
+            {(expanded) => <HRZoneChart data={hrZones} height={expanded ? 480 : undefined} />}
+          </ExpandableCard>
         </div>
       )}
 
       {/* Cadence */}
-      <Card>
-        <CardHeader className="flex-row items-center justify-between pb-2">
-          <CardTitle>Cadence</CardTitle>
+      <ExpandableCard
+        title="Cadence"
+        headerRight={
           <div className="flex gap-1">
             {(['running', 'cycling'] as const).map(s => (
               <Button key={s} variant={cadenceSport === s ? 'default' : 'ghost'} size="sm"
                 onClick={() => setCadenceSport(s)} className="capitalize">{s}</Button>
             ))}
           </div>
-        </CardHeader>
-        <CardContent><CadenceChart activities={activities} sport={cadenceSport} /></CardContent>
-      </Card>
+        }
+      >
+        {(expanded) => <CadenceChart activities={activities} sport={cadenceSport} height={expanded ? 480 : undefined} />}
+      </ExpandableCard>
 
       {/* Personal bests */}
       <Card>
