@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { DEFAULT_SETTINGS, UserSettings } from '@/lib/settings';
 
+export const dynamic = 'force-dynamic';
+
 const ROW_ID = 'default';
 
 export async function GET() {

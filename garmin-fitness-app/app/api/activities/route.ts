@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 
+export const dynamic = 'force-dynamic';
+
 // Postgres returns DECIMAL columns as strings — coerce to numbers here
 // so all downstream chart/computation code can safely do arithmetic.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
