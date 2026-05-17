@@ -1,7 +1,7 @@
 'use client';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { Activity } from '@/types';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { parseISO, format, startOfWeek } from 'date-fns';
 
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
@@ -21,6 +21,10 @@ function linearTrend(values: number[]): (number | null)[] {
 }
 
 export default function PowerChart({ activities, weightKg, height = 220 }: { activities: Activity[]; weightKg?: number | null; height?: number }) {
+  const [metric, setMetric] = useState<'W' | 'W/kg'>('W');
+  const useWkg = metric === 'W/kg' && weightKg != null && weightKg > 0;
+  const div = useWkg ? weightKg! : 1;
+
   const { chartData, ftp, avgAll, tickInterval } = useMemo(() => {
     const cycling = activities
       .filter(a => a.activity_type === 'cycling' && a.avg_power && a.avg_power > 0)
@@ -82,52 +86,114 @@ export default function PowerChart({ activities, weightKg, height = 220 }: { act
   );
 
   const hasNP = chartData.some(d => d.np != null);
-
   const ftpWkg = ftp && weightKg ? (ftp / weightKg).toFixed(2) : null;
+
+  // W/kg classification bands (Coggan scale)
+  const WKG_BANDS = [
+    { min: 0,    max: 2.0, label: 'Untrained',    color: '#6B7280' },
+    { min: 2.0,  max: 2.5, label: 'Fair',         color: '#60A5FA' },
+    { min: 2.5,  max: 3.2, label: 'Moderate',     color: '#34D399' },
+    { min: 3.2,  max: 4.0, label: 'Good',         color: '#FBBF24' },
+    { min: 4.0,  max: 5.0, label: 'Very Good',    color: '#F97316' },
+    { min: 5.0,  max: 99,  label: 'Exceptional',  color: '#EF4444' },
+  ];
+  const ftpCategory = ftpWkg
+    ? WKG_BANDS.find(b => Number(ftpWkg) >= b.min && Number(ftpWkg) < b.max)
+    : null;
 
   return (
     <div>
-      {ftp && (
-        <div className="flex items-center gap-3 mb-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-muted-foreground">Est. FTP:</span>
-            <span className="text-sm font-bold font-mono text-yellow-400">{ftp} W</span>
-          </div>
-          {ftpWkg && (
-            <div className="flex items-center gap-1">
-              <span className="text-sm font-bold font-mono text-orange-400">{ftpWkg} W/kg</span>
-              <span className="text-[10px] text-muted-foreground/60">@ {weightKg}kg</span>
+      {/* Header row: FTP + W/kg + toggle */}
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
+        {ftp && (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-muted-foreground">FTP:</span>
+              <span className="text-sm font-bold font-mono text-yellow-400">{ftp} W</span>
             </div>
-          )}
-          <span className="text-[10px] text-muted-foreground/60 italic">(best 20-min × 0.95)</span>
-        </div>
-      )}
+            {ftpWkg && (
+              <div className="flex items-center gap-1">
+                <span className="text-sm font-bold font-mono text-orange-400">{ftpWkg} W/kg</span>
+                {ftpCategory && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                    style={{ background: ftpCategory.color + '22', color: ftpCategory.color }}>
+                    {ftpCategory.label}
+                  </span>
+                )}
+              </div>
+            )}
+          </>
+        )}
+        {/* W / W/kg toggle */}
+        {weightKg && (
+          <div className="ml-auto flex rounded-md overflow-hidden border border-border text-[11px]">
+            {(['W', 'W/kg'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setMetric(m)}
+                className={`px-2 py-0.5 transition ${metric === m ? 'bg-foreground text-background font-semibold' : 'text-muted-foreground hover:bg-muted'}`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+        <ComposedChart
+          data={chartData.map(d => ({
+            ...d,
+            avgPower: Math.round((d.avgPower / div) * 100) / 100,
+            np:       d.np != null ? Math.round((d.np / div) * 100) / 100 : null,
+            maxPower: d.maxPower != null ? Math.round((d.maxPower / div) * 100) / 100 : null,
+            Trend:    d.Trend != null ? Math.round((d.Trend / div) * 100) / 100 : null,
+          }))}
+          margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
+        >
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />
-          <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} tickFormatter={v => `${v}W`} domain={['auto', 'auto']} tickCount={5} />
-          <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }}
+          <YAxis
+            tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={v => useWkg ? `${v}` : `${v}W`}
+            domain={['auto', 'auto']}
+            tickCount={5}
+          />
+          <Tooltip
+            contentStyle={TOOLTIP_STYLE}
+            labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }}
             formatter={(v: number, n: string) => {
-              if (n === 'Trend')    return [`${v} W`, 'Trend'];
-              if (n === 'avgPower') return [`${v} W`, 'Avg Power'];
-              if (n === 'np')       return [`${v} W`, 'Norm. Power (NP)'];
-              if (n === 'maxPower') return [`${v} W`, 'Peak Power'];
+              const unit = useWkg ? 'W/kg' : 'W';
+              if (n === 'Trend')    return [`${v} ${unit}`, 'Trend'];
+              if (n === 'avgPower') return [`${v} ${unit}`, 'Avg Power'];
+              if (n === 'np')       return [`${v} ${unit}`, 'Norm. Power (NP)'];
+              if (n === 'maxPower') return [`${v} ${unit}`, 'Peak Power'];
               return [v, n];
-            }} />
+            }}
+          />
           {ftp && (
-            <ReferenceLine y={ftp} stroke="hsl(45 93% 58%)" strokeDasharray="5 3" strokeWidth={1.5}
-              label={{ value: `FTP ${ftp}W`, position: 'insideTopRight', fontSize: 9, fill: 'hsl(45 93% 58%)' }} />
+            <ReferenceLine
+              y={Math.round((ftp / div) * 100) / 100}
+              stroke="hsl(45 93% 58%)" strokeDasharray="5 3" strokeWidth={1.5}
+              label={{ value: useWkg ? `FTP ${ftpWkg} W/kg` : `FTP ${ftp}W`, position: 'insideTopRight', fontSize: 9, fill: 'hsl(45 93% 58%)' }}
+            />
           )}
-          <ReferenceLine y={avgAll} stroke="hsl(240 5% 50%)" strokeDasharray="3 2" strokeWidth={1}
-            label={{ value: `Avg ${avgAll}W`, position: 'insideTopLeft', fontSize: 9, fill: 'hsl(240 5% 64.9%)' }} />
+          <ReferenceLine
+            y={Math.round((avgAll / div) * 100) / 100}
+            stroke="hsl(240 5% 50%)" strokeDasharray="3 2" strokeWidth={1}
+            label={{ value: useWkg ? `Avg ${(avgAll / div).toFixed(2)} W/kg` : `Avg ${avgAll}W`, position: 'insideTopLeft', fontSize: 9, fill: 'hsl(240 5% 64.9%)' }}
+          />
           <Bar dataKey="avgPower" name="avgPower" fill="#22C55E" opacity={0.75} radius={[3, 3, 0, 0]} />
           {hasNP && <Line dataKey="np" name="np" stroke="#4ADE80" strokeWidth={2} dot={{ r: 3, fill: '#4ADE80' }} />}
           <Line dataKey="Trend" stroke="hsl(0 0% 55%)" strokeWidth={1.5} dot={false} strokeDasharray="5 3" legendType="none" />
         </ComposedChart>
       </ResponsiveContainer>
       <p className="text-[10px] text-muted-foreground/60 mt-1 italic">
-        Green bars = duration-weighted avg power/week.{hasNP ? ' Bright green line = Normalized Power (NP) — better measure of true effort.' : ''} Yellow = FTP. Grey dashed = trend.
+        {useWkg
+          ? `W/kg = power ÷ ${weightKg} kg body weight. FTP categories: <2.0 untrained · 2.5 fair · 3.2 moderate · 4.0 good · 5.0+ exceptional.`
+          : `Green bars = duration-weighted avg power/week.${hasNP ? ' Bright green line = NP — better measure of true effort.' : ''} Yellow = FTP.`}
       </p>
     </div>
   );

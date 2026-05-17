@@ -14,6 +14,7 @@ import PowerZonesChart from './charts/PowerZonesChart';
 import CaloriesChart from './charts/CaloriesChart';
 import CadenceChart from './charts/CadenceChart';
 import EfficiencyFactorChart from './charts/EfficiencyFactorChart';
+import WeightChart from './charts/WeightChart';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -302,6 +303,17 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
         }
       >
         {(expanded) => <EfficiencyFactorChart data={efData} sport={efSport} height={expanded ? 480 : undefined} />}
+      </ExpandableCard>
+
+      {/* Weight */}
+      <ExpandableCard title="Weight Evolution">
+        {(expanded) => (
+          <WeightChart
+            wellness={sortedWellness}
+            heightCm={settings.heightCm}
+            height={expanded ? 480 : undefined}
+          />
+        )}
       </ExpandableCard>
 
       {/* Personal bests */}

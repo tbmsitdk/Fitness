@@ -15,6 +15,9 @@ function coerce(row: any) {
     sleep_score: row.sleep_score != null ? Number(row.sleep_score) : null,
     stress_score:row.stress_score!= null ? Number(row.stress_score): null,
     body_battery:row.body_battery!= null ? Number(row.body_battery): null,
+    weight_kg:   row.weight_kg   != null ? Number(row.weight_kg)   : null,
+    vo2max:      row.vo2max      != null ? Number(row.vo2max)      : null,
+    fitness_age: row.fitness_age != null ? Number(row.fitness_age) : null,
   };
 }
 
