@@ -229,7 +229,6 @@ def main():
     # garminconnect 0.3.x uses its own SSO client — no garth, no rate-limited
     # /oauth-service/oauth/exchange/user/2.0 endpoint.
     api = Garmin()
-    weight_kg = None
     _LOGIN_WAITS = [30, 60, 120]
     for attempt in range(len(_LOGIN_WAITS) + 1):
         try:
@@ -251,13 +250,31 @@ def main():
                 print("    to regenerate the token store (0.3.x uses a new format).")
                 sys.exit(1)
 
-    # ── Weight from user settings (non-fatal)
+    # ── Daily weight from body-composition endpoint (non-fatal)
+    # Builds a date→kg map so each wellness record gets its own measurement.
+    # Falls back to the user-profile static weight only when no daily data exists.
+    weight_by_date: dict[str, float] = {}
+    fallback_weight_kg: float | None = None
     try:
-        settings = api.connectapi("/userprofile-service/userprofile/user-settings") or {}
-        weight_g = (settings.get("userData") or {}).get("weight")
-        weight_kg = round(float(weight_g) / 1000, 1) if weight_g else None
-        if weight_kg:
-            print(f"  ✓ Weight: {weight_kg}kg")
+        today_str = date.today().isoformat()
+        start_str = (date.today() - timedelta(days=SYNC_DAYS)).isoformat()
+        comp = api.get_body_composition(start_str, today_str) or {}
+        entries = comp.get("dateWeightList") or comp.get("totalAverage") or []
+        if isinstance(entries, list):
+            for entry in entries:
+                d = entry.get("calendarDate") or entry.get("date")
+                w = entry.get("weight")  # grams
+                if d and w:
+                    weight_by_date[d] = round(float(w) / 1000, 1)
+        if weight_by_date:
+            print(f"  ✓ Weight: {len(weight_by_date)} daily measurements loaded")
+        else:
+            # Try user-profile static weight as fallback
+            prof = api.connectapi("/userprofile-service/userprofile/user-settings") or {}
+            weight_g = (prof.get("userData") or {}).get("weight")
+            fallback_weight_kg = round(float(weight_g) / 1000, 1) if weight_g else None
+            if fallback_weight_kg:
+                print(f"  ✓ Weight (profile fallback): {fallback_weight_kg}kg")
     except Exception as exc:
         print(f"  ⚠  Could not fetch weight ({exc})")
 
@@ -287,10 +304,12 @@ def main():
         activities = _parse_activities(raw)
         print(f"  ✓ {len(activities)} activities")
         _enrich_power_details(api, activities)
-        if weight_kg:
-            for a in activities:
-                if a["activity_type"] == "cycling":
-                    a["weight_kg"] = weight_kg
+        for a in activities:
+            if a["activity_type"] == "cycling":
+                act_date = (a.get("date") or "")[:10]
+                w = weight_by_date.get(act_date) or fallback_weight_kg
+                if w:
+                    a["weight_kg"] = w
     except Exception as exc:
         print(f"  ✗ Activities fetch failed: {exc}")
         activities = []
@@ -304,8 +323,9 @@ def main():
         ds = d.isoformat()
         print(f"  {ds}…", end=" ", flush=True)
         rec = _fetch_wellness(api, ds)
-        if weight_kg:
-            rec["weight_kg"] = weight_kg
+        day_weight = weight_by_date.get(ds) or fallback_weight_kg
+        if day_weight:
+            rec["weight_kg"] = day_weight
         wellness.append(rec)
         fields = [k for k in rec if k != "date"]
         print(f"({', '.join(fields) or 'no data'})")
