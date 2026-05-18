@@ -5,6 +5,9 @@ export const dynamic = 'force-dynamic';
 
 // Temporary one-off endpoint — will be deleted after use
 export async function POST() {
+  const dbVars = Object.keys(process.env).filter(k =>
+    k.includes('POSTGRES') || k.includes('DATABASE') || k.includes('NEON') || k.includes('PG')
+  );
   try {
     const result = await sql`
       UPDATE wellness
@@ -13,8 +16,8 @@ export async function POST() {
         AND weight_kg = 69.1
       RETURNING date
     `;
-    return NextResponse.json({ fixed: result.rowCount, dates: result.rows.map(r => r.date) });
+    return NextResponse.json({ fixed: result.rowCount, dates: result.rows.map(r => r.date), dbVars });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return NextResponse.json({ error: String(e), dbVars }, { status: 500 });
   }
 }
