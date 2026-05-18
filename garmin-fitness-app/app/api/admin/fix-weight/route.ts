@@ -5,8 +5,9 @@ export const dynamic = 'force-dynamic';
 
 // Temporary one-off endpoint — will be deleted after use
 export async function POST() {
-  const dbVars = Object.keys(process.env).filter(k =>
-    k.includes('POSTGRES') || k.includes('DATABASE') || k.includes('NEON') || k.includes('PG') || k.includes('URL') || k.includes('DSN')
+  const allKeys = Object.keys(process.env).sort();
+  const dbVars = allKeys.filter(k =>
+    k.includes('POSTGRES') || k.includes('DATABASE') || k.includes('NEON') || k.includes('PG') || k.includes('SQL')
   );
   try {
     const result = await sql`
@@ -16,8 +17,8 @@ export async function POST() {
         AND weight_kg = 69.1
       RETURNING date
     `;
-    return NextResponse.json({ fixed: result.rowCount, dates: result.rows.map(r => r.date), dbVars });
+    return NextResponse.json({ fixed: result.rowCount, dates: result.rows.map(r => r.date), dbVars, allKeys });
   } catch (e) {
-    return NextResponse.json({ error: String(e), dbVars }, { status: 500 });
+    return NextResponse.json({ error: String(e), dbVars, allKeys }, { status: 500 });
   }
 }
