@@ -15,6 +15,8 @@ import CaloriesChart from './charts/CaloriesChart';
 import CadenceChart from './charts/CadenceChart';
 import EfficiencyFactorChart from './charts/EfficiencyFactorChart';
 import WeightChart from './charts/WeightChart';
+import TrainingHeatmap from './charts/TrainingHeatmap';
+import SleepPerformanceChart from './charts/SleepPerformanceChart';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -180,6 +182,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
         </div>
       </div>
 
+      {/* Training heatmap — uses full history, not period-filtered */}
+      <ExpandableCard title="Training Heatmap">
+        {() => <TrainingHeatmap activities={allActivities} />}
+      </ExpandableCard>
+
       {/* Weekly volume */}
       <ExpandableCard
         title="Weekly Volume"
@@ -241,6 +248,17 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
         }
       >
         {(expanded) => <FitnessTrendChart wellness={sortedWellness} metric={wellMetric} age={age} height={expanded ? 500 : undefined} />}
+      </ExpandableCard>
+
+      {/* Sleep × Performance correlation */}
+      <ExpandableCard title="Sleep × Performance">
+        {(expanded) => (
+          <SleepPerformanceChart
+            activities={allActivities}
+            wellness={allWellness}
+            height={expanded ? 480 : undefined}
+          />
+        )}
       </ExpandableCard>
 
       {/* Consistency + Steps */}
