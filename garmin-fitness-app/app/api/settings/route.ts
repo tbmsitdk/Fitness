@@ -26,9 +26,8 @@ export async function GET() {
     };
     return NextResponse.json(settings);
   } catch (error) {
-    // Table not yet created — return defaults silently
     console.error('GET /api/settings:', error);
-    return NextResponse.json(DEFAULT_SETTINGS);
+    return NextResponse.json({ error: 'DB unavailable' }, { status: 503 });
   }
 }
 
