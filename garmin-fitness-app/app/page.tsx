@@ -6,6 +6,7 @@ import Dashboard from '@/components/Dashboard';
 import AICoach from '@/components/AICoach';
 import SettingsPanel from '@/components/Settings';
 import InsightCards from '@/components/InsightCards';
+import SyncStatus from '@/components/SyncStatus';
 import { Activity, WellnessRecord } from '@/types';
 import { Activity as ActivityIcon, BarChart3, Sparkles, Upload as UploadIcon, Settings as SettingsIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -175,7 +176,10 @@ export default function Home() {
             <div className="w-5 h-5 border border-border border-t-foreground rounded-full animate-spin" />
           </div>
         ) : activeTab === 'upload' ? (
-          <Upload onUploadComplete={onUploadComplete} />
+          <div className="space-y-6">
+            <SyncStatus />
+            <Upload onUploadComplete={onUploadComplete} />
+          </div>
         ) : activeTab === 'dashboard' ? (
           <>
             {hasData && <InsightCards />}

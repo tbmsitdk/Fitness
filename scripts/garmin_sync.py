@@ -15,6 +15,7 @@ Optional:
 """
 
 import base64, io, os, sys, tarfile, time
+from datetime import datetime as _dt
 
 import requests
 from garminconnect import Garmin
@@ -211,8 +212,30 @@ def _fetch_wellness(api: Garmin, ds: str) -> dict:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def _post_sync_log(status, sync_days, activities_synced, wellness_synced, duration_seconds, error_message=None):
+    """Non-fatal — sync still counts as done even if logging fails."""
+    try:
+        requests.post(
+            f"{APP_URL}/api/sync-log",
+            headers=HEADERS,
+            json={
+                "status": status,
+                "sync_days": sync_days,
+                "activities_synced": activities_synced,
+                "wellness_synced": wellness_synced,
+                "duration_seconds": duration_seconds,
+                "error_message": error_message,
+            },
+            timeout=10,
+        )
+    except Exception as exc:
+        print(f"  ⚠  Could not write sync log ({exc})")
+
+
 def main():
     from datetime import date, timedelta
+
+    _start = time.time()
 
     # ── Extract token store from base64 archive
     print("Loading Garmin auth tokens…")
@@ -350,10 +373,20 @@ def main():
                       json={"activities": activities, "wellness": wellness}, timeout=30)
     r.raise_for_status()
     result = r.json()
-    print(f"  ✓ {result.get('insertedActivities', 0)} activities, "
-          f"{result.get('insertedWellness', 0)} wellness records upserted")
-    print("\nSync complete.")
+    acts_synced = result.get('insertedActivities', 0)
+    well_synced = result.get('insertedWellness', 0)
+    print(f"  ✓ {acts_synced} activities, {well_synced} wellness records upserted")
+
+    duration = int(time.time() - _start)
+    _post_sync_log("success", SYNC_DAYS, acts_synced, well_synced, duration)
+    print(f"\nSync complete in {duration}s.")
 
 
 if __name__ == "__main__":
-    main()
+    _t0 = time.time()
+    try:
+        main()
+    except Exception as exc:
+        duration = int(time.time() - _t0)
+        _post_sync_log("error", SYNC_DAYS, 0, 0, duration, str(exc))
+        raise
