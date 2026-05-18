@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 // Temporary one-off endpoint — will be deleted after use
 export async function POST() {
   const dbVars = Object.keys(process.env).filter(k =>
-    k.includes('POSTGRES') || k.includes('DATABASE') || k.includes('NEON') || k.includes('PG')
+    k.includes('POSTGRES') || k.includes('DATABASE') || k.includes('NEON') || k.includes('PG') || k.includes('URL') || k.includes('DSN')
   );
   try {
     const result = await sql`
