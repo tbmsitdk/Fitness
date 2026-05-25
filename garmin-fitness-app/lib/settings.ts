@@ -1,7 +1,6 @@
 export interface UserSettings {
   birthYear: number;
   sex: 'male' | 'female';
-  weightKg: number | null;
   heightCm: number | null;
   maxHR: number | null;
   thresholdHR: number | null;
@@ -13,7 +12,6 @@ const STORAGE_KEY = 'fitness_user_settings';
 export const DEFAULT_SETTINGS: UserSettings = {
   birthYear: new Date().getFullYear() - 45,
   sex: 'male',
-  weightKg: null,
   heightCm: null,
   maxHR: null,
   thresholdHR: null,
@@ -34,9 +32,9 @@ export function getThresholdHR(s: UserSettings): number {
   return Math.round(getMaxHR(s) * 0.85);
 }
 
-export function getBMI(s: UserSettings): number | null {
-  if (!s.weightKg || !s.heightCm) return null;
-  return Math.round((s.weightKg / ((s.heightCm / 100) ** 2)) * 10) / 10;
+export function getBMI(weightKg: number | null, heightCm: number | null): number | null {
+  if (!weightKg || !heightCm) return null;
+  return Math.round((weightKg / ((heightCm / 100) ** 2)) * 10) / 10;
 }
 
 export function loadSettings(): UserSettings {

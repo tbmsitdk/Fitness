@@ -51,7 +51,7 @@ export async function generateWeeklySummary(
     user_profile: userSettings ? {
       age:           userSettings.birthYear ? new Date().getFullYear() - userSettings.birthYear : null,
       sex:           userSettings.sex,
-      weight_kg:     userSettings.weightKg,
+      weight_kg:     null, // sourced from Garmin wellness data
       height_cm:     userSettings.heightCm,
       max_hr:        userSettings.maxHR,
       threshold_hr:  userSettings.thresholdHR,
@@ -127,7 +127,7 @@ export async function* streamChat(
 ${JSON.stringify({
     age:          userSettings.birthYear ? new Date().getFullYear() - userSettings.birthYear : null,
     sex:          userSettings.sex,
-    weight_kg:    userSettings.weightKg,
+    weight_kg:    null, // sourced from Garmin wellness data
     max_hr:       userSettings.maxHR,
     threshold_hr: userSettings.thresholdHR,
   }, null, 2)}

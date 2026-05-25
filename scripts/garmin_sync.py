@@ -20,7 +20,6 @@ from datetime import datetime as _dt
 import requests
 from garminconnect import Garmin
 
-GARMIN_TOKENS        = os.environ["GARMIN_TOKENS"]
 APP_URL              = os.environ["APP_URL"].rstrip("/")
 SYNC_DAYS            = int(os.environ.get("SYNC_DAYS", "2"))
 SYNC_SECRET          = os.environ.get("SYNC_SECRET", "")
@@ -237,16 +236,51 @@ def main():
 
     _start = time.time()
 
-    # ── Extract token store from base64 archive
+    # ── Load token store: try DB first (stays fresh after each sync), fall back to secret
     print("Loading Garmin auth tokens…")
-    buf = io.BytesIO(base64.b64decode(GARMIN_TOKENS))
-    with tarfile.open(fileobj=buf, mode="r:gz") as tar:
-        tar.extractall("/tmp")
 
-    if not os.path.exists(TOKEN_DIR):
-        print(f"  ✗ Token directory not found at {TOKEN_DIR}")
-        print("    Re-run scripts/garmin_get_tokens.py to generate new tokens.")
-        sys.exit(1)
+    def _extract_tokens(b64_data: str) -> bool:
+        """Extract base64-encoded tarball into TOKEN_DIR. Returns True on success."""
+        try:
+            buf = io.BytesIO(base64.b64decode(b64_data))
+            with tarfile.open(fileobj=buf, mode="r:gz") as tar:
+                tar.extractall("/tmp")
+            return os.path.exists(TOKEN_DIR)
+        except Exception as exc:
+            print(f"  ⚠  Failed to extract tokens: {exc}")
+            return False
+
+    token_loaded = False
+
+    # 1. Try DB (has the most recently refreshed tokens)
+    try:
+        r = requests.get(
+            f"{APP_URL}/api/garmin-tokens",
+            headers=HEADERS,
+            timeout=10,
+        )
+        if r.ok:
+            db_token = r.json().get("token_data")
+            if db_token:
+                if _extract_tokens(db_token):
+                    print("  ✓ Tokens loaded from DB (most recent)")
+                    token_loaded = True
+                else:
+                    print("  ⚠  DB tokens corrupt, falling back to secret")
+    except Exception as exc:
+        print(f"  ⚠  Could not reach token API ({exc}), falling back to secret")
+
+    # 2. Fall back to GARMIN_TOKENS env var (GitHub Secret)
+    if not token_loaded:
+        garmin_tokens_env = os.environ.get("GARMIN_TOKENS", "")
+        if not garmin_tokens_env:
+            print("  ✗ No token source available (DB empty and GARMIN_TOKENS not set)")
+            sys.exit(1)
+        if not _extract_tokens(garmin_tokens_env):
+            print(f"  ✗ Token directory not found at {TOKEN_DIR} after extracting secret")
+            print("    Re-run the Regenerate Garmin Tokens workflow to refresh.")
+            sys.exit(1)
+        print("  ✓ Tokens loaded from GitHub Secret")
 
     # ── Login (loads tokens + fetches profile via SSO, not OAuth exchange)
     # garminconnect 0.3.x uses its own SSO client — no garth, no rate-limited
@@ -257,6 +291,24 @@ def main():
         try:
             api.login(tokenstore=TOKEN_DIR)
             print(f"  ✓ Logged in as: {api.display_name}")
+            # ── Save refreshed token store back to DB so next run uses up-to-date tokens
+            try:
+                buf_out = io.BytesIO()
+                with tarfile.open(fileobj=buf_out, mode="w:gz") as tar:
+                    tar.add(TOKEN_DIR, arcname="garmin_token_store")
+                fresh_b64 = base64.b64encode(buf_out.getvalue()).decode()
+                r = requests.put(
+                    f"{APP_URL}/api/garmin-tokens",
+                    headers=HEADERS,
+                    json={"token_data": fresh_b64},
+                    timeout=10,
+                )
+                if r.ok:
+                    print("  ✓ Refreshed tokens saved to DB")
+                else:
+                    print(f"  ⚠  Could not save tokens to DB: {r.status_code}")
+            except Exception as exc:
+                print(f"  ⚠  Token save failed (non-fatal): {exc}")
             break
         except Exception as exc:
             s = str(exc).lower()
@@ -269,8 +321,9 @@ def main():
                 time.sleep(wait)
             else:
                 print(f"  ✗ Login failed: {exc}")
-                print("    If this persists, re-run scripts/garmin_get_tokens.py with garminconnect>=0.3.0")
-                print("    to regenerate the token store (0.3.x uses a new format).")
+                print("    Token store is likely in the old 0.2.x format.")
+                print("    Go to GitHub Actions → 'Regenerate Garmin Tokens' → Run workflow,")
+                print("    submit the SMS code at <APP_URL>/garmin-setup, then update GARMIN_TOKENS.")
                 sys.exit(1)
 
     # ── Daily weight from body-composition endpoint (non-fatal)

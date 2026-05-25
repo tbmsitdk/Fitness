@@ -101,28 +101,14 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
     return computeWeeklyVolume(prevActivities, thresholdHR);
   }, [prevActivities, thresholdHR, showYoY]);
 
-  // Weight priority:
-  // 1. Most recent Garmin-synced weight that is less than 3 months old (most accurate, device-measured)
-  // 2. Settings weight (manual entry, used when Garmin data is stale or absent)
-  // 3. Any Garmin-synced weight regardless of age (last resort)
+  // Most recent Garmin-synced weight (newest first, any age)
   const weightKg = useMemo(() => {
-    const threeMonthsAgo = Date.now() - 90 * 86400000;
-    const allSorted = [...allWellness].sort((a, b) => a.date.localeCompare(b.date));
-    // Search newest-first for a recent Garmin weight
-    for (let i = allSorted.length - 1; i >= 0; i--) {
-      const w = allSorted[i];
-      if (w.weight_kg != null && new Date(w.date).getTime() >= threeMonthsAgo) {
-        return w.weight_kg as number;
-      }
-    }
-    // No recent Garmin weight — use settings
-    if (settings.weightKg && settings.weightKg > 0) return settings.weightKg;
-    // Fall back to any Garmin weight, however old
-    for (let i = allSorted.length - 1; i >= 0; i--) {
-      if (allSorted[i].weight_kg != null) return allSorted[i].weight_kg as number;
+    const allSorted = [...allWellness].sort((a, b) => b.date.localeCompare(a.date));
+    for (const w of allSorted) {
+      if (w.weight_kg != null) return w.weight_kg as number;
     }
     return null;
-  }, [allWellness, settings.weightKg]);
+  }, [allWellness]);
 
   // FTP from most recent cycling activity that has one
   const latestFtp = useMemo(() => {

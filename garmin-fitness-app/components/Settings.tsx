@@ -1,6 +1,6 @@
 'use client';
-import { useState } from 'react';
-import { UserSettings, saveSettings, getAge, getMaxHR, getThresholdHR, getBMI } from '@/lib/settings';
+import { useState, useEffect } from 'react';
+import { UserSettings, saveSettings, getAge, getMaxHR, getThresholdHR } from '@/lib/settings';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Info } from 'lucide-react';
@@ -48,9 +48,16 @@ function NumericInput({ value, onChange, placeholder, min, max, step = 1 }: {
 export default function Settings({ settings, onSave }: Props) {
   const [form, setForm] = useState<UserSettings>({ ...settings });
   const [saved, setSaved] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // Sync form when async DB fetch completes, but not if user has unsaved edits
+  useEffect(() => {
+    if (!isDirty) setForm({ ...settings });
+  }, [settings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function update<K extends keyof UserSettings>(key: K, val: UserSettings[K]) {
     setForm(prev => ({ ...prev, [key]: val }));
+    setIsDirty(true);
     setSaved(false);
   }
 
@@ -65,14 +72,14 @@ export default function Settings({ settings, onSave }: Props) {
         body: JSON.stringify(form),
       });
     } catch { /* non-fatal: localStorage copy already saved */ }
+    setIsDirty(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   }
 
-  const age    = getAge(form);
-  const maxHR  = getMaxHR(form);
-  const thrHR  = getThresholdHR(form);
-  const bmi    = getBMI(form);
+  const age   = getAge(form);
+  const maxHR = getMaxHR(form);
+  const thrHR = getThresholdHR(form);
 
   return (
     <div className="max-w-lg mx-auto space-y-4">
@@ -104,10 +111,7 @@ export default function Settings({ settings, onSave }: Props) {
               <option value="female">Female</option>
             </select>
           </Field>
-          <Field label="Weight (kg)" hint="Used to calculate W/kg power ratios for cycling.">
-            <NumericInput value={form.weightKg} onChange={v => update('weightKg', v)} placeholder="e.g. 75" min={30} max={200} step={0.1} />
-          </Field>
-          <Field label="Height (cm)" hint="Used to calculate BMI.">
+          <Field label="Height (cm)" hint="Used to calculate BMI from Garmin weight data.">
             <NumericInput value={form.heightCm} onChange={v => update('heightCm', v)} placeholder="e.g. 178" min={120} max={230} />
           </Field>
         </CardContent>
@@ -143,7 +147,6 @@ export default function Settings({ settings, onSave }: Props) {
           <div className="flex justify-between"><span className="text-muted-foreground">Age</span><span className="font-mono font-medium">{age} yrs</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Max HR</span><span className="font-mono font-medium">{maxHR} bpm</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Threshold HR</span><span className="font-mono font-medium">{thrHR} bpm</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">BMI</span><span className="font-mono font-medium">{bmi ?? '—'}</span></div>
           <div className="flex justify-between col-span-2">
             <span className="text-muted-foreground">Zone 2 HR range</span>
             <span className="font-mono font-medium">{Math.round(maxHR * 0.60)}–{Math.round(maxHR * 0.70)} bpm</span>
