@@ -408,36 +408,32 @@ def main():
         print(f"  ✗ Activities fetch failed: {exc}")
         activities = []
 
-    # ── Fetch VO2max + fitness age once (updates infrequently — apply to all days in window)
-    # Try last 3 days to find a non-empty response
-    current_vo2max      = None
+    # ── Fetch fitness age from Garmin profile (separate endpoint from VO2max)
+    # VO2max is captured per-day in _fetch_wellness via get_max_metrics on activity days
     current_fitness_age = None
-    for days_back in range(3):
-        probe_date = (today - timedelta(days=days_back)).isoformat()
+    for fa_endpoint in (
+        "/fitnessage-service/fitnessage/profile",
+        f"/userstats-service/fitness/age/{api.display_name}" if api.display_name else None,
+        "/userprofile-service/userprofile/personal-information",
+    ):
+        if not fa_endpoint:
+            continue
         try:
-            mm = api.get_max_metrics(probe_date) or {}
-            if isinstance(mm, list) and mm:
-                mm = mm[0]
-            generic = mm.get("generic") or {}
-            if not generic:
-                continue  # try previous day
-            v2 = generic.get("vo2MaxPreciseValue") or generic.get("vo2MaxValue")
-            if v2 and float(v2) > 0:
-                current_vo2max = round(float(v2), 1)
-                print(f"\n  ✓ VO2max ({probe_date}): {current_vo2max} ml/kg/min")
+            resp = api.connectapi(fa_endpoint) or {}
+            # Try common key names across endpoints
             for fa_key in ("fitnessAge", "fitnessAgeValue", "fitnessAgeRounded",
-                           "fitness_age", "fitnessAgeDTO"):
-                fa = generic.get(fa_key)
-                if fa and int(float(fa)) > 0:
+                           "value", "fitness_age", "fitnessAgeDTO"):
+                fa = resp.get(fa_key)
+                if fa is not None and int(float(fa)) > 0:
                     current_fitness_age = int(float(fa))
-                    print(f"  ✓ Fitness age ({probe_date}): {current_fitness_age} yrs")
+                    print(f"\n  ✓ Fitness age: {current_fitness_age} yrs (from {fa_endpoint})")
                     break
-            if current_vo2max or current_fitness_age:
-                break  # found data, stop probing
-            # Log all keys if still nothing to help diagnose
-            print(f"\n  [debug] get_max_metrics({probe_date}) keys: {list(generic.keys())}")
-        except Exception as exc:
-            print(f"\n  ⚠  get_max_metrics({probe_date}) failed: {exc}")
+            if current_fitness_age:
+                break
+        except Exception:
+            pass
+    if not current_fitness_age:
+        print(f"\n  ⚠  Fitness age not found — will backfill from DB on next sync")
 
     # ── Wellness (one day at a time; batch-flush every 30 days on large backfills)
     print("\nFetching wellness data…")
@@ -467,6 +463,15 @@ def main():
             if r.ok:
                 print(f"  → flushed {len(wellness)} wellness records")
             wellness = []
+
+    # ── Backfill VO2max: propagate the most recent captured value to all days missing it
+    # (get_max_metrics only returns data on days with Garmin activities)
+    latest_vo2max = next((r["vo2max"] for r in reversed(wellness) if r.get("vo2max")), None)
+    if latest_vo2max:
+        for rec in wellness:
+            if "vo2max" not in rec:
+                rec["vo2max"] = latest_vo2max
+        print(f"  ✓ VO2max {latest_vo2max} backfilled to all days in window")
 
     # ── Ensure DB tables exist
     print("\nInitialising database…")
