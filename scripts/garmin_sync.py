@@ -410,41 +410,40 @@ def main():
 
     # ── Fetch fitness age (try several endpoints, log results for diagnosis)
     current_fitness_age = None
-    fa_endpoints = [
-        "/fitnessage-service/fitnessage/profile",
-        f"/userstats-service/fitness/age/{api.display_name}" if api.display_name else None,
-        f"/wellness-service/wellness/fitnessAge/{api.display_name}" if api.display_name else None,
-        "/userprofile-service/userprofile/personal-information",
-        f"/userprofile-service/userprofile/{api.display_name}" if api.display_name else None,
-    ]
-    print("\n  Searching for fitness age…")
-    for fa_endpoint in fa_endpoints:
-        if not fa_endpoint:
-            continue
-        try:
-            resp = api.connectapi(fa_endpoint) or {}
-            # Print top-level keys so we can find fitness age field
-            top_keys = list(resp.keys()) if isinstance(resp, dict) else type(resp).__name__
-            print(f"    {fa_endpoint} → keys: {top_keys}")
-            # Search recursively one level deep
-            for fa_key in ("fitnessAge", "fitnessAgeValue", "fitnessAgeRounded",
-                           "value", "fitness_age", "fitnessAgeDTO", "currentFitnessAge"):
+    print("\n  Fetching fitness age…")
+    try:
+        resp = api.connectapi("/userprofile-service/userprofile/personal-information") or {}
+        biometric = resp.get("biometricProfile") or {}
+        print(f"    biometricProfile keys: {list(biometric.keys())}")
+        for fa_key in ("fitnessAge", "fitnessAgeValue", "fitnessAgeRounded",
+                       "currentFitnessAge", "fitness_age", "athleticAge"):
+            fa = biometric.get(fa_key)
+            if fa is not None:
+                try:
+                    fv = int(float(fa))
+                    if fv > 0:
+                        current_fitness_age = fv
+                        print(f"    ✓ Fitness age: {fv} yrs (key='{fa_key}')")
+                        break
+                except (TypeError, ValueError):
+                    pass
+        if not current_fitness_age:
+            # Also check top-level keys
+            for fa_key in ("fitnessAge", "fitnessAgeValue", "currentFitnessAge"):
                 fa = resp.get(fa_key)
                 if fa is not None:
                     try:
                         fv = int(float(fa))
                         if fv > 0:
                             current_fitness_age = fv
-                            print(f"    ✓ Found fitness age {fv} at key '{fa_key}'")
+                            print(f"    ✓ Fitness age: {fv} yrs (top-level key='{fa_key}')")
                             break
                     except (TypeError, ValueError):
                         pass
-            if current_fitness_age:
-                break
-        except Exception as exc:
-            print(f"    {fa_endpoint} → error: {exc}")
+    except Exception as exc:
+        print(f"    personal-information error: {exc}")
     if not current_fitness_age:
-        print("  ⚠  Fitness age not found in any endpoint")
+        print("  ⚠  Fitness age not found")
 
     # ── Wellness (one day at a time; batch-flush every 30 days on large backfills)
     print("\nFetching wellness data…")
@@ -458,9 +457,7 @@ def main():
         day_weight = weight_by_date.get(ds) or fallback_weight_kg
         if day_weight:
             rec["weight_kg"] = day_weight
-        # Apply VO2max + fitness age to every day (updates infrequently, not daily)
-        if current_vo2max and "vo2max" not in rec:
-            rec["vo2max"] = current_vo2max
+        # Apply fitness age to every day (VO2max is captured per-day via _fetch_wellness)
         if current_fitness_age and "fitness_age" not in rec:
             rec["fitness_age"] = current_fitness_age
         wellness.append(rec)
