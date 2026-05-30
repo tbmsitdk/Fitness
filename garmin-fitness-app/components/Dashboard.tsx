@@ -226,7 +226,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               { id: 'hrv',         label: 'HRV' },
               { id: 'sleep',       label: 'Sleep h' },
               { id: 'score',       label: 'Sleep Score' },
-              { id: 'stress',      label: 'Stress' },
               { id: 'battery',     label: 'Body Battery' },
               { id: 'vo2max',      label: 'VO₂ Max' },
               { id: 'fitness_age', label: 'Fitness Age' },
