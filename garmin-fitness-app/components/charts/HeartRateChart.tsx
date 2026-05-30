@@ -162,7 +162,6 @@ export default function HeartRateChart({ wellness, height = 280 }: Props) {
               dot={{ r: 2, fill: '#EF4444', fillOpacity: 0.35, strokeWidth: 0 }}
               activeDot={{ r: 4 }}
               connectNulls={false}
-              // @ts-expect-error custom unit prop for tooltip
               unit=" bpm"
             />
           )}
@@ -176,7 +175,6 @@ export default function HeartRateChart({ wellness, height = 280 }: Props) {
               dot={{ r: 2, fill: '#A78BFA', fillOpacity: 0.35, strokeWidth: 0 }}
               activeDot={{ r: 4 }}
               connectNulls={false}
-              // @ts-expect-error custom unit prop for tooltip
               unit=" ms"
             />
           )}
@@ -192,7 +190,6 @@ export default function HeartRateChart({ wellness, height = 280 }: Props) {
               dot={false}
               activeDot={false}
               connectNulls
-              // @ts-expect-error custom unit prop for tooltip
               unit=" bpm"
             />
           )}
@@ -206,7 +203,6 @@ export default function HeartRateChart({ wellness, height = 280 }: Props) {
               dot={false}
               activeDot={false}
               connectNulls
-              // @ts-expect-error custom unit prop for tooltip
               unit=" ms"
             />
           )}
