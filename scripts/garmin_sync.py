@@ -410,40 +410,23 @@ def main():
 
     # ── Fetch fitness age (try several endpoints, log results for diagnosis)
     current_fitness_age = None
-    print("\n  Fetching fitness age…")
+    # biometricProfile has vo2Max but no fitness age — grab vo2Max as a profile fallback
+    # Fitness age is not exposed by Garmin API for Vivosmart 5
+    print("\n  Fetching biometric profile…")
     try:
         resp = api.connectapi("/userprofile-service/userprofile/personal-information") or {}
         biometric = resp.get("biometricProfile") or {}
-        print(f"    biometricProfile keys: {list(biometric.keys())}")
-        for fa_key in ("fitnessAge", "fitnessAgeValue", "fitnessAgeRounded",
-                       "currentFitnessAge", "fitness_age", "athleticAge"):
-            fa = biometric.get(fa_key)
-            if fa is not None:
-                try:
-                    fv = int(float(fa))
-                    if fv > 0:
-                        current_fitness_age = fv
-                        print(f"    ✓ Fitness age: {fv} yrs (key='{fa_key}')")
-                        break
-                except (TypeError, ValueError):
-                    pass
-        if not current_fitness_age:
-            # Also check top-level keys
-            for fa_key in ("fitnessAge", "fitnessAgeValue", "currentFitnessAge"):
-                fa = resp.get(fa_key)
-                if fa is not None:
-                    try:
-                        fv = int(float(fa))
-                        if fv > 0:
-                            current_fitness_age = fv
-                            print(f"    ✓ Fitness age: {fv} yrs (top-level key='{fa_key}')")
-                            break
-                    except (TypeError, ValueError):
-                        pass
+        # Grab vo2Max as profile-level fallback (used if per-day get_max_metrics fails)
+        bv2 = biometric.get("vo2Max")
+        if bv2 and float(bv2) > 0:
+            print(f"  ✓ VO2max from biometric profile: {round(float(bv2), 1)} ml/kg/min")
+            # Store for backfill step — will be used if per-day value is missing
+            _profile_vo2max = round(float(bv2), 1)
+        else:
+            _profile_vo2max = None
     except Exception as exc:
-        print(f"    personal-information error: {exc}")
-    if not current_fitness_age:
-        print("  ⚠  Fitness age not found")
+        print(f"  ⚠  biometric profile error: {exc}")
+        _profile_vo2max = None
 
     # ── Wellness (one day at a time; batch-flush every 30 days on large backfills)
     print("\nFetching wellness data…")
@@ -457,9 +440,7 @@ def main():
         day_weight = weight_by_date.get(ds) or fallback_weight_kg
         if day_weight:
             rec["weight_kg"] = day_weight
-        # Apply fitness age to every day (VO2max is captured per-day via _fetch_wellness)
-        if current_fitness_age and "fitness_age" not in rec:
-            rec["fitness_age"] = current_fitness_age
+        pass  # VO2max captured per-day; fitness age not available via Garmin API for Vivosmart 5
         wellness.append(rec)
         fields = [k for k in rec if k != "date"]
         print(f"({', '.join(fields) or 'no data'})")
@@ -472,9 +453,11 @@ def main():
                 print(f"  → flushed {len(wellness)} wellness records")
             wellness = []
 
-    # ── Backfill VO2max: propagate the most recent captured value to all days missing it
-    # (get_max_metrics only returns data on days with Garmin activities)
-    latest_vo2max = next((r["vo2max"] for r in reversed(wellness) if r.get("vo2max")), None)
+    # ── Backfill VO2max: use most recent per-day value, fall back to biometric profile
+    latest_vo2max = (
+        next((r["vo2max"] for r in reversed(wellness) if r.get("vo2max")), None)
+        or _profile_vo2max
+    )
     if latest_vo2max:
         for rec in wellness:
             if "vo2max" not in rec:
