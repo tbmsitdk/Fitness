@@ -1,7 +1,7 @@
 'use client';
 import {
   ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend,
+  ResponsiveContainer, Legend, ReferenceLine,
 } from 'recharts';
 import { WellnessRecord, Activity } from '@/types';
 import { format, parseISO } from 'date-fns';
