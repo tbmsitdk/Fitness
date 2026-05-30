@@ -408,6 +408,20 @@ def main():
         print(f"  ✗ Activities fetch failed: {exc}")
         activities = []
 
+    # ── Fetch VO2max once (updates infrequently — apply to all days in window)
+    current_vo2max = None
+    try:
+        mm = api.get_max_metrics(today.isoformat()) or {}
+        if isinstance(mm, list) and mm:
+            mm = mm[0]
+        generic = mm.get("generic") or {}
+        v2 = generic.get("vo2MaxPreciseValue") or generic.get("vo2MaxValue")
+        if v2 and float(v2) > 0:
+            current_vo2max = round(float(v2), 1)
+            print(f"\n  ✓ VO2max from device: {current_vo2max} ml/kg/min")
+    except Exception as exc:
+        print(f"\n  ⚠  Could not fetch VO2max ({exc})")
+
     # ── Wellness (one day at a time; batch-flush every 30 days on large backfills)
     print("\nFetching wellness data…")
     wellness = []
@@ -420,6 +434,9 @@ def main():
         day_weight = weight_by_date.get(ds) or fallback_weight_kg
         if day_weight:
             rec["weight_kg"] = day_weight
+        # Apply VO2max to every day in the window (it changes slowly, not daily)
+        if current_vo2max and "vo2max" not in rec:
+            rec["vo2max"] = current_vo2max
         wellness.append(rec)
         fields = [k for k in rec if k != "date"]
         print(f"({', '.join(fields) or 'no data'})")
