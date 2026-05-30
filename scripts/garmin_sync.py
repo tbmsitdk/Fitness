@@ -408,32 +408,43 @@ def main():
         print(f"  ✗ Activities fetch failed: {exc}")
         activities = []
 
-    # ── Fetch fitness age from Garmin profile (separate endpoint from VO2max)
-    # VO2max is captured per-day in _fetch_wellness via get_max_metrics on activity days
+    # ── Fetch fitness age (try several endpoints, log results for diagnosis)
     current_fitness_age = None
-    for fa_endpoint in (
+    fa_endpoints = [
         "/fitnessage-service/fitnessage/profile",
         f"/userstats-service/fitness/age/{api.display_name}" if api.display_name else None,
+        f"/wellness-service/wellness/fitnessAge/{api.display_name}" if api.display_name else None,
         "/userprofile-service/userprofile/personal-information",
-    ):
+        f"/userprofile-service/userprofile/{api.display_name}" if api.display_name else None,
+    ]
+    print("\n  Searching for fitness age…")
+    for fa_endpoint in fa_endpoints:
         if not fa_endpoint:
             continue
         try:
             resp = api.connectapi(fa_endpoint) or {}
-            # Try common key names across endpoints
+            # Print top-level keys so we can find fitness age field
+            top_keys = list(resp.keys()) if isinstance(resp, dict) else type(resp).__name__
+            print(f"    {fa_endpoint} → keys: {top_keys}")
+            # Search recursively one level deep
             for fa_key in ("fitnessAge", "fitnessAgeValue", "fitnessAgeRounded",
-                           "value", "fitness_age", "fitnessAgeDTO"):
+                           "value", "fitness_age", "fitnessAgeDTO", "currentFitnessAge"):
                 fa = resp.get(fa_key)
-                if fa is not None and int(float(fa)) > 0:
-                    current_fitness_age = int(float(fa))
-                    print(f"\n  ✓ Fitness age: {current_fitness_age} yrs (from {fa_endpoint})")
-                    break
+                if fa is not None:
+                    try:
+                        fv = int(float(fa))
+                        if fv > 0:
+                            current_fitness_age = fv
+                            print(f"    ✓ Found fitness age {fv} at key '{fa_key}'")
+                            break
+                    except (TypeError, ValueError):
+                        pass
             if current_fitness_age:
                 break
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"    {fa_endpoint} → error: {exc}")
     if not current_fitness_age:
-        print(f"\n  ⚠  Fitness age not found — will backfill from DB on next sync")
+        print("  ⚠  Fitness age not found in any endpoint")
 
     # ── Wellness (one day at a time; batch-flush every 30 days on large backfills)
     print("\nFetching wellness data…")
