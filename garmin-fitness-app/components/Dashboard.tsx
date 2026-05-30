@@ -227,8 +227,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               { id: 'sleep',       label: 'Sleep h' },
               { id: 'score',       label: 'Sleep Score' },
               { id: 'battery',     label: 'Body Battery' },
-              { id: 'vo2max',      label: 'VO₂ Max' },
-              { id: 'fitness_age', label: 'Fitness Age' },
             ] as const).map(m => (
               <Button key={m.id} variant={wellMetric === m.id ? 'default' : 'ghost'} size="sm" onClick={() => setWellMetric(m.id)}>{m.label}</Button>
             ))}

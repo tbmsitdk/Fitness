@@ -180,11 +180,6 @@ def _fetch_wellness(api: Garmin, ds: str) -> dict:
                 params={"fromDate": ds, "untilDate": ds}
             ) or {}
             metrics = (us.get("allMetrics") or {}).get("metricsMap") or {}
-            # Log available keys on first day to help debug missing metrics
-            if ds == sorted_dates[0] if 'sorted_dates' in dir() else True:
-                vo2_keys_found = [k for k in metrics if "VO2" in k or "FITNESS" in k or "AGE" in k]
-                if vo2_keys_found:
-                    print(f"  [debug] VO2/fitness keys in userstats: {vo2_keys_found}")
             for vo2_key in ("WELLNESS_VO2_MAX", "STAT_VO2_MAX_NO_RUNNING", "STAT_VO2_MAX",
                             "WELLNESS_ACTIVE_VO2_MAX", "STAT_VO2_MAX_CYCLING"):
                 vo2_vals = metrics.get(vo2_key) or []
