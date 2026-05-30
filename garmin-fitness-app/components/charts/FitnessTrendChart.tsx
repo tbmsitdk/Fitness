@@ -48,21 +48,29 @@ export default function FitnessTrendChart({ wellness, metric, age, height = 200 
   };
   const bench = BENCHMARKS[metric];
 
-  const filtered = wellness.filter(w => w[cfg.key] != null);
-  const values = filtered.map(w => w[cfg.key] as number);
+  // For HRV: if no RMSSD data, fall back to stress_score (which IS the HRV metric on Vivosmart 5)
+  const hasHrvData = metric === 'hrv' && wellness.some(w => w.hrv_rmssd != null);
+  const usingStressAsHrv = metric === 'hrv' && !hasHrvData && wellness.some(w => w.stress_score != null);
+  const effectiveCfg = usingStressAsHrv
+    ? { ...CONFIG.stress, label: 'HRV-derived Stress', unit: '' }
+    : cfg;
+  const effectiveKey = usingStressAsHrv ? 'stress_score' : cfg.key;
+
+  const filtered = wellness.filter(w => w[effectiveKey as keyof WellnessRecord] != null);
+  const values = filtered.map(w => w[effectiveKey as keyof WellnessRecord] as number);
   const trend = linearTrend(values);
 
   const spanYears = new Set(filtered.map(w => w.date.substring(0, 4))).size > 1;
   const dateFmt = spanYears ? "MMM ''yy" : 'MMM d';
 
   const data = filtered.map((w, i) => {
-    const raw = w[cfg.key];
+    const raw = w[effectiveKey as keyof WellnessRecord];
     return {
       date: format(parseISO(w.date), dateFmt),
-      [cfg.label]: typeof raw === 'number' ? raw : null,
+      [effectiveCfg.label]: typeof raw === 'number' ? raw : null,
       Trend: trend[i],
     };
-  }).filter(d => d[cfg.label] != null);
+  }).filter(d => d[effectiveCfg.label] != null);
 
   const tickInterval = Math.max(1, Math.floor(data.length / 10));
 
@@ -70,12 +78,6 @@ export default function FitnessTrendChart({ wellness, metric, age, height = 200 
     return (
       <div className="h-[200px] flex flex-col items-center justify-center gap-2 text-center px-6">
         <p className="text-xs text-muted-foreground">No {cfg.label} data in export</p>
-        {metric === 'hrv' && (
-          <p className="text-[11px] text-muted-foreground/70 max-w-sm">
-            Your Vivosmart 5 measures HRV internally but does not expose raw RMSSD values.
-            HRV is used indirectly — switch to <strong className="text-foreground/70">Stress</strong> to see your HRV-derived recovery score (0–100, Firstbeat Analytics).
-          </p>
-        )}
         {(metric === 'vo2max' || metric === 'fitness_age') && (
           <p className="text-[11px] text-muted-foreground/70 max-w-sm">
             VO₂ Max and Fitness Age require a live Garmin sync (not available in ZIP export).
@@ -94,17 +96,22 @@ export default function FitnessTrendChart({ wellness, metric, age, height = 200 
           <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />
           <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} domain={[(dataMin: number) => Math.floor(dataMin * 0.97), (dataMax: number) => Math.ceil(dataMax * 1.03)]} tickCount={5} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)' }}
-            formatter={(v: number, n: string) => n === 'Trend' ? [`${v} ${cfg.unit}`, 'Trend'] : [`${v} ${cfg.unit}`, cfg.label]} />
-          {bench && <ReferenceLine y={bench.value} stroke="hsl(45 93% 58%)" strokeDasharray="5 3" strokeWidth={1.5}
+            formatter={(v: number, n: string) => n === 'Trend' ? [`${v} ${effectiveCfg.unit}`, 'Trend'] : [`${v} ${effectiveCfg.unit}`, effectiveCfg.label]} />
+          {bench && !usingStressAsHrv && <ReferenceLine y={bench.value} stroke="hsl(45 93% 58%)" strokeDasharray="5 3" strokeWidth={1.5}
             label={{ value: bench.label, position: 'insideTopRight', fontSize: 9, fill: 'hsl(45 93% 58%)' }} />}
-          <Line type="monotone" dataKey={cfg.label} stroke={cfg.color} strokeWidth={1.5} dot={false}
-            activeDot={{ r: 3, fill: cfg.color }} />
+          <Line type="monotone" dataKey={effectiveCfg.label} stroke={effectiveCfg.color} strokeWidth={1.5} dot={false}
+            activeDot={{ r: 3, fill: effectiveCfg.color }} />
           <Line type="monotone" dataKey="Trend" stroke="hsl(0 0% 55%)" strokeWidth={1.5} dot={false}
             strokeDasharray="5 3" legendType="none" />
         </ComposedChart>
       </ResponsiveContainer>
-      {bench && <p className="text-[10px] text-muted-foreground/60 mt-1 italic">Yellow = {bench.label} ({bench.note}). Grey dashed = your trend.</p>}
-      {metric === 'stress' && (
+      {bench && !usingStressAsHrv && <p className="text-[10px] text-muted-foreground/60 mt-1 italic">Yellow = {bench.label} ({bench.note}). Grey dashed = your trend.</p>}
+      {usingStressAsHrv && (
+        <p className="text-[10px] text-purple-400/70 mt-1 italic">
+          ⟳ Your Vivosmart 5 does not export raw HRV (RMSSD). Showing <strong>Stress score</strong> instead — this IS your HRV metric, computed from beat-to-beat intervals via Firstbeat Analytics. Lower = more recovered. Target: below 25.
+        </p>
+      )}
+      {metric === 'stress' && !usingStressAsHrv && (
         <p className="text-[10px] text-amber-400/70 mt-0.5 italic">
           ⟳ On Garmin Vivosmart 5 this score IS the HRV metric — the device converts beat-to-beat intervals into a 0–100 stress index via Firstbeat Analytics.
         </p>
