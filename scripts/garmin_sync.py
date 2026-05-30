@@ -408,27 +408,36 @@ def main():
         print(f"  ✗ Activities fetch failed: {exc}")
         activities = []
 
-    # ── Fetch VO2max + fitness age once (update infrequently — apply to all days in window)
-    current_vo2max    = None
+    # ── Fetch VO2max + fitness age once (updates infrequently — apply to all days in window)
+    # Try last 3 days to find a non-empty response
+    current_vo2max      = None
     current_fitness_age = None
-    try:
-        mm = api.get_max_metrics(today.isoformat()) or {}
-        if isinstance(mm, list) and mm:
-            mm = mm[0]
-        generic = mm.get("generic") or {}
-        print(f"\n  [debug] get_max_metrics keys: {list(generic.keys())}")
-        v2 = generic.get("vo2MaxPreciseValue") or generic.get("vo2MaxValue")
-        if v2 and float(v2) > 0:
-            current_vo2max = round(float(v2), 1)
-            print(f"  ✓ VO2max from device: {current_vo2max} ml/kg/min")
-        for fa_key in ("fitnessAge", "fitnessAgeValue", "fitness_age", "fitnessAgeRounded"):
-            fa = generic.get(fa_key)
-            if fa and int(float(fa)) > 0:
-                current_fitness_age = int(float(fa))
-                print(f"  ✓ Fitness age from device: {current_fitness_age} yrs")
-                break
-    except Exception as exc:
-        print(f"\n  ⚠  Could not fetch VO2max/fitness age ({exc})")
+    for days_back in range(3):
+        probe_date = (today - timedelta(days=days_back)).isoformat()
+        try:
+            mm = api.get_max_metrics(probe_date) or {}
+            if isinstance(mm, list) and mm:
+                mm = mm[0]
+            generic = mm.get("generic") or {}
+            if not generic:
+                continue  # try previous day
+            v2 = generic.get("vo2MaxPreciseValue") or generic.get("vo2MaxValue")
+            if v2 and float(v2) > 0:
+                current_vo2max = round(float(v2), 1)
+                print(f"\n  ✓ VO2max ({probe_date}): {current_vo2max} ml/kg/min")
+            for fa_key in ("fitnessAge", "fitnessAgeValue", "fitnessAgeRounded",
+                           "fitness_age", "fitnessAgeDTO"):
+                fa = generic.get(fa_key)
+                if fa and int(float(fa)) > 0:
+                    current_fitness_age = int(float(fa))
+                    print(f"  ✓ Fitness age ({probe_date}): {current_fitness_age} yrs")
+                    break
+            if current_vo2max or current_fitness_age:
+                break  # found data, stop probing
+            # Log all keys if still nothing to help diagnose
+            print(f"\n  [debug] get_max_metrics({probe_date}) keys: {list(generic.keys())}")
+        except Exception as exc:
+            print(f"\n  ⚠  get_max_metrics({probe_date}) failed: {exc}")
 
     # ── Wellness (one day at a time; batch-flush every 30 days on large backfills)
     print("\nFetching wellness data…")
