@@ -237,9 +237,9 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
         {(expanded) => <FitnessTrendChart wellness={sortedWellness} metric={wellMetric} age={age} height={expanded ? 500 : undefined} />}
       </ExpandableCard>
 
-      {/* Resting HR + HRV */}
-      <ExpandableCard title="Heart Rate & HRV">
-        {(expanded) => <HeartRateChart wellness={sortedWellness} height={expanded ? 500 : undefined} />}
+      {/* Heart Rate */}
+      <ExpandableCard title="Heart Rate">
+        {(expanded) => <HeartRateChart wellness={sortedWellness} activities={activities} height={expanded ? 500 : undefined} />}
       </ExpandableCard>
 
       {/* Sleep × Performance correlation */}

@@ -1,10 +1,11 @@
 'use client';
 import {
-  ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, Legend,
+  ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Legend,
 } from 'recharts';
-import { WellnessRecord } from '@/types';
+import { WellnessRecord, Activity } from '@/types';
 import { format, parseISO } from 'date-fns';
+import { useState } from 'react';
 
 const TOOLTIP_STYLE = {
   background: 'hsl(240 10% 7%)',
@@ -13,10 +14,27 @@ const TOOLTIP_STYLE = {
   fontSize: 11,
 };
 
-function rollingAvg(data: { v: number | null }[], window: number): (number | null)[] {
-  return data.map((_, i) => {
-    const slice = data.slice(Math.max(0, i - window + 1), i + 1).map(d => d.v).filter((v): v is number => v != null);
-    return slice.length >= Math.floor(window / 2) ? Math.round(slice.reduce((a, b) => a + b, 0) / slice.length * 10) / 10 : null;
+const SPORT_COLOR: Record<string, string> = {
+  running:  '#F97316',
+  cycling:  '#3B82F6',
+  walking:  '#22C55E',
+  other:    '#A78BFA',
+};
+
+function sportColor(type: string) {
+  const t = type.toLowerCase();
+  if (t.includes('run')) return SPORT_COLOR.running;
+  if (t.includes('cycl') || t.includes('bike') || t.includes('ride')) return SPORT_COLOR.cycling;
+  if (t.includes('walk')) return SPORT_COLOR.walking;
+  return SPORT_COLOR.other;
+}
+
+function rollingAvg(vals: (number | null)[], window: number): (number | null)[] {
+  return vals.map((_, i) => {
+    const slice = vals.slice(Math.max(0, i - window + 1), i + 1).filter((v): v is number => v != null);
+    return slice.length >= Math.floor(window / 2)
+      ? Math.round(slice.reduce((a, b) => a + b, 0) / slice.length * 10) / 10
+      : null;
   });
 }
 
@@ -24,194 +42,224 @@ function rollingAvg(data: { v: number | null }[], window: number): (number | nul
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div style={TOOLTIP_STYLE} className="px-3 py-2 space-y-1">
+    <div style={TOOLTIP_STYLE} className="px-3 py-2 space-y-1 max-w-[200px]">
       <p className="text-[10px] text-muted-foreground mb-1">{label}</p>
       {payload.map((p: any, i: number) => (
-        <div key={i} className="flex items-center gap-2 text-xs">
-          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
-          <span className="text-muted-foreground">{p.name}:</span>
-          <span className="font-medium text-foreground">{p.value != null ? `${p.value}${p.unit ?? ''}` : '—'}</span>
-        </div>
+        p.value != null && (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color ?? p.fill }} />
+            <span className="text-muted-foreground truncate">{p.name}:</span>
+            <span className="font-medium text-foreground">{p.value} bpm</span>
+          </div>
+        )
       ))}
     </div>
   );
 }
 
+type Mode = 'full' | 'rhr' | 'max';
+
 interface Props {
   wellness: WellnessRecord[];
+  activities: Activity[];
   height?: number;
 }
 
-export default function HeartRateChart({ wellness, height = 280 }: Props) {
+export default function HeartRateChart({ wellness, activities, height = 300 }: Props) {
+  const [mode, setMode] = useState<Mode>('full');
+
   const sorted = [...wellness].sort((a, b) => a.date.localeCompare(b.date));
 
-  const rhrSeries  = sorted.map(w => ({ v: w.resting_hr }));
-  const hrvSeries  = sorted.map(w => ({ v: w.hrv_rmssd != null ? Math.round(w.hrv_rmssd) : null }));
-  const rhrRolling = rollingAvg(rhrSeries, 7);
-  const hrvRolling = rollingAvg(hrvSeries, 7);
+  // Build wellness date→values map
+  const wellMap = new Map(sorted.map(w => [w.date.slice(0, 10), w]));
 
-  const data = sorted.map((w, i) => ({
-    date:       format(parseISO(w.date.slice(0, 10)), 'd MMM yy'),
-    rhr:        w.resting_hr,
-    hrv:        w.hrv_rmssd != null ? Math.round(w.hrv_rmssd) : null,
-    rhr7:       rhrRolling[i],
-    hrv7:       hrvRolling[i],
+  // All dates from wellness (for the RHR line)
+  const rhrVals  = sorted.map(w => w.resting_hr);
+  const rhr7     = rollingAvg(rhrVals, 7);
+
+  const rhrData = sorted.map((w, i) => ({
+    date:   w.date.slice(0, 10),
+    label:  format(parseISO(w.date.slice(0, 10)), 'd MMM yy'),
+    rhr:    w.resting_hr,
+    rhr7:   rhr7[i],
   }));
 
-  const hasRHR = data.some(d => d.rhr != null);
-  const hasHRV = data.some(d => d.hrv != null);
+  // Activity scatter data — max HR and avg HR
+  const actData = activities
+    .filter(a => a.max_hr != null || a.avg_hr != null)
+    .map(a => ({
+      date:    a.date.slice(0, 10),
+      label:   format(parseISO(a.date.slice(0, 10)), 'd MMM yy'),
+      maxHR:   a.max_hr,
+      avgHR:   a.avg_hr,
+      sport:   a.activity_type,
+      color:   sportColor(a.activity_type),
+      title:   a.title || a.activity_type,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
-  if (!hasRHR && !hasHRV) {
-    return (
-      <div className="h-[200px] flex items-center justify-center text-xs text-muted-foreground">
-        No heart rate data — connect a Garmin device with heart rate monitoring
-      </div>
-    );
-  }
+  // Merge into single timeline for the chart
+  // We'll use a unified date axis — all unique dates
+  const allDates = Array.from(new Set([
+    ...sorted.map(w => w.date.slice(0, 10)),
+    ...actData.map(a => a.date),
+  ])).sort();
 
-  // Stats for header
-  const rhrVals  = data.map(d => d.rhr).filter((v): v is number => v != null);
-  const hrvVals  = data.map(d => d.hrv).filter((v): v is number => v != null);
-  const rhrLast  = rhrVals.at(-1);
-  const rhrMin   = rhrVals.length ? Math.min(...rhrVals) : null;
-  const rhrMax   = rhrVals.length ? Math.max(...rhrVals) : null;
-  const hrvLast  = hrvVals.at(-1);
-  const hrvMin   = hrvVals.length ? Math.min(...hrvVals) : null;
-  const hrvMax   = hrvVals.length ? Math.max(...hrvVals) : null;
+  const chartData = allDates.map(date => {
+    const w = wellMap.get(date);
+    const rhrIdx = sorted.findIndex(s => s.date.slice(0, 10) === date);
+    return {
+      date,
+      label:  format(parseISO(date), 'd MMM yy'),
+      rhr:    w?.resting_hr ?? null,
+      rhr7:   rhrIdx >= 0 ? rhr7[rhrIdx] : null,
+    };
+  });
 
-  // tick density
-  const tickEvery = data.length > 180 ? 30 : data.length > 60 ? 14 : 7;
-  const ticks = data.filter((_, i) => i % tickEvery === 0).map(d => d.date);
+  // Stats
+  const allMax  = actData.map(a => a.maxHR).filter((v): v is number => v != null);
+  const allAvg  = actData.map(a => a.avgHR).filter((v): v is number => v != null);
+  const allRhr  = sorted.map(w => w.resting_hr).filter((v): v is number => v != null);
+  const peakMax = allMax.length ? Math.max(...allMax) : null;
+  const lastRhr = allRhr.at(-1);
+  const avgAvg  = allAvg.length ? Math.round(allAvg.reduce((a, b) => a + b, 0) / allAvg.length) : null;
+
+  const tickEvery = chartData.length > 180 ? 30 : chartData.length > 60 ? 14 : 7;
+  const ticks = chartData.filter((_, i) => i % tickEvery === 0).map(d => d.label);
+
+  const Btn = ({ id, label }: { id: Mode; label: string }) => (
+    <button
+      onClick={() => setMode(id)}
+      className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
+        mode === id ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+      }`}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="space-y-4">
+      {/* Toggle */}
+      <div className="flex items-center gap-0.5">
+        <Btn id="full" label="All HR" />
+        <Btn id="max"  label="Max HR" />
+        <Btn id="rhr"  label="Resting HR" />
+      </div>
+
       {/* Summary strip */}
-      <div className="grid grid-cols-2 gap-3 text-xs">
-        {hasRHR && (
-          <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-1">
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Resting HR</p>
-            <p className="text-xl font-semibold font-mono text-red-400">{rhrLast ?? '—'} <span className="text-sm font-normal text-muted-foreground">bpm</span></p>
-            <p className="text-[10px] text-muted-foreground">
-              Range: {rhrMin}–{rhrMax} bpm · {rhrVals.length} days recorded
-            </p>
-          </div>
-        )}
-        {hasHRV && (
-          <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-1">
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">HRV (RMSSD)</p>
-            <p className="text-xl font-semibold font-mono text-purple-400">{hrvLast ?? '—'} <span className="text-sm font-normal text-muted-foreground">ms</span></p>
-            <p className="text-[10px] text-muted-foreground">
-              Range: {hrvMin}–{hrvMax} ms · {hrvVals.length} days recorded
-            </p>
-          </div>
-        )}
+      <div className="grid grid-cols-3 gap-3 text-xs">
+        <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-0.5">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Peak Max HR</p>
+          <p className="text-xl font-semibold font-mono text-orange-400">{peakMax ?? '—'} <span className="text-sm font-normal text-muted-foreground">bpm</span></p>
+          <p className="text-[10px] text-muted-foreground">Highest ever recorded</p>
+        </div>
+        <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-0.5">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Avg Workout HR</p>
+          <p className="text-xl font-semibold font-mono text-yellow-400">{avgAvg ?? '—'} <span className="text-sm font-normal text-muted-foreground">bpm</span></p>
+          <p className="text-[10px] text-muted-foreground">Mean across {actData.length} activities</p>
+        </div>
+        <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-0.5">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Resting HR</p>
+          <p className="text-xl font-semibold font-mono text-blue-400">{lastRhr ?? '—'} <span className="text-sm font-normal text-muted-foreground">bpm</span></p>
+          <p className="text-[10px] text-muted-foreground">Most recent reading</p>
+        </div>
       </div>
 
       {/* Chart */}
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={data} margin={{ top: 4, right: hasHRV ? 48 : 8, left: 0, bottom: 0 }}>
+        <ComposedChart margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis
-            dataKey="date"
+            dataKey="label"
+            type="category"
+            allowDuplicatedCategory={false}
             ticks={ticks}
             tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }}
             tickLine={false}
             axisLine={false}
           />
-          {/* Left axis — Resting HR */}
-          {hasRHR && (
-            <YAxis
-              yAxisId="rhr"
-              domain={['auto', 'auto']}
-              tick={{ fontSize: 10, fill: '#EF4444' }}
-              tickLine={false}
-              axisLine={false}
-              width={32}
-              tickFormatter={(v: number) => `${v}`}
-              label={{ value: 'bpm', angle: -90, position: 'insideLeft', offset: 12, style: { fontSize: 9, fill: '#EF4444' } }}
-            />
-          )}
-          {/* Right axis — HRV */}
-          {hasHRV && (
-            <YAxis
-              yAxisId="hrv"
-              orientation="right"
-              domain={['auto', 'auto']}
-              tick={{ fontSize: 10, fill: '#A78BFA' }}
-              tickLine={false}
-              axisLine={false}
-              width={40}
-              tickFormatter={(v: number) => `${v}`}
-              label={{ value: 'ms', angle: 90, position: 'insideRight', offset: 12, style: { fontSize: 9, fill: '#A78BFA' } }}
-            />
-          )}
+          <YAxis
+            domain={['auto', 'auto']}
+            tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }}
+            tickLine={false}
+            axisLine={false}
+            width={32}
+            tickFormatter={(v: number) => `${v}`}
+          />
           <Tooltip content={<CustomTooltip />} />
           <Legend
             wrapperStyle={{ fontSize: 10, paddingTop: 8 }}
             formatter={(val) => <span style={{ color: 'hsl(240 5% 64.9%)' }}>{val}</span>}
           />
 
-          {/* Raw dots */}
-          {hasRHR && (
+          {/* Resting HR line */}
+          {(mode === 'full' || mode === 'rhr') && (
             <Line
-              yAxisId="rhr"
-              dataKey="rhr"
-              name="Resting HR"
-              stroke="#EF4444"
-              strokeWidth={0}
-              dot={{ r: 2, fill: '#EF4444', fillOpacity: 0.35, strokeWidth: 0 }}
-              activeDot={{ r: 4 }}
-              connectNulls={false}
-              unit=" bpm"
+              data={chartData}
+              dataKey="rhr7"
+              name="Resting HR (7d avg)"
+              stroke="#3B82F6"
+              strokeWidth={2}
+              dot={false}
+              connectNulls
             />
           )}
-          {hasHRV && (
+          {(mode === 'full' || mode === 'rhr') && (
             <Line
-              yAxisId="hrv"
-              dataKey="hrv"
-              name="HRV"
-              stroke="#A78BFA"
+              data={chartData}
+              dataKey="rhr"
+              name="Resting HR"
+              stroke="#3B82F6"
               strokeWidth={0}
-              dot={{ r: 2, fill: '#A78BFA', fillOpacity: 0.35, strokeWidth: 0 }}
-              activeDot={{ r: 4 }}
+              dot={{ r: 2, fill: '#3B82F6', fillOpacity: 0.4, strokeWidth: 0 }}
               connectNulls={false}
-              unit=" ms"
             />
           )}
 
-          {/* 7-day rolling averages */}
-          {hasRHR && (
-            <Line
-              yAxisId="rhr"
-              dataKey="rhr7"
-              name="RHR 7d avg"
-              stroke="#EF4444"
-              strokeWidth={2}
-              dot={false}
-              activeDot={false}
-              connectNulls
-              unit=" bpm"
+          {/* Activity avg HR scatter */}
+          {mode === 'full' && (
+            <Scatter
+              data={actData.map(a => ({ label: a.label, avgHR: a.avgHR, name: `${a.title} avg`, fill: a.color }))}
+              dataKey="avgHR"
+              name="Avg workout HR"
+              fill="#F59E0B"
+              opacity={0.5}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              shape={(props: any) => {
+                const { cx, cy, fill } = props;
+                if (!cy) return <g />;
+                return <circle cx={cx} cy={cy} r={3} fill={fill ?? '#F59E0B'} fillOpacity={0.6} />;
+              }}
             />
           )}
-          {hasHRV && (
-            <Line
-              yAxisId="hrv"
-              dataKey="hrv7"
-              name="HRV 7d avg"
-              stroke="#A78BFA"
-              strokeWidth={2}
-              dot={false}
-              activeDot={false}
-              connectNulls
-              unit=" ms"
+
+          {/* Activity max HR scatter */}
+          {(mode === 'full' || mode === 'max') && (
+            <Scatter
+              data={actData.map(a => ({ label: a.label, maxHR: a.maxHR, name: `${a.title} max`, fill: a.color }))}
+              dataKey="maxHR"
+              name="Max workout HR"
+              fill="#EF4444"
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              shape={(props: any) => {
+                const { cx, cy, fill } = props;
+                if (!cy) return <g />;
+                return <circle cx={cx} cy={cy} r={4} fill={fill ?? '#EF4444'} fillOpacity={0.75} />;
+              }}
             />
           )}
         </ComposedChart>
       </ResponsiveContainer>
 
-      <p className="text-[10px] text-muted-foreground">
-        Dots = daily readings · Solid lines = 7-day rolling average · Higher HRV and lower resting HR indicate better cardiovascular fitness and recovery
-      </p>
+      {/* Legend */}
+      <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
+        {(mode === 'full' || mode === 'rhr') && <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-blue-500 inline-block" />Resting HR</span>}
+        {mode === 'full' && <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-yellow-400 opacity-70 inline-block" />Avg workout HR</span>}
+        {(mode === 'full' || mode === 'max') && <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />Running max</span>}
+        {(mode === 'full' || mode === 'max') && <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />Cycling max</span>}
+        {(mode === 'full' || mode === 'max') && <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Walking max</span>}
+      </div>
     </div>
   );
 }
