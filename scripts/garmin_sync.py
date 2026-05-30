@@ -171,7 +171,8 @@ def _fetch_wellness(api: Garmin, ds: str) -> dict:
         except Exception:
             pass
 
-    # VO2max + fitness age (raw endpoint, needs display_name)
+    # VO2max + fitness age
+    # Try userstats endpoint first (works for most devices)
     if api.display_name:
         try:
             us = api.connectapi(
@@ -179,18 +180,40 @@ def _fetch_wellness(api: Garmin, ds: str) -> dict:
                 params={"fromDate": ds, "untilDate": ds}
             ) or {}
             metrics = (us.get("allMetrics") or {}).get("metricsMap") or {}
-            for vo2_key in ("STAT_VO2_MAX_NO_RUNNING", "WELLNESS_VO2_MAX", "STAT_VO2_MAX"):
+            # Log available keys on first day to help debug missing metrics
+            if ds == sorted_dates[0] if 'sorted_dates' in dir() else True:
+                vo2_keys_found = [k for k in metrics if "VO2" in k or "FITNESS" in k or "AGE" in k]
+                if vo2_keys_found:
+                    print(f"  [debug] VO2/fitness keys in userstats: {vo2_keys_found}")
+            for vo2_key in ("WELLNESS_VO2_MAX", "STAT_VO2_MAX_NO_RUNNING", "STAT_VO2_MAX",
+                            "WELLNESS_ACTIVE_VO2_MAX", "STAT_VO2_MAX_CYCLING"):
                 vo2_vals = metrics.get(vo2_key) or []
                 if vo2_vals:
                     v2 = float(vo2_vals[-1].get("value", 0) or 0)
                     if v2 > 0:
                         rec["vo2max"] = round(v2, 1)
                         break
-            fa_vals = metrics.get("STAT_FITNESSAGE") or []
-            if fa_vals:
-                fa = int(float(fa_vals[-1].get("value", 0) or 0))
-                if fa > 0:
-                    rec["fitness_age"] = fa
+            for fa_key in ("STAT_FITNESSAGE", "WELLNESS_FITNESSAGE", "STAT_FITNESSAGE_ACTIVE"):
+                fa_vals = metrics.get(fa_key) or []
+                if fa_vals:
+                    fa = int(float(fa_vals[-1].get("value", 0) or 0))
+                    if fa > 0:
+                        rec["fitness_age"] = fa
+                        break
+        except Exception as exc:
+            print(f"  [warn] userstats VO2/fitness age fetch failed: {exc}")
+
+    # Fallback: try max_metrics endpoint if VO2max still missing
+    if "vo2max" not in rec:
+        try:
+            mm = api.get_max_metrics(ds) or {}
+            # get_max_metrics returns a list of dicts with 'generic' key
+            if isinstance(mm, list) and mm:
+                mm = mm[0]
+            generic = mm.get("generic") or {}
+            v2 = generic.get("vo2MaxPreciseValue") or generic.get("vo2MaxValue")
+            if v2 and float(v2) > 0:
+                rec["vo2max"] = round(float(v2), 1)
         except Exception:
             pass
 
