@@ -73,8 +73,17 @@ export default function EfficiencyFactorChart({ data, sport, height = 260 }: Pro
 
   if (filtered.length === 0) {
     return (
-      <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-        No {sport} activities with HR + {isRunning ? 'distance' : 'power'} data yet.
+      <div className="flex flex-col items-center justify-center h-32 gap-2 text-center px-6">
+        <p className="text-sm text-muted-foreground">
+          No {sport} activities with HR + {isRunning ? 'distance' : 'power'} data yet.
+        </p>
+        {!isRunning && (
+          <p className="text-[11px] text-muted-foreground/60 max-w-sm">
+            Cycling EF requires heart rate recorded on the Garmin activity.
+            If using Zwift, connect your HR monitor through the Garmin Connect app
+            (not directly to Zwift) so HR is written to the Garmin activity.
+          </p>
+        )}
       </div>
     );
   }
