@@ -75,7 +75,7 @@ export default function HeartRateChart({ wellness, activities, height = 300 }: P
 
   // Recovery score (100 - stress) for HRV overlay
   const recoveryVals = sorted.map(w => w.stress_score != null ? 100 - w.stress_score : null);
-  const recovery7    = rollingAvg(recoveryVals.map(v => ({ v })), 7);
+  const recovery7    = rollingAvg(recoveryVals, 7);
 
   // All dates from wellness (for the RHR line)
   const rhrVals  = sorted.map(w => w.resting_hr);
