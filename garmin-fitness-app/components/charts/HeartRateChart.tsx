@@ -57,7 +57,7 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-type Mode = 'full' | 'rhr' | 'max';
+type Mode = 'full' | 'rhr' | 'max' | 'recovery';
 
 interface Props {
   wellness: WellnessRecord[];
@@ -72,6 +72,10 @@ export default function HeartRateChart({ wellness, activities, height = 300 }: P
 
   // Build wellness date→values map
   const wellMap = new Map(sorted.map(w => [w.date.slice(0, 10), w]));
+
+  // Recovery score (100 - stress) for HRV overlay
+  const recoveryVals = sorted.map(w => w.stress_score != null ? 100 - w.stress_score : null);
+  const recovery7    = rollingAvg(recoveryVals.map(v => ({ v })), 7);
 
   // All dates from wellness (for the RHR line)
   const rhrVals  = sorted.map(w => w.resting_hr);
@@ -110,9 +114,11 @@ export default function HeartRateChart({ wellness, activities, height = 300 }: P
     const rhrIdx = sorted.findIndex(s => s.date.slice(0, 10) === date);
     return {
       date,
-      label:  format(parseISO(date), 'd MMM yy'),
-      rhr:    w?.resting_hr ?? null,
-      rhr7:   rhrIdx >= 0 ? rhr7[rhrIdx] : null,
+      label:     format(parseISO(date), 'd MMM yy'),
+      rhr:       w?.resting_hr ?? null,
+      rhr7:      rhrIdx >= 0 ? rhr7[rhrIdx] : null,
+      recovery:  rhrIdx >= 0 ? recoveryVals[rhrIdx] : null,
+      recovery7: rhrIdx >= 0 ? recovery7[rhrIdx] : null,
     };
   });
 
@@ -126,6 +132,8 @@ export default function HeartRateChart({ wellness, activities, height = 300 }: P
 
   const tickEvery = chartData.length > 180 ? 30 : chartData.length > 60 ? 14 : 7;
   const ticks = chartData.filter((_, i) => i % tickEvery === 0).map(d => d.label);
+
+  const hasRecovery = sorted.some(w => w.stress_score != null);
 
   const Btn = ({ id, label }: { id: Mode; label: string }) => (
     <button
@@ -142,9 +150,10 @@ export default function HeartRateChart({ wellness, activities, height = 300 }: P
     <div className="space-y-4">
       {/* Toggle */}
       <div className="flex items-center gap-0.5">
-        <Btn id="full" label="All HR" />
-        <Btn id="max"  label="Max HR" />
-        <Btn id="rhr"  label="Resting HR" />
+        <Btn id="full"     label="All HR" />
+        <Btn id="max"      label="Max HR" />
+        <Btn id="rhr"      label="Resting HR" />
+        {hasRecovery && <Btn id="recovery" label="HRV / Recovery" />}
       </div>
 
       {/* Summary strip */}
@@ -166,7 +175,27 @@ export default function HeartRateChart({ wellness, activities, height = 300 }: P
         </div>
       </div>
 
+      {/* Recovery-only view */}
+      {mode === 'recovery' && (
+        <ResponsiveContainer width="100%" height={height}>
+          <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
+            <XAxis dataKey="label" ticks={ticks} tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} />
+            <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#A78BFA' }} tickLine={false} axisLine={false} width={32} />
+            <Tooltip content={<CustomTooltip />} />
+            <ReferenceLine y={75} stroke="#22C55E" strokeDasharray="4 3" strokeWidth={1}
+              label={{ value: 'good', position: 'insideTopRight', fontSize: 9, fill: '#22C55E' }} />
+            <ReferenceLine y={50} stroke="#F59E0B" strokeDasharray="4 3" strokeWidth={1}
+              label={{ value: 'moderate', position: 'insideTopRight', fontSize: 9, fill: '#F59E0B' }} />
+            <Line dataKey="recovery" name="Recovery" stroke="#A78BFA" strokeWidth={0}
+              dot={{ r: 2.5, fill: '#A78BFA', fillOpacity: 0.5, strokeWidth: 0 }} connectNulls={false} />
+            <Line dataKey="recovery7" name="Recovery 7d avg" stroke="#A78BFA" strokeWidth={2} dot={false} connectNulls />
+          </ComposedChart>
+        </ResponsiveContainer>
+      )}
+
       {/* Chart */}
+      {mode !== 'recovery' && (
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
@@ -251,6 +280,7 @@ export default function HeartRateChart({ wellness, activities, height = 300 }: P
           )}
         </ComposedChart>
       </ResponsiveContainer>
+      )}
 
       {/* Legend */}
       <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
@@ -259,6 +289,7 @@ export default function HeartRateChart({ wellness, activities, height = 300 }: P
         {(mode === 'full' || mode === 'max') && <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />Running max</span>}
         {(mode === 'full' || mode === 'max') && <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />Cycling max</span>}
         {(mode === 'full' || mode === 'max') && <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Walking max</span>}
+        {mode === 'recovery' && <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-purple-400 inline-block" />Recovery score (100 − stress) · higher = better recovered</span>}
       </div>
     </div>
   );

@@ -18,6 +18,8 @@ import WeightChart from './charts/WeightChart';
 import TrainingHeatmap from './charts/TrainingHeatmap';
 import SleepPerformanceChart from './charts/SleepPerformanceChart';
 import HeartRateChart from './charts/HeartRateChart';
+import HRVReadinessCard from './charts/HRVReadinessCard';
+import HRVTrainingLoadChart from './charts/HRVTrainingLoadChart';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -237,9 +239,19 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
         {(expanded) => <FitnessTrendChart wellness={sortedWellness} metric={wellMetric} age={age} height={expanded ? 500 : undefined} />}
       </ExpandableCard>
 
+      {/* HRV Readiness */}
+      <ExpandableCard title="HRV Readiness">
+        {() => <HRVReadinessCard wellness={sortedWellness} />}
+      </ExpandableCard>
+
       {/* Heart Rate */}
       <ExpandableCard title="Heart Rate">
         {(expanded) => <HeartRateChart wellness={sortedWellness} activities={activities} height={expanded ? 500 : undefined} />}
+      </ExpandableCard>
+
+      {/* HRV × Training Load */}
+      <ExpandableCard title="HRV × Training Load">
+        {(expanded) => <HRVTrainingLoadChart trainingLoad={trainingLoad} wellness={sortedWellness} height={expanded ? 500 : undefined} />}
       </ExpandableCard>
 
       {/* Sleep × Performance correlation */}
