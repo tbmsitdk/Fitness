@@ -385,7 +385,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             </ExpandableCard>
           </div>
           <ExpandableCard title="Body Composition">
-            {(expanded) => <BodyCompositionChart wellness={sortedWellness} height={expanded ? 500 : undefined} />}
+            {(expanded) => <BodyCompositionChart wellness={sortedWellness} activities={allActivities} settings={settings} height={expanded ? 500 : undefined} />}
           </ExpandableCard>
           <ExpandableCard title="Weight Evolution">
             {(expanded) => <WeightChart wellness={sortedWellness} heightCm={settings.heightCm} height={expanded ? 480 : undefined} />}
