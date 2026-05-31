@@ -29,6 +29,7 @@ import BodyBatteryChart from './charts/BodyBatteryChart';
 import PowerCurveChart from './charts/PowerCurveChart';
 import FTPProgressionChart from './charts/FTPProgressionChart';
 import WkgZonesChart from './charts/WkgZonesChart';
+import WalkingChart from './charts/WalkingChart';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -71,7 +72,7 @@ function periodLabel(cutoff: Date): string {
 }
 
 export default function Dashboard({ activities, allActivities, wellness, allWellness, cutoff, settings = DEFAULT_SETTINGS }: Props) {
-  const [subTab, setSubTab] = useState<'overview' | 'running' | 'cycling' | 'health' | 'training'>('overview');
+  const [subTab, setSubTab] = useState<'overview' | 'running' | 'cycling' | 'walking' | 'health' | 'training'>('overview');
   const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
   const [wellMetric, setWellMetric] = useState<WellnessMetric>('rhr');
   const [cadenceSport, setCadenceSport] = useState<'running' | 'cycling'>('running');
@@ -153,6 +154,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
     { id: 'overview',  label: 'Overview'  },
     { id: 'running',   label: 'Running'   },
     { id: 'cycling',   label: 'Cycling'   },
+    { id: 'walking',   label: 'Walking'   },
     { id: 'health',    label: 'Health'    },
     { id: 'training',  label: 'Training'  },
   ] as const;
@@ -308,6 +310,47 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           </ExpandableCard>
           <ExpandableCard title="Aerobic Efficiency (EF)">
             {(expanded) => <EfficiencyFactorChart data={efData} sport="cycling" height={expanded ? 480 : undefined} />}
+          </ExpandableCard>
+        </div>
+      )}
+
+      {/* ── WALKING ──────────────────────────────────────────────────────── */}
+      {subTab === 'walking' && (
+        <div className="space-y-4">
+          <ExpandableCard title="Walking Trends">
+            {(expanded) => <WalkingChart activities={allActivities} height={expanded ? 480 : undefined} />}
+          </ExpandableCard>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ExpandableCard title="Daily Steps">
+              {(expanded) => <StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} height={expanded ? 460 : undefined} />}
+            </ExpandableCard>
+            <ExpandableCard title="HR During Walks">
+              {(expanded) => <HRZoneChart data={computeHRZoneDistribution(activities.filter(a => a.activity_type === 'walking'), maxHR)} height={expanded ? 360 : undefined} />}
+            </ExpandableCard>
+          </div>
+          <ExpandableCard
+            title="Weekly Walking Volume"
+            headerRight={
+              <div className="flex gap-1">
+                {(['km','hours'] as const).map(m => (
+                  <Button key={m} variant={volMetric === m ? 'default' : 'ghost'} size="sm" onClick={() => setVolMetric(m)}>{m}</Button>
+                ))}
+              </div>
+            }
+          >
+            {(expanded) => (
+              <WeeklyVolumeChart
+                data={weeklyVolume.map(w => ({ ...w, running_km: 0, cycling_km: 0, running_hours: 0, cycling_hours: 0 }))}
+                metric={volMetric}
+                height={expanded ? 520 : undefined}
+              />
+            )}
+          </ExpandableCard>
+          <ExpandableCard title="Body Battery & Walking">
+            {(expanded) => <BodyBatteryChart wellness={sortedWellness} height={expanded ? 480 : undefined} />}
+          </ExpandableCard>
+          <ExpandableCard title="Monthly Consistency">
+            {(expanded) => <ConsistencyChart data={consistency} height={expanded ? 480 : undefined} />}
           </ExpandableCard>
         </div>
       )}
