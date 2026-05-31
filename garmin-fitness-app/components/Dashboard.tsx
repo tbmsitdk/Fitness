@@ -212,26 +212,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       {/* ── OVERVIEW ─────────────────────────────────────────────────────── */}
       {subTab === 'overview' && (
         <div className="space-y-4">
-          <ExpandableCard title="Training Heatmap">
-            {() => <TrainingHeatmap activities={allActivities} />}
-          </ExpandableCard>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ExpandableCard title="Training Load">
-              {(expanded) => (
-                <>
-                  <TrainingLoadChart data={trainingLoad} height={expanded ? 500 : undefined} />
-                  <div className="flex flex-col gap-1 mt-2 text-[10px] text-muted-foreground">
-                    <span><span className="text-blue-400 font-semibold">CTL</span> — 42-day fitness average. Higher = more base fitness.</span>
-                    <span><span className="text-red-400 font-semibold">ATL</span> — 7-day fatigue average. Spikes when you train hard.</span>
-                    <span><span className="text-green-400 font-semibold">TSB</span> — Form = CTL − ATL. Positive = fresh, negative = building.</span>
-                  </div>
-                </>
-              )}
-            </ExpandableCard>
-            <ExpandableCard title="Optimal Training Days">
-              {() => <OptimalTrainingDays trainingLoad={trainingLoad} />}
-            </ExpandableCard>
-          </div>
           <ExpandableCard
             title="Weekly Volume"
             headerRight={
