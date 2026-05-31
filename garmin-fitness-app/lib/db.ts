@@ -45,6 +45,13 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS weight_kg DECIMAL(5,2)`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS vo2max DECIMAL(5,2)`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS fitness_age INTEGER`;
+  // Body composition from Garmin smart scale
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS body_fat_pct DECIMAL(5,2)`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS muscle_mass_kg DECIMAL(5,2)`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS bone_mass_kg DECIMAL(5,3)`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS body_water_pct DECIMAL(5,2)`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS visceral_fat INTEGER`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS metabolic_age INTEGER`;
 
   // User settings table — single row keyed by 'default', persists across deployments & devices
   await sql`
@@ -119,6 +126,12 @@ type WellnessRow = {
   weight_kg: number | null;
   vo2max: number | null;
   fitness_age: number | null;
+  body_fat_pct: number | null;
+  muscle_mass_kg: number | null;
+  bone_mass_kg: number | null;
+  body_water_pct: number | null;
+  visceral_fat: number | null;
+  metabolic_age: number | null;
 };
 
 const BATCH = 50; // rows per INSERT statement
@@ -236,13 +249,19 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
       const rows: string[] = [];
 
       batch.forEach((r, j) => {
-        const b = j * 11;
-        rows.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11})`);
-        values.push(r.date, r.steps, r.resting_hr, r.hrv_rmssd, r.sleep_hours, r.sleep_score, r.stress_score, r.body_battery, r.weight_kg ?? null, r.vo2max ?? null, r.fitness_age ?? null);
+        const b = j * 17;
+        rows.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16},$${b+17})`);
+        values.push(
+          r.date, r.steps, r.resting_hr, r.hrv_rmssd, r.sleep_hours, r.sleep_score,
+          r.stress_score, r.body_battery, r.weight_kg ?? null, r.vo2max ?? null, r.fitness_age ?? null,
+          r.body_fat_pct ?? null, r.muscle_mass_kg ?? null, r.bone_mass_kg ?? null,
+          r.body_water_pct ?? null, r.visceral_fat ?? null, r.metabolic_age ?? null,
+        );
       });
 
       await client.query(
-        `INSERT INTO wellness (date,steps,resting_hr,hrv_rmssd,sleep_hours,sleep_score,stress_score,body_battery,weight_kg,vo2max,fitness_age)
+        `INSERT INTO wellness (date,steps,resting_hr,hrv_rmssd,sleep_hours,sleep_score,stress_score,body_battery,
+           weight_kg,vo2max,fitness_age,body_fat_pct,muscle_mass_kg,bone_mass_kg,body_water_pct,visceral_fat,metabolic_age)
          VALUES ${rows.join(',')}
          ON CONFLICT (date) DO UPDATE SET
            steps=COALESCE(EXCLUDED.steps,wellness.steps),
@@ -254,7 +273,13 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
            body_battery=COALESCE(EXCLUDED.body_battery,wellness.body_battery),
            weight_kg=COALESCE(EXCLUDED.weight_kg,wellness.weight_kg),
            vo2max=COALESCE(EXCLUDED.vo2max,wellness.vo2max),
-           fitness_age=COALESCE(EXCLUDED.fitness_age,wellness.fitness_age)`,
+           fitness_age=COALESCE(EXCLUDED.fitness_age,wellness.fitness_age),
+           body_fat_pct=COALESCE(EXCLUDED.body_fat_pct,wellness.body_fat_pct),
+           muscle_mass_kg=COALESCE(EXCLUDED.muscle_mass_kg,wellness.muscle_mass_kg),
+           bone_mass_kg=COALESCE(EXCLUDED.bone_mass_kg,wellness.bone_mass_kg),
+           body_water_pct=COALESCE(EXCLUDED.body_water_pct,wellness.body_water_pct),
+           visceral_fat=COALESCE(EXCLUDED.visceral_fat,wellness.visceral_fat),
+           metabolic_age=COALESCE(EXCLUDED.metabolic_age,wellness.metabolic_age)`,
         values
       );
       inserted += batch.length;
@@ -305,8 +330,14 @@ export function coerceWellness(row: any) {
     sleep_score:  row.sleep_score  != null ? Number(row.sleep_score)  : null,
     stress_score: row.stress_score != null ? Number(row.stress_score) : null,
     body_battery: row.body_battery != null ? Number(row.body_battery) : null,
-    weight_kg:    row.weight_kg    != null ? Number(row.weight_kg)    : null,
-    vo2max:       row.vo2max       != null ? Number(row.vo2max)       : null,
-    fitness_age:  row.fitness_age  != null ? Number(row.fitness_age)  : null,
+    weight_kg:      row.weight_kg      != null ? Number(row.weight_kg)      : null,
+    vo2max:         row.vo2max         != null ? Number(row.vo2max)         : null,
+    fitness_age:    row.fitness_age    != null ? Number(row.fitness_age)    : null,
+    body_fat_pct:   row.body_fat_pct   != null ? Number(row.body_fat_pct)   : null,
+    muscle_mass_kg: row.muscle_mass_kg != null ? Number(row.muscle_mass_kg) : null,
+    bone_mass_kg:   row.bone_mass_kg   != null ? Number(row.bone_mass_kg)   : null,
+    body_water_pct: row.body_water_pct != null ? Number(row.body_water_pct) : null,
+    visceral_fat:   row.visceral_fat   != null ? Number(row.visceral_fat)   : null,
+    metabolic_age:  row.metabolic_age  != null ? Number(row.metabolic_age)  : null,
   };
 }

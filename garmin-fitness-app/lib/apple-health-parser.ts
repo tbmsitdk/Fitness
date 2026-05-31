@@ -187,6 +187,12 @@ function parseXML(xml: string): ParsedGarminData {
         weight_kg: null,
         vo2max: null,
         fitness_age: null,
+        body_fat_pct: null,
+        muscle_mass_kg: null,
+        bone_mass_kg: null,
+        body_water_pct: null,
+        visceral_fat: null,
+        metabolic_age: null,
       });
     }
     return wellnessMap.get(d)!;

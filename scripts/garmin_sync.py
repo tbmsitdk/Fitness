@@ -344,10 +344,10 @@ def main():
                 print("    submit the SMS code at <APP_URL>/garmin-setup, then update GARMIN_TOKENS.")
                 sys.exit(1)
 
-    # ── Daily weight from body-composition endpoint (non-fatal)
-    # Builds a date→kg map so each wellness record gets its own measurement.
-    # Falls back to the user-profile static weight only when no daily data exists.
-    weight_by_date: dict[str, float] = {}
+    # ── Body composition from Garmin smart scale
+    # Extracts weight + fat% + muscle + bone + water + visceral fat + metabolic age per day.
+    weight_by_date:    dict[str, float] = {}
+    body_comp_by_date: dict[str, dict]  = {}
     fallback_weight_kg: float | None = None
     try:
         today_str = date.today().isoformat()
@@ -357,11 +357,30 @@ def main():
         if isinstance(entries, list):
             for entry in entries:
                 d = entry.get("calendarDate") or entry.get("date")
+                if not d:
+                    continue
                 w = entry.get("weight")  # grams
-                if d and w:
+                if w:
                     weight_by_date[d] = round(float(w) / 1000, 1)
+                # Extract all body composition fields from smart scale
+                bc: dict = {}
+                if entry.get("bodyFat") is not None:
+                    bc["body_fat_pct"] = round(float(entry["bodyFat"]), 2)
+                if entry.get("muscleMass") is not None:
+                    bc["muscle_mass_kg"] = round(float(entry["muscleMass"]) / 1000, 2)
+                if entry.get("boneMass") is not None:
+                    bc["bone_mass_kg"] = round(float(entry["boneMass"]) / 1000, 3)
+                if entry.get("bodyWater") is not None:
+                    bc["body_water_pct"] = round(float(entry["bodyWater"]), 2)
+                if entry.get("visceralFat") is not None:
+                    bc["visceral_fat"] = int(float(entry["visceralFat"]))
+                if entry.get("metabolicAge") is not None:
+                    bc["metabolic_age"] = int(float(entry["metabolicAge"]))
+                if bc:
+                    body_comp_by_date[d] = bc
         if weight_by_date:
-            print(f"  ✓ Weight: {len(weight_by_date)} daily measurements loaded")
+            bc_days = sum(1 for v in body_comp_by_date.values() if v)
+            print(f"  ✓ Weight: {len(weight_by_date)} days · Body comp: {bc_days} days with scale data")
         else:
             # Try user-profile static weight as fallback
             prof = api.connectapi("/userprofile-service/userprofile/user-settings") or {}
@@ -370,7 +389,7 @@ def main():
             if fallback_weight_kg:
                 print(f"  ✓ Weight (profile fallback): {fallback_weight_kg}kg")
     except Exception as exc:
-        print(f"  ⚠  Could not fetch weight ({exc})")
+        print(f"  ⚠  Could not fetch body composition ({exc})")
 
     today = date.today()
     start = today - timedelta(days=SYNC_DAYS)
@@ -477,6 +496,9 @@ def main():
         day_weight = weight_by_date.get(ds) or fallback_weight_kg
         if day_weight:
             rec["weight_kg"] = day_weight
+        day_bc = body_comp_by_date.get(ds)
+        if day_bc:
+            rec.update(day_bc)
         if current_fitness_age and "fitness_age" not in rec:
             rec["fitness_age"] = current_fitness_age
         wellness.append(rec)

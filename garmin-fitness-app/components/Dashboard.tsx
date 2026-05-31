@@ -26,6 +26,7 @@ import OptimalTrainingDays from './charts/OptimalTrainingDays';
 import CardiovascularAge from './charts/CardiovascularAge';
 import SleepDebtChart from './charts/SleepDebtChart';
 import BodyBatteryChart from './charts/BodyBatteryChart';
+import BodyCompositionChart from './charts/BodyCompositionChart';
 import PowerCurveChart from './charts/PowerCurveChart';
 import FTPProgressionChart from './charts/FTPProgressionChart';
 import WkgZonesChart from './charts/WkgZonesChart';
@@ -383,6 +384,9 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               {(expanded) => <BodyBatteryChart wellness={sortedWellness} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
+          <ExpandableCard title="Body Composition">
+            {(expanded) => <BodyCompositionChart wellness={sortedWellness} height={expanded ? 500 : undefined} />}
+          </ExpandableCard>
           <ExpandableCard title="Weight Evolution">
             {(expanded) => <WeightChart wellness={sortedWellness} heightCm={settings.heightCm} height={expanded ? 480 : undefined} />}
           </ExpandableCard>

@@ -15,9 +15,15 @@ function coerce(row: any) {
     sleep_score: row.sleep_score != null ? Number(row.sleep_score) : null,
     stress_score:row.stress_score!= null ? Number(row.stress_score): null,
     body_battery:row.body_battery!= null ? Number(row.body_battery): null,
-    weight_kg:   row.weight_kg   != null ? Number(row.weight_kg)   : null,
-    vo2max:      row.vo2max      != null ? Number(row.vo2max)      : null,
-    fitness_age: row.fitness_age != null ? Number(row.fitness_age) : null,
+    weight_kg:      row.weight_kg      != null ? Number(row.weight_kg)      : null,
+    vo2max:         row.vo2max         != null ? Number(row.vo2max)         : null,
+    fitness_age:    row.fitness_age    != null ? Number(row.fitness_age)    : null,
+    body_fat_pct:   row.body_fat_pct   != null ? Number(row.body_fat_pct)   : null,
+    muscle_mass_kg: row.muscle_mass_kg != null ? Number(row.muscle_mass_kg) : null,
+    bone_mass_kg:   row.bone_mass_kg   != null ? Number(row.bone_mass_kg)   : null,
+    body_water_pct: row.body_water_pct != null ? Number(row.body_water_pct) : null,
+    visceral_fat:   row.visceral_fat   != null ? Number(row.visceral_fat)   : null,
+    metabolic_age:  row.metabolic_age  != null ? Number(row.metabolic_age)  : null,
   };
 }
 

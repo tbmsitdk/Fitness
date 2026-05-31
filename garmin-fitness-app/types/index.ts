@@ -28,6 +28,13 @@ export interface WellnessRecord {
   hrv_rmssd: number | null;
   sleep_hours: number | null;
   sleep_score: number | null;
+  // Body composition (Garmin smart scale)
+  body_fat_pct: number | null;
+  muscle_mass_kg: number | null;
+  bone_mass_kg: number | null;
+  body_water_pct: number | null;
+  visceral_fat: number | null;
+  metabolic_age: number | null;
   stress_score: number | null;
   body_battery: number | null;
   weight_kg: number | null;
