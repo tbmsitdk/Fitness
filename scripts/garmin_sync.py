@@ -410,23 +410,60 @@ def main():
 
     # ── Fetch fitness age (try several endpoints, log results for diagnosis)
     current_fitness_age = None
-    # biometricProfile has vo2Max but no fitness age — grab vo2Max as a profile fallback
-    # Fitness age is not exposed by Garmin API for Vivosmart 5
-    print("\n  Fetching biometric profile…")
+    # ── Fetch biometric profile (vo2Max + fitness age search)
+    print("\n  Fetching biometric profile + fitness age…")
+    _profile_vo2max   = None
+    current_fitness_age = None
+    dn = api.display_name or ""
     try:
         resp = api.connectapi("/userprofile-service/userprofile/personal-information") or {}
         biometric = resp.get("biometricProfile") or {}
-        # Grab vo2Max as profile-level fallback (used if per-day get_max_metrics fails)
         bv2 = biometric.get("vo2Max")
         if bv2 and float(bv2) > 0:
-            print(f"  ✓ VO2max from biometric profile: {round(float(bv2), 1)} ml/kg/min")
-            # Store for backfill step — will be used if per-day value is missing
             _profile_vo2max = round(float(bv2), 1)
-        else:
-            _profile_vo2max = None
+            print(f"  ✓ VO2max (biometric profile): {_profile_vo2max}")
     except Exception as exc:
         print(f"  ⚠  biometric profile error: {exc}")
-        _profile_vo2max = None
+
+    # Try additional fitness age endpoints
+    fa_candidates = [
+        f"/fitnessage-service/fitnessage/{dn}/profile" if dn else None,
+        f"/fitnessage-service/fitnessage/users/{dn}" if dn else None,
+        f"/fitnessage-service/fitnessage/users/{dn}/profile" if dn else None,
+        f"/userstats-service/stats/fitness/age/{dn}" if dn else None,
+        "/fitnessage-service/fitnessage/profile/summary",
+        f"/wellness-service/wellness/fitnessage/{dn}" if dn else None,
+    ]
+    for endpoint in fa_candidates:
+        if not endpoint:
+            continue
+        try:
+            r = api.connectapi(endpoint) or {}
+            if not r:
+                continue
+            top_keys = list(r.keys()) if isinstance(r, dict) else []
+            # Search for fitness age in response
+            for fa_key in ("fitnessAge", "fitnessAgeValue", "currentFitnessAge",
+                           "fitnessAgeRounded", "value", "age"):
+                fa = r.get(fa_key)
+                if fa is not None:
+                    try:
+                        fv = int(float(fa))
+                        if 10 < fv < 100:  # sanity check for an age value
+                            current_fitness_age = fv
+                            print(f"  ✓ Fitness age: {fv} yrs ({endpoint}, key='{fa_key}')")
+                            break
+                    except (TypeError, ValueError):
+                        pass
+            if not current_fitness_age and top_keys:
+                print(f"  [debug] {endpoint} → {top_keys}")
+            if current_fitness_age:
+                break
+        except Exception:
+            pass  # 404s expected — skip silently
+
+    if not current_fitness_age:
+        print("  ⚠  Fitness age: not found via API (Vivosmart 5 limitation)")
 
     # ── Wellness (one day at a time; batch-flush every 30 days on large backfills)
     print("\nFetching wellness data…")
@@ -440,7 +477,8 @@ def main():
         day_weight = weight_by_date.get(ds) or fallback_weight_kg
         if day_weight:
             rec["weight_kg"] = day_weight
-        pass  # VO2max captured per-day; fitness age not available via Garmin API for Vivosmart 5
+        if current_fitness_age and "fitness_age" not in rec:
+            rec["fitness_age"] = current_fitness_age
         wellness.append(rec)
         fields = [k for k in rec if k != "date"]
         print(f"({', '.join(fields) or 'no data'})")
