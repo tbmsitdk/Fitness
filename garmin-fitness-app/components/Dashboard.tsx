@@ -20,6 +20,15 @@ import SleepPerformanceChart from './charts/SleepPerformanceChart';
 import HeartRateChart from './charts/HeartRateChart';
 import HRVReadinessCard from './charts/HRVReadinessCard';
 import HRVTrainingLoadChart from './charts/HRVTrainingLoadChart';
+import RacePredictor from './charts/RacePredictor';
+import TrainingMonotony from './charts/TrainingMonotony';
+import OptimalTrainingDays from './charts/OptimalTrainingDays';
+import CardiovascularAge from './charts/CardiovascularAge';
+import SleepDebtChart from './charts/SleepDebtChart';
+import BodyBatteryChart from './charts/BodyBatteryChart';
+import PowerCurveChart from './charts/PowerCurveChart';
+import FTPProgressionChart from './charts/FTPProgressionChart';
+import WkgZonesChart from './charts/WkgZonesChart';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -342,6 +351,49 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
         <CardHeader className="pb-2"><CardTitle>Personal Bests</CardTitle></CardHeader>
         <CardContent><PersonalBests data={personalBests} /></CardContent>
       </Card>
+
+      {/* Race Predictor — running section */}
+      <ExpandableCard title="Race Time Predictor">
+        {() => <RacePredictor activities={allActivities} />}
+      </ExpandableCard>
+
+      {/* Training Monotony — after training load */}
+      <ExpandableCard title="Training Monotony">
+        {(expanded) => <TrainingMonotony activities={allActivities} thresholdHR={thresholdHR} height={expanded ? 480 : undefined} />}
+      </ExpandableCard>
+
+      {/* Optimal Training Days calendar */}
+      <ExpandableCard title="Optimal Training Days">
+        {() => <OptimalTrainingDays trainingLoad={trainingLoad} />}
+      </ExpandableCard>
+
+      {/* Health Metrics */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ExpandableCard title="Cardiovascular Age">
+          {() => <CardiovascularAge settings={settings} wellness={sortedWellness} activities={activities} />}
+        </ExpandableCard>
+        <ExpandableCard title="Sleep Debt Tracker">
+          {(expanded) => <SleepDebtChart wellness={sortedWellness} height={expanded ? 480 : undefined} />}
+        </ExpandableCard>
+      </div>
+
+      {/* Body Battery */}
+      <ExpandableCard title="Body Battery Patterns">
+        {(expanded) => <BodyBatteryChart wellness={sortedWellness} height={expanded ? 480 : undefined} />}
+      </ExpandableCard>
+
+      {/* FTP Progression + W/kg Zones + Power Curve */}
+      <ExpandableCard title="FTP Progression">
+        {(expanded) => <FTPProgressionChart activities={allActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
+      </ExpandableCard>
+
+      <ExpandableCard title="W/kg Zones Over Time">
+        {(expanded) => <WkgZonesChart activities={allActivities} wellness={allWellness} height={expanded ? 480 : undefined} />}
+      </ExpandableCard>
+
+      <ExpandableCard title="Power Curve (Approx.)">
+        {(expanded) => <PowerCurveChart activities={allActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
+      </ExpandableCard>
     </div>
   );
 }
