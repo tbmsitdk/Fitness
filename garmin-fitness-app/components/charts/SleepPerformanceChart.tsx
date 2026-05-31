@@ -57,10 +57,11 @@ interface Props {
   activities: Activity[];
   wellness: WellnessRecord[];
   height?: number;
+  defaultSport?: Sport;
 }
 
-export default function SleepPerformanceChart({ activities, wellness, height = 280 }: Props) {
-  const [sport, setSport]   = useState<Sport>('running');
+export default function SleepPerformanceChart({ activities, wellness, height = 280, defaultSport = 'running' }: Props) {
+  const [sport, setSport]   = useState<Sport>(defaultSport);
   const [metric, setMetric] = useState<SleepMetric>('hours');
 
   // Build date → wellness map for O(1) lookup

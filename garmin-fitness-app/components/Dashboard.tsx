@@ -277,8 +277,8 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           <ExpandableCard title="Running Cadence">
             {(expanded) => <CadenceChart activities={activities} sport="running" height={expanded ? 480 : undefined} />}
           </ExpandableCard>
-          <ExpandableCard title="Sleep × Performance">
-            {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} height={expanded ? 480 : undefined} />}
+          <ExpandableCard title="Sleep × Running Performance">
+            {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} defaultSport="running" height={expanded ? 480 : undefined} />}
           </ExpandableCard>
         </div>
       )}
@@ -310,6 +310,9 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           </ExpandableCard>
           <ExpandableCard title="Aerobic Efficiency (EF)">
             {(expanded) => <EfficiencyFactorChart data={efData} sport="cycling" height={expanded ? 480 : undefined} />}
+          </ExpandableCard>
+          <ExpandableCard title="Sleep × Cycling Performance">
+            {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} defaultSport="cycling" height={expanded ? 480 : undefined} />}
           </ExpandableCard>
         </div>
       )}
@@ -403,14 +406,9 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           <ExpandableCard title="Weight Evolution">
             {(expanded) => <WeightChart wellness={sortedWellness} heightCm={settings.heightCm} height={expanded ? 480 : undefined} />}
           </ExpandableCard>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ExpandableCard title="Daily Steps">
-              {(expanded) => <StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} height={expanded ? 460 : undefined} />}
-            </ExpandableCard>
-            <ExpandableCard title="Sleep × Performance">
-              {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} height={expanded ? 480 : undefined} />}
-            </ExpandableCard>
-          </div>
+          <ExpandableCard title="Daily Steps">
+            {(expanded) => <StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} height={expanded ? 460 : undefined} />}
+          </ExpandableCard>
         </div>
       )}
 
