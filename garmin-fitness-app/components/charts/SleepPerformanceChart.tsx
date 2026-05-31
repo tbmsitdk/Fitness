@@ -58,9 +58,10 @@ interface Props {
   wellness: WellnessRecord[];
   height?: number;
   defaultSport?: Sport;
+  hideSportToggle?: boolean;
 }
 
-export default function SleepPerformanceChart({ activities, wellness, height = 280, defaultSport = 'running' }: Props) {
+export default function SleepPerformanceChart({ activities, wellness, height = 280, defaultSport = 'running', hideSportToggle = false }: Props) {
   const [sport, setSport]   = useState<Sport>(defaultSport);
   const [metric, setMetric] = useState<SleepMetric>('hours');
 
@@ -149,14 +150,16 @@ export default function SleepPerformanceChart({ activities, wellness, height = 2
     <div>
       {/* Controls */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <div className="flex gap-1">
-          {(['running', 'cycling'] as Sport[]).map(s => (
-            <button key={s} onClick={() => setSport(s)}
-              className={`text-xs px-2 py-0.5 rounded border capitalize transition ${sport === s ? 'bg-foreground text-background border-foreground font-semibold' : 'border-border text-muted-foreground hover:border-foreground/40'}`}>
-              {s}
-            </button>
-          ))}
-        </div>
+        {!hideSportToggle && (
+          <div className="flex gap-1">
+            {(['running', 'cycling'] as Sport[]).map(s => (
+              <button key={s} onClick={() => setSport(s)}
+                className={`text-xs px-2 py-0.5 rounded border capitalize transition ${sport === s ? 'bg-foreground text-background border-foreground font-semibold' : 'border-border text-muted-foreground hover:border-foreground/40'}`}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-1">
           {(['hours', 'score'] as SleepMetric[]).map(m => (
             <button key={m} onClick={() => setMetric(m)}

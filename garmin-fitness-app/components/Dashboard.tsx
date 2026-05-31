@@ -258,7 +258,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             {(expanded) => <CadenceChart activities={activities} sport="running" height={expanded ? 480 : undefined} />}
           </ExpandableCard>
           <ExpandableCard title="Sleep × Running Performance">
-            {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} defaultSport="running" height={expanded ? 480 : undefined} />}
+            {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} defaultSport="running" hideSportToggle height={expanded ? 480 : undefined} />}
           </ExpandableCard>
         </div>
       )}
@@ -292,7 +292,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             {(expanded) => <EfficiencyFactorChart data={efData} sport="cycling" height={expanded ? 480 : undefined} />}
           </ExpandableCard>
           <ExpandableCard title="Sleep × Cycling Performance">
-            {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} defaultSport="cycling" height={expanded ? 480 : undefined} />}
+            {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} defaultSport="cycling" hideSportToggle height={expanded ? 480 : undefined} />}
           </ExpandableCard>
         </div>
       )}
