@@ -355,43 +355,24 @@ def main():
         comp = api.get_body_composition(start_str, today_str) or {}
         entries = comp.get("dateWeightList") or comp.get("totalAverage") or []
         if isinstance(entries, list):
-            _logged_keys = False
             for entry in entries:
                 d = entry.get("calendarDate") or entry.get("date")
                 if not d:
                     continue
-                # Log all keys on first entry so we can find visceral/metabolic field names
-                if not _logged_keys:
-                    print(f"  [debug] body comp entry keys: {[k for k in entry.keys() if entry[k] is not None]}")
-                    _logged_keys = True
                 w = entry.get("weight")  # grams
                 if w:
                     weight_by_date[d] = round(float(w) / 1000, 1)
-                # Extract all body composition fields from smart scale
-                # Try multiple field name variants (Garmin API is inconsistent)
+                # Extract body composition fields (confirmed available on this scale)
                 bc: dict = {}
-                fat = entry.get("bodyFat") or entry.get("bodyFatPercentage") or entry.get("fatPercent")
-                if fat is not None:
-                    bc["body_fat_pct"] = round(float(fat), 2)
-                muscle = entry.get("muscleMass") or entry.get("skeletalMuscleMass")
-                if muscle is not None:
-                    bc["muscle_mass_kg"] = round(float(muscle) / 1000, 2)
-                bone = entry.get("boneMass") or entry.get("boneMassWeight")
-                if bone is not None:
-                    bc["bone_mass_kg"] = round(float(bone) / 1000, 3)
-                water = entry.get("bodyWater") or entry.get("bodyWaterPercent") or entry.get("totalBodyWater")
-                if water is not None:
-                    bc["body_water_pct"] = round(float(water), 2)
-                # Visceral fat — try all known field names
-                vf = (entry.get("visceralFat") or entry.get("visceralFatRating")
-                      or entry.get("visceralFatMass") or entry.get("visceralFatValue"))
-                if vf is not None:
-                    bc["visceral_fat"] = int(float(vf))
-                # Metabolic age — try all known field names
-                ma = (entry.get("metabolicAge") or entry.get("basalMetabolicRateAge")
-                      or entry.get("metabolicAgeValue"))
-                if ma is not None:
-                    bc["metabolic_age"] = int(float(ma))
+                if entry.get("bodyFat") is not None:
+                    bc["body_fat_pct"] = round(float(entry["bodyFat"]), 2)
+                if entry.get("muscleMass") is not None:
+                    bc["muscle_mass_kg"] = round(float(entry["muscleMass"]) / 1000, 2)
+                if entry.get("boneMass") is not None:
+                    bc["bone_mass_kg"] = round(float(entry["boneMass"]) / 1000, 3)
+                if entry.get("bodyWater") is not None:
+                    bc["body_water_pct"] = round(float(entry["bodyWater"]), 2)
+                # visceralFat and metabolicAge not available on this scale model
                 if bc:
                     body_comp_by_date[d] = bc
         if weight_by_date:

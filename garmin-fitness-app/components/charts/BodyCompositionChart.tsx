@@ -15,15 +15,14 @@ const TOOLTIP_STYLE = {
   fontSize: 11,
 };
 
-type Metric = 'fat' | 'muscle' | 'water' | 'bone' | 'visceral' | 'metabolic';
+type Metric = 'fat' | 'muscle' | 'water' | 'bone' | 'weight';
 
 const METRICS: { id: Metric; label: string; color: string; unit: string; key: keyof WellnessRecord }[] = [
-  { id: 'fat',      label: 'Body Fat %',    color: '#EF4444', unit: '%',   key: 'body_fat_pct'   },
-  { id: 'muscle',   label: 'Muscle Mass',   color: '#3B82F6', unit: ' kg', key: 'muscle_mass_kg' },
-  { id: 'water',    label: 'Body Water %',  color: '#06B6D4', unit: '%',   key: 'body_water_pct' },
-  { id: 'bone',     label: 'Bone Mass',     color: '#F59E0B', unit: ' kg', key: 'bone_mass_kg'   },
-  { id: 'visceral', label: 'Visceral Fat',  color: '#F97316', unit: '',    key: 'visceral_fat'   },
-  { id: 'metabolic',label: 'Metabolic Age', color: '#8B5CF6', unit: ' yrs', key: 'metabolic_age' },
+  { id: 'fat',    label: 'Body Fat %',   color: '#EF4444', unit: '%',   key: 'body_fat_pct'   },
+  { id: 'muscle', label: 'Muscle Mass',  color: '#3B82F6', unit: ' kg', key: 'muscle_mass_kg' },
+  { id: 'water',  label: 'Body Water %', color: '#06B6D4', unit: '%',   key: 'body_water_pct' },
+  { id: 'bone',   label: 'Bone Mass',    color: '#F59E0B', unit: ' kg', key: 'bone_mass_kg'   },
+  { id: 'weight', label: 'Weight',       color: '#A78BFA', unit: ' kg', key: 'weight_kg'      },
 ];
 
 // Age/sex-adjusted benchmarks (male, ACSM / ACE norms)
@@ -41,11 +40,8 @@ function getBenchmarks(metric: Metric, age: number, sex: 'male' | 'female') {
       ? { excellent: 13, good: 20, average: 25, poor: 30, label: 'Age 60+ male norms' }
       : { excellent: 19, good: 26, average: 31, poor: 37, label: 'Age 60+ female norms' };
   }
-  if (metric === 'visceral') {
-    return { healthy: 9, elevated: 14, label: 'Visceral fat rating scale' };
-  }
-  if (metric === 'metabolic') {
-    return { target: age, label: `Your age: ${age}` };
+  if (metric === 'weight') {
+    return null; // shown in WeightChart with BMI bands
   }
   if (metric === 'muscle') {
     // Rough norms for skeletal muscle mass (Garmin scale measures total muscle)
@@ -70,20 +66,6 @@ function ratingLabel(metric: Metric, value: number, age: number, sex: 'male' | '
     if (value <= b.average)   return { label: 'Average',   color: 'text-amber-400' };
     if (value <= b.poor)      return { label: 'Above avg', color: 'text-orange-400' };
     return { label: 'High', color: 'text-red-400' };
-  }
-  if (metric === 'visceral') {
-    const b = bench as { healthy: number; elevated: number };
-    if (value <= b.healthy)   return { label: 'Healthy',  color: 'text-green-400' };
-    if (value <= b.elevated)  return { label: 'Elevated', color: 'text-amber-400' };
-    return { label: 'High', color: 'text-red-400' };
-  }
-  if (metric === 'metabolic') {
-    const b = bench as { target: number };
-    const delta = value - b.target;
-    if (delta <= -5) return { label: `${Math.abs(delta)} yrs younger`, color: 'text-green-400' };
-    if (delta <= 0)  return { label: `On target`,                      color: 'text-green-400' };
-    if (delta <= 5)  return { label: `${delta} yrs older`,             color: 'text-amber-400' };
-    return { label: `${delta} yrs older`, color: 'text-red-400' };
   }
   if (metric === 'muscle') {
     const b = bench as { excellent: number; good: number; average: number };
@@ -117,7 +99,7 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
   const sex = settings?.sex ?? 'male';
 
   const sorted = [...wellness]
-    .filter(w => METRICS.some(m => w[m.key] != null))
+    .filter(w => w.body_fat_pct != null || w.muscle_mass_kg != null || w.weight_kg != null)
     .sort((a, b) => a.date.localeCompare(b.date));
 
   if (sorted.length === 0) {
@@ -238,7 +220,7 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
               {rating?.label && <span className={`font-semibold ${rating.color}`}>{rating.label}</span>}
               {delta != null && (
                 <span className="text-muted-foreground">Change: <span className={`font-semibold ${
-                  metric === 'fat' || metric === 'visceral' || metric === 'metabolic'
+                  metric === 'fat'
                     ? delta < 0 ? 'text-green-400' : delta > 0 ? 'text-red-400' : ''
                     : delta > 0 ? 'text-green-400' : delta < 0 ? 'text-amber-400' : ''
                 }`}>{delta >= 0 ? '+' : ''}{delta}{cfg.unit}</span></span>
@@ -273,18 +255,6 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
                   <ReferenceLine y={(bench as {poor:number}).poor} stroke="#EF4444" strokeDasharray="3 3" strokeOpacity={0.6}
                     label={{ value: 'High', position: 'insideTopRight', fontSize: 9, fill: '#EF4444' }} />
                 </>
-              )}
-              {metric === 'visceral' && bench && 'healthy' in bench && (
-                <>
-                  <ReferenceLine y={(bench as {healthy:number}).healthy} stroke="#22C55E" strokeDasharray="3 3" strokeOpacity={0.6}
-                    label={{ value: '≤9 healthy', position: 'insideTopRight', fontSize: 9, fill: '#22C55E' }} />
-                  <ReferenceLine y={(bench as {elevated:number}).elevated} stroke="#F59E0B" strokeDasharray="3 3" strokeOpacity={0.6}
-                    label={{ value: '≤14 elevated', position: 'insideTopRight', fontSize: 9, fill: '#F59E0B' }} />
-                </>
-              )}
-              {metric === 'metabolic' && bench && 'target' in bench && (
-                <ReferenceLine y={(bench as {target:number}).target} stroke="#A78BFA" strokeDasharray="4 3" strokeOpacity={0.8}
-                  label={{ value: `Your age: ${age}`, position: 'insideTopRight', fontSize: 9, fill: '#A78BFA' }} />
               )}
               {metric === 'muscle' && bench && 'good' in bench && (
                 <>
@@ -353,12 +323,11 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
       {!showCorrelation && (
         <p className="text-[10px] text-muted-foreground/60 italic">
           Benchmarks based on ACE/ACSM norms for age {age} {sex} ·
-          {metric === 'fat' && ' Lower is better — excess fat increases cardiovascular risk'}
+          {metric === 'fat'    && ' Lower is better — body fat above 25% (male) increases cardiovascular risk'}
           {metric === 'muscle' && ' Higher is better — muscle mass declines ~3–8% per decade after 30 without training'}
-          {metric === 'visceral' && ' Rating 1–9 = healthy, 10–14 = elevated, 15–30 = high risk'}
-          {metric === 'metabolic' && ' Metabolic age below chronological age = above-average fitness'}
-          {metric === 'water' && ' Hydration affects performance, recovery and heart rate accuracy'}
-          {metric === 'bone' && ' Bone mass is relatively stable — weight-bearing exercise maintains it'}
+          {metric === 'water'  && ' Healthy: 50–65% (male) or 45–60% (female) — hydration affects performance and recovery'}
+          {metric === 'bone'   && ' Bone mass is relatively stable — weight-bearing exercise and calcium maintain it'}
+          {metric === 'weight' && ' Daily weight from Garmin smart scale — fluctuates ±1–2 kg from hydration'}
         </p>
       )}
     </div>
