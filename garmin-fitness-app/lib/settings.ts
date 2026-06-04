@@ -1,5 +1,6 @@
 export interface UserSettings {
   birthYear: number;
+  birthDate: string | null;  // YYYY-MM-DD — more accurate than year-only
   sex: 'male' | 'female';
   heightCm: number | null;
   maxHR: number | null;
@@ -11,6 +12,7 @@ const STORAGE_KEY = 'fitness_user_settings';
 
 export const DEFAULT_SETTINGS: UserSettings = {
   birthYear: new Date().getFullYear() - 45,
+  birthDate: null,
   sex: 'male',
   heightCm: null,
   maxHR: null,
@@ -19,6 +21,14 @@ export const DEFAULT_SETTINGS: UserSettings = {
 };
 
 export function getAge(s: UserSettings): number {
+  if (s.birthDate) {
+    const birth = new Date(s.birthDate);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return Math.max(10, Math.min(110, age));
+  }
   return Math.max(20, Math.min(100, new Date().getFullYear() - s.birthYear));
 }
 

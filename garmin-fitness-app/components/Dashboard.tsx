@@ -237,14 +237,9 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           >
             {(expanded) => <WeeklyVolumeChart data={weeklyVolume} metric={volMetric} height={expanded ? 520 : undefined} prevData={showYoY ? prevWeeklyVolume : undefined} />}
           </ExpandableCard>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ExpandableCard title="Monthly Consistency">
-              {(expanded) => <ConsistencyChart data={consistency} height={expanded ? 480 : undefined} />}
-            </ExpandableCard>
-            <ExpandableCard title="Weekly Calories">
-              {(expanded) => <CaloriesChart activities={activities} height={expanded ? 480 : undefined} />}
-            </ExpandableCard>
-          </div>
+          <ExpandableCard title="Weekly Calories">
+            {(expanded) => <CaloriesChart activities={activities} height={expanded ? 480 : undefined} />}
+          </ExpandableCard>
           <Card>
             <CardHeader className="pb-2"><CardTitle>Personal Bests</CardTitle></CardHeader>
             <CardContent><PersonalBests data={personalBests} /></CardContent>
@@ -347,12 +342,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               />
             )}
           </ExpandableCard>
-          <ExpandableCard title="Body Battery & Walking">
-            {(expanded) => <BodyBatteryChart wellness={sortedWellness} height={expanded ? 480 : undefined} />}
-          </ExpandableCard>
-          <ExpandableCard title="Monthly Consistency">
-            {(expanded) => <ConsistencyChart data={consistency} height={expanded ? 480 : undefined} />}
-          </ExpandableCard>
         </div>
       )}
 
@@ -410,9 +399,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           <ExpandableCard title="Weight Evolution">
             {(expanded) => <WeightChart wellness={sortedWellness} heightCm={settings.heightCm} height={expanded ? 480 : undefined} />}
           </ExpandableCard>
-          <ExpandableCard title="Daily Steps">
-            {(expanded) => <StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} height={expanded ? 460 : undefined} />}
-          </ExpandableCard>
         </div>
       )}
 
@@ -439,22 +425,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               {() => <OptimalTrainingDays trainingLoad={trainingLoad} />}
             </ExpandableCard>
           </div>
-          <ExpandableCard
-            title="Weekly Volume"
-            headerRight={
-              <div className="flex gap-1 flex-wrap">
-                {(['km','hours'] as const).map(m => (
-                  <Button key={m} variant={volMetric === m ? 'default' : 'ghost'} size="sm" onClick={() => setVolMetric(m)}>{m}</Button>
-                ))}
-                <Button variant={showYoY ? 'default' : 'ghost'} size="sm" onClick={() => setShowYoY(v => !v)}>YoY</Button>
-              </div>
-            }
-          >
-            {(expanded) => <WeeklyVolumeChart data={weeklyVolume} metric={volMetric} height={expanded ? 520 : undefined} prevData={showYoY ? prevWeeklyVolume : undefined} />}
-          </ExpandableCard>
-          <ExpandableCard title="Monthly Consistency">
-            {(expanded) => <ConsistencyChart data={consistency} height={expanded ? 480 : undefined} />}
-          </ExpandableCard>
           <ExpandableCard title="Training Heatmap">
             {() => <TrainingHeatmap activities={allActivities} />}
           </ExpandableCard>

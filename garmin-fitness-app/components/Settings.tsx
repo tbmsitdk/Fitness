@@ -95,11 +95,18 @@ export default function Settings({ settings, onSave, measuredMaxHR }: Props) {
       <Card>
         <CardHeader className="pb-2"><CardTitle>Demographics</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-2 gap-4">
-          <Field label="Birth year" hint="Used to calculate your age bracket for peer benchmarks.">
-            <NumericInput
-              value={form.birthYear}
-              onChange={v => update('birthYear', v ?? new Date().getFullYear() - 45)}
-              min={1940} max={new Date().getFullYear() - 10}
+          <Field label="Date of birth" hint="Used to calculate your exact age for peer benchmarks and HR zone calculations.">
+            <input
+              type="date"
+              value={form.birthDate ?? `${form.birthYear}-01-01`}
+              max={`${new Date().getFullYear() - 10}-12-31`}
+              min="1930-01-01"
+              onChange={e => {
+                const val = e.target.value;
+                update('birthDate', val || null);
+                if (val) update('birthYear', new Date(val).getFullYear());
+              }}
+              className="w-full rounded-md border border-border bg-secondary px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </Field>
           <Field label="Sex" hint="Affects VO₂max norms and some heart rate benchmarks.">
