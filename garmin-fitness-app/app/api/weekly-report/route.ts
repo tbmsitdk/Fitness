@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import Anthropic from '@anthropic-ai/sdk';
+import { initializeDatabase } from '@/lib/db';
+
+export const dynamic = 'force-dynamic';
 
 export interface WeeklyReport {
   week_start: string;
@@ -123,6 +126,7 @@ recovery_status logic: good = sleep ≥7h AND body_battery ≥50 AND stress <50;
 
 export async function GET(req: NextRequest) {
   try {
+    await initializeDatabase();
     const force = req.nextUrl.searchParams.get('force') === '1';
     const weekStart = lastMonday();
 
@@ -141,11 +145,11 @@ export async function GET(req: NextRequest) {
 
     const report = await generateReport(weekStart);
 
-    // Upsert into DB
+    // Save to DB (delete old entry for this week first, then insert fresh)
+    await sql`DELETE FROM weekly_report WHERE week_start = ${weekStart}`;
     await sql`
       INSERT INTO weekly_report (week_start, report_json)
       VALUES (${weekStart}, ${JSON.stringify(report)})
-      ON CONFLICT DO NOTHING
     `;
 
     return NextResponse.json({ report, cached: false });
