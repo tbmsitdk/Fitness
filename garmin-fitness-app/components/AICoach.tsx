@@ -109,11 +109,13 @@ export default function AICoach({ activities, wellness, settings }: Props) {
             <Card><CardContent className="py-12 text-center space-y-4">
               <Bot className="w-8 h-8 text-muted-foreground mx-auto" />
               <div className="space-y-1">
-                <p className="text-sm font-medium">Get your coaching summary</p>
-                <p className="text-xs text-muted-foreground">Analyses your last 90 days of training and wellness data</p>
+                <p className="text-sm font-medium">Full-dashboard coaching analysis</p>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                  Analyses your training load, body composition, sleep, HRV, cycling power, injury risk, and longevity metrics — then delivers both training and health recommendations.
+                </p>
               </div>
               <Button onClick={() => fetchSummary()} className="mx-auto">
-                <Bot className="w-3.5 h-3.5 mr-2" />Generate coaching summary
+                <Bot className="w-3.5 h-3.5 mr-2" />Generate coaching report
               </Button>
             </CardContent></Card>
           )}
@@ -121,7 +123,7 @@ export default function AICoach({ activities, wellness, settings }: Props) {
           {loading ? (
             <Card><CardContent className="py-10 text-center space-y-2">
               <div className="w-4 h-4 border border-border border-t-foreground rounded-full animate-spin mx-auto" />
-              <p className="text-xs text-muted-foreground">Analysing 90 days of training…</p>
+              <p className="text-xs text-muted-foreground">Analysing your full dashboard data…</p>
             </CardContent></Card>
           ) : error ? (
             <Card className="border-red-500/20 bg-red-500/5"><CardContent className="py-4 flex gap-3 items-start">
@@ -136,15 +138,34 @@ export default function AICoach({ activities, wellness, settings }: Props) {
                 {summary.cached && <p className="text-[10px] text-muted-foreground mt-3 pt-3 border-t border-border">Cached · {new Date(summary.generated_at).toLocaleString()} · 24h TTL</p>}
               </CardContent></Card>
 
-              {summary.recommendations.length > 0 && (
-                <Card className="border-blue-500/20 bg-blue-500/5"><CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-1.5 text-blue-400"><TrendingUp className="w-3 h-3" />Recommendations</CardTitle>
-                </CardHeader><CardContent>
-                  <ul className="space-y-2">{summary.recommendations.map((r,i) => (
-                    <li key={i} className="flex gap-2 text-xs text-muted-foreground"><span className="text-blue-400">→</span>{r}</li>
-                  ))}</ul>
-                </CardContent></Card>
-              )}
+              {summary.recommendations.length > 0 && (() => {
+                const training = summary.recommendations.filter(r => r.toUpperCase().startsWith('TRAINING'));
+                const health   = summary.recommendations.filter(r => r.toUpperCase().startsWith('HEALTH'));
+                const other    = summary.recommendations.filter(r => !r.toUpperCase().startsWith('TRAINING') && !r.toUpperCase().startsWith('HEALTH'));
+                const strip    = (r: string) => r.replace(/^(TRAINING|HEALTH)\s*[-–:]\s*/i, '');
+                return (
+                  <div className="space-y-3">
+                    {(training.length > 0 || other.length > 0) && (
+                      <Card className="border-blue-500/20 bg-blue-500/5"><CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-1.5 text-blue-400"><TrendingUp className="w-3 h-3" />Training Recommendations</CardTitle>
+                      </CardHeader><CardContent>
+                        <ul className="space-y-2">{[...training, ...other].map((r,i) => (
+                          <li key={i} className="flex gap-2 text-xs text-muted-foreground"><span className="text-blue-400">→</span>{strip(r)}</li>
+                        ))}</ul>
+                      </CardContent></Card>
+                    )}
+                    {health.length > 0 && (
+                      <Card className="border-purple-500/20 bg-purple-500/5"><CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-1.5 text-purple-400"><Heart className="w-3 h-3" />Health Recommendations</CardTitle>
+                      </CardHeader><CardContent>
+                        <ul className="space-y-2">{health.map((r,i) => (
+                          <li key={i} className="flex gap-2 text-xs text-muted-foreground"><span className="text-purple-400">→</span>{strip(r)}</li>
+                        ))}</ul>
+                      </CardContent></Card>
+                    )}
+                  </div>
+                );
+              })()}
 
               {summary.injury_risks.length > 0 && (
                 <Card className="border-amber-500/20 bg-amber-500/5"><CardHeader className="pb-2">

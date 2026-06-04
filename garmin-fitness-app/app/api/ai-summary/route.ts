@@ -10,15 +10,17 @@ const CACHE_KEY = 'ai-weekly-summary';
 const CACHE_TTL = 60 * 60 * 24; // 24 hours
 
 async function buildSummary(userSettings?: UserSettings) {
-  const cutoff = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
+  // Fetch full history for accurate training load + body comp trends
+  const actCutoff  = new Date(Date.now() - 365 * 86400 * 1000).toISOString(); // 1 year for activities
+  const wellCutoff = new Date(Date.now() -  90 * 86400 * 1000).toISOString(); // 90 days for wellness
 
   const [actResult, wellResult] = await Promise.all([
-    sql`SELECT * FROM activities WHERE date >= ${cutoff} ORDER BY date`,
-    sql`SELECT * FROM wellness WHERE date >= ${cutoff} ORDER BY date`,
+    sql`SELECT * FROM activities WHERE date >= ${actCutoff} ORDER BY date`,
+    sql`SELECT * FROM wellness WHERE date >= ${wellCutoff} ORDER BY date`,
   ]);
 
   const activities = actResult.rows.map(coerceActivity);
-  const wellness = wellResult.rows.map(coerceWellness);
+  const wellness   = wellResult.rows.map(coerceWellness);
 
   if (activities.length === 0) {
     throw Object.assign(new Error('No activity data found. Please upload your Garmin export first.'), { status: 404 });
