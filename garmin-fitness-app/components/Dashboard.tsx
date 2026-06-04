@@ -80,7 +80,7 @@ function periodLabel(cutoff: Date): string {
 }
 
 export default function Dashboard({ activities, allActivities, wellness, allWellness, cutoff, settings = DEFAULT_SETTINGS }: Props) {
-  const [subTab, setSubTab] = useState<'overview' | 'running' | 'cycling' | 'walking' | 'health' | 'training'>('overview');
+  const [subTab, setSubTab] = useState<'home' | 'running' | 'cycling' | 'health' | 'training'>('home');
   const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
   const [wellMetric, setWellMetric] = useState<WellnessMetric>('rhr');
   const [cadenceSport, setCadenceSport] = useState<'running' | 'cycling'>('running');
@@ -159,12 +159,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
     : null;
 
   const SUB_TABS = [
-    { id: 'overview',  label: 'Overview'  },
-    { id: 'running',   label: 'Running'   },
-    { id: 'cycling',   label: 'Cycling'   },
-    { id: 'walking',   label: 'Walking'   },
-    { id: 'health',    label: 'Health'    },
-    { id: 'training',  label: 'Training'  },
+    { id: 'home',     label: 'Home'     },
+    { id: 'training', label: 'Training' },
+    { id: 'running',  label: 'Running'  },
+    { id: 'cycling',  label: 'Cycling'  },
+    { id: 'health',   label: 'Health'   },
   ] as const;
 
   return (
@@ -187,47 +186,52 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
         ))}
       </div>
 
-      {/* KPI row — always visible */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        <StatCard label={`Runs ${periodLabel(cutoff)}`} value={`${summary.running.count}`} sub={`${summary.running.km} km`} accent="#3B82F6" />
-        <StatCard label={`Rides ${periodLabel(cutoff)}`} value={`${summary.cycling.count}`} sub={`${summary.cycling.km} km`} accent="#22C55E" />
-        <StatCard label={`Walks ${periodLabel(cutoff)}`} value={`${summary.walking.count}`} sub={`${summary.walking.km} km`} accent="#F59E0B" />
+      {/* KPI row — 4 cards, always visible */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="p-4 rounded-lg border border-border bg-card space-y-1">
+          <p className="text-[10px] font-medium tracking-widest uppercase text-muted-foreground">Activities {periodLabel(cutoff)}</p>
+          <p className="text-2xl font-bold font-mono tracking-tight leading-none">
+            {summary.running.count + summary.cycling.count + summary.walking.count}
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            {summary.running.count > 0 && `${summary.running.count} runs · `}
+            {summary.cycling.count > 0 && `${summary.cycling.count} rides · `}
+            {summary.walking.count > 0 && `${summary.walking.count} walks`}
+          </p>
+        </div>
         <StatCard
           label="Fitness (CTL)"
           value={latestLoad ? `${latestLoad.ctl.toFixed(0)}` : '—'}
-          sub={ctlDelta != null ? `${ctlDelta >= 0 ? '+' : ''}${ctlDelta} over period` : 'current'}
-          hint="Chronic Training Load — current fitness level (42-day avg). Delta = change across the selected period."
+          sub={ctlDelta != null ? `${ctlDelta >= 0 ? '+' : ''}${ctlDelta} this period` : 'current'}
+          hint="42-day training load average — your current base fitness level."
           accent="hsl(0 0% 98%)"
         />
         <StatCard
-          label={`Load ${periodLabel(cutoff)} (TSS)`}
-          value={`${summary.period_tss}`}
-          sub={`~${summary.avg_weekly_tss} TSS/week avg`}
-          hint="Total Training Stress Score for the selected period. Higher = more training volume & intensity."
+          label="Weekly Load (TSS)"
+          value={`${summary.avg_weekly_tss}`}
+          sub="avg per week"
+          hint="Average Training Stress Score per week for the selected period."
           accent="hsl(0 0% 98%)"
         />
         <div className="p-4 rounded-lg border border-border bg-card space-y-1">
           <p className="text-[10px] font-medium tracking-widest uppercase text-muted-foreground">Form (TSB)</p>
           <p className="text-2xl font-bold font-mono tracking-tight leading-none">{latestLoad ? latestLoad.tsb.toFixed(1) : '—'}</p>
           {formBadge && <Badge variant={formBadge.variant}>{formBadge.label}</Badge>}
-          <p className="text-[10px] text-muted-foreground/60 italic">
-            Training Stress Balance — fitness minus fatigue. Positive = fresh, negative = fatigued.
-            {tsbDelta != null && ` ${tsbDelta >= 0 ? '+' : ''}${tsbDelta} over period.`}
-          </p>
         </div>
       </div>
 
-      {/* ── OVERVIEW ─────────────────────────────────────────────────────── */}
-      {subTab === 'overview' && (
+      {/* ── HOME ─────────────────────────────────────────────────────────── */}
+      {subTab === 'home' && (
         <div className="space-y-4">
+          {/* Today's status */}
           <WeeklyReport />
           <DailySuggestion trainingLoad={trainingLoad} wellness={sortedWellness} activities={activities} />
-          <InjuryRiskScore activities={allActivities} trainingLoad={trainingLoad} wellness={sortedWellness} compact />
-          <LongevityScore wellness={sortedWellness} activities={allActivities} settings={settings} compact />
+
+          {/* Volume overview */}
           <ExpandableCard
             title="Weekly Volume"
             headerRight={
-              <div className="flex gap-1 flex-wrap">
+              <div className="flex gap-1">
                 {(['km','hours'] as const).map(m => (
                   <Button key={m} variant={volMetric === m ? 'default' : 'ghost'} size="sm" onClick={() => setVolMetric(m)}>{m}</Button>
                 ))}
@@ -237,9 +241,8 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           >
             {(expanded) => <WeeklyVolumeChart data={weeklyVolume} metric={volMetric} height={expanded ? 520 : undefined} prevData={showYoY ? prevWeeklyVolume : undefined} />}
           </ExpandableCard>
-          <ExpandableCard title="Weekly Calories">
-            {(expanded) => <CaloriesChart activities={activities} height={expanded ? 480 : undefined} />}
-          </ExpandableCard>
+
+          {/* Records */}
           <Card>
             <CardHeader className="pb-2"><CardTitle>Personal Bests</CardTitle></CardHeader>
             <CardContent><PersonalBests data={personalBests} /></CardContent>
@@ -247,25 +250,69 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
         </div>
       )}
 
+      {/* ── TRAINING ─────────────────────────────────────────────────────── */}
+      {subTab === 'training' && (
+        <div className="space-y-4">
+          {/* Load management */}
+          <ExpandableCard title="Training Load & Forecast">
+            {(expanded) => (
+              <>
+                <TrainingLoadChart data={trainingLoad} height={expanded ? 500 : undefined} />
+                <div className="flex flex-col gap-1 mt-2 text-[10px] text-muted-foreground">
+                  <span><span className="text-blue-400 font-semibold">CTL</span> — Fitness (42-day avg). Higher = stronger base.</span>
+                  <span><span className="text-red-400 font-semibold">ATL</span> — Fatigue (7-day avg). Spikes after hard training.</span>
+                  <span><span className="text-green-400 font-semibold">TSB</span> — Form = CTL − ATL. Positive = fresh, negative = building.</span>
+                </div>
+              </>
+            )}
+          </ExpandableCard>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ExpandableCard title="Optimal Training Days">
+              {() => <OptimalTrainingDays trainingLoad={trainingLoad} />}
+            </ExpandableCard>
+            <ExpandableCard title="Training Monotony">
+              {(expanded) => <TrainingMonotony activities={allActivities} thresholdHR={thresholdHR} height={expanded ? 480 : undefined} />}
+            </ExpandableCard>
+          </div>
+          <ExpandableCard title="Injury Risk">
+            {() => <InjuryRiskScore activities={allActivities} trainingLoad={trainingLoad} wellness={sortedWellness} />}
+          </ExpandableCard>
+          <ExpandableCard title="Training Heatmap">
+            {() => <TrainingHeatmap activities={allActivities} />}
+          </ExpandableCard>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ExpandableCard title="Monthly Consistency">
+              {(expanded) => <ConsistencyChart data={consistency} height={expanded ? 480 : undefined} />}
+            </ExpandableCard>
+            <ExpandableCard title="Weekly Calories">
+              {(expanded) => <CaloriesChart activities={activities} height={expanded ? 480 : undefined} />}
+            </ExpandableCard>
+          </div>
+        </div>
+      )}
+
       {/* ── RUNNING ──────────────────────────────────────────────────────── */}
       {subTab === 'running' && (
         <div className="space-y-4">
-          <ExpandableCard title="Race Time Predictor">
-            {() => <RacePredictor activities={allActivities} />}
-          </ExpandableCard>
+          {/* Performance */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="HR Zone Distribution">
               {(expanded) => <HRZoneChart data={hrZones} height={expanded ? 360 : undefined} />}
             </ExpandableCard>
-            <ExpandableCard title="Aerobic Efficiency (EF)">
+            <ExpandableCard title="Aerobic Efficiency">
               {(expanded) => <EfficiencyFactorChart data={efData} sport="running" height={expanded ? 360 : undefined} />}
             </ExpandableCard>
           </div>
-          <ExpandableCard title="Running Cadence">
+          <ExpandableCard title="Cadence">
             {(expanded) => <CadenceChart activities={activities} sport="running" height={expanded ? 480 : undefined} />}
           </ExpandableCard>
-          <ExpandableCard title="Sleep × Running Performance">
+          <ExpandableCard title="Sleep & Performance">
             {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} defaultSport="running" hideSportToggle height={expanded ? 480 : undefined} />}
+          </ExpandableCard>
+          {/* Planning tool */}
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground pt-2">Planning</p>
+          <ExpandableCard title="Race Time Predictor">
+            {() => <RacePredictor activities={allActivities} />}
           </ExpandableCard>
         </div>
       )}
@@ -273,74 +320,44 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       {/* ── CYCLING ──────────────────────────────────────────────────────── */}
       {subTab === 'cycling' && (
         <div className="space-y-4">
+          {/* Power & performance */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="FTP Progression">
               {(expanded) => <FTPProgressionChart activities={allActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
-            <ExpandableCard title="W/kg Zones Over Time">
+            <ExpandableCard title="W/kg Over Time">
               {(expanded) => <WkgZonesChart activities={allActivities} wellness={allWellness} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
-          <ExpandableCard title="Power Curve (Approx.)">
-            {(expanded) => <PowerCurveChart activities={allActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
-          </ExpandableCard>
-          <ExpandableCard title="Cycling Power">
+          <ExpandableCard title="Power Zones">
             {(expanded) => <PowerChart activities={activities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
           </ExpandableCard>
           {latestFtp && (
-            <ExpandableCard title="Power Zone Distribution">
+            <ExpandableCard title="Zone Distribution">
               {(expanded) => <PowerZonesChart activities={activities} ftp={latestFtp} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           )}
-          <ExpandableCard title="Cycling Cadence">
-            {(expanded) => <CadenceChart activities={activities} sport="cycling" height={expanded ? 480 : undefined} />}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ExpandableCard title="Aerobic Efficiency">
+              {(expanded) => <EfficiencyFactorChart data={efData} sport="cycling" height={expanded ? 480 : undefined} />}
+            </ExpandableCard>
+            <ExpandableCard title="Cadence">
+              {(expanded) => <CadenceChart activities={activities} sport="cycling" height={expanded ? 480 : undefined} />}
+            </ExpandableCard>
+          </div>
+          <ExpandableCard title="Power Curve">
+            {(expanded) => <PowerCurveChart activities={allActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
           </ExpandableCard>
-          <ExpandableCard title="Aerobic Efficiency (EF)">
-            {(expanded) => <EfficiencyFactorChart data={efData} sport="cycling" height={expanded ? 480 : undefined} />}
-          </ExpandableCard>
-          <ExpandableCard title="Sleep × Cycling Performance">
+          <ExpandableCard title="Sleep & Performance">
             {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} defaultSport="cycling" hideSportToggle height={expanded ? 480 : undefined} />}
           </ExpandableCard>
+          {/* Planning tools */}
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground pt-2">Planning</p>
           <ExpandableCard title="Zwift Route Progression">
             {() => <RouteProgressionChart activities={allActivities} />}
           </ExpandableCard>
-          <ExpandableCard title="4-Week Training Block Generator">
+          <ExpandableCard title="Training Plan Generator">
             {() => <TrainingPlanGenerator activities={allActivities} />}
-          </ExpandableCard>
-        </div>
-      )}
-
-      {/* ── WALKING ──────────────────────────────────────────────────────── */}
-      {subTab === 'walking' && (
-        <div className="space-y-4">
-          <ExpandableCard title="Walking Trends">
-            {(expanded) => <WalkingChart activities={allActivities} height={expanded ? 480 : undefined} />}
-          </ExpandableCard>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ExpandableCard title="Daily Steps">
-              {(expanded) => <StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} height={expanded ? 460 : undefined} />}
-            </ExpandableCard>
-            <ExpandableCard title="HR During Walks">
-              {(expanded) => <HRZoneChart data={computeHRZoneDistribution(activities.filter(a => a.activity_type === 'walking'), maxHR)} height={expanded ? 360 : undefined} />}
-            </ExpandableCard>
-          </div>
-          <ExpandableCard
-            title="Weekly Walking Volume"
-            headerRight={
-              <div className="flex gap-1">
-                {(['km','hours'] as const).map(m => (
-                  <Button key={m} variant={volMetric === m ? 'default' : 'ghost'} size="sm" onClick={() => setVolMetric(m)}>{m}</Button>
-                ))}
-              </div>
-            }
-          >
-            {(expanded) => (
-              <WeeklyVolumeChart
-                data={weeklyVolume.map(w => ({ ...w, running_km: 0, cycling_km: 0, running_hours: 0, cycling_hours: 0 }))}
-                metric={volMetric}
-                height={expanded ? 520 : undefined}
-              />
-            )}
           </ExpandableCard>
         </div>
       )}
@@ -348,32 +365,34 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       {/* ── HEALTH ───────────────────────────────────────────────────────── */}
       {subTab === 'health' && (
         <div className="space-y-4">
+          {/* Recovery & readiness */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="HRV Readiness">
               {() => <HRVReadinessCard wellness={sortedWellness} />}
             </ExpandableCard>
-            <ExpandableCard title="Cardiovascular Age">
-              {() => <CardiovascularAge settings={settings} wellness={sortedWellness} activities={activities} />}
+            <ExpandableCard title="Longevity Score">
+              {() => <LongevityScore wellness={sortedWellness} activities={allActivities} settings={settings} />}
             </ExpandableCard>
           </div>
           <ExpandableCard title="Heart Rate">
             {(expanded) => <HeartRateChart wellness={sortedWellness} activities={activities} height={expanded ? 500 : undefined} />}
           </ExpandableCard>
-          <ExpandableCard title="HRV × Training Load">
+          <ExpandableCard title="HRV & Training Load">
             {(expanded) => <HRVTrainingLoadChart trainingLoad={trainingLoad} wellness={sortedWellness} height={expanded ? 500 : undefined} />}
           </ExpandableCard>
+
+          {/* Daily metrics */}
           <ExpandableCard
-            title="Wellness Trends"
+            title="Daily Metrics"
             headerRight={
               <div className="flex flex-wrap gap-1">
                 {([
-                  { id: 'rhr',    label: 'Resting HR' },
-                  { id: 'hrv',    label: 'HRV'        },
-                  { id: 'sleep',  label: 'Sleep h'    },
-                  { id: 'score',  label: 'Sleep Score' },
-                  { id: 'battery',label: 'Body Battery'},
-                  { id: 'vo2max', label: 'VO₂ Max'    },
-                  { id: 'fitness_age', label: 'Fitness Age' },
+                  { id: 'rhr',     label: 'Resting HR'   },
+                  { id: 'hrv',     label: 'HRV'          },
+                  { id: 'sleep',   label: 'Sleep'        },
+                  { id: 'score',   label: 'Sleep Score'  },
+                  { id: 'battery', label: 'Body Battery' },
+                  { id: 'vo2max',  label: 'VO₂ Max'      },
                 ] as const).map(m => (
                   <Button key={m.id} variant={wellMetric === m.id ? 'default' : 'ghost'} size="sm" onClick={() => setWellMetric(m.id)}>{m.label}</Button>
                 ))}
@@ -382,55 +401,42 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           >
             {(expanded) => <FitnessTrendChart wellness={sortedWellness} metric={wellMetric} age={age} height={expanded ? 500 : undefined} />}
           </ExpandableCard>
+
+          {/* Sleep & energy */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ExpandableCard title="Sleep Debt Tracker">
+            <ExpandableCard title="Sleep Debt">
               {(expanded) => <SleepDebtChart wellness={sortedWellness} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
-            <ExpandableCard title="Body Battery Patterns">
+            <ExpandableCard title="Body Battery">
               {(expanded) => <BodyBatteryChart wellness={sortedWellness} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
-          <ExpandableCard title="Longevity Score">
-            {() => <LongevityScore wellness={sortedWellness} activities={allActivities} settings={settings} />}
-          </ExpandableCard>
+
+          {/* Body composition & movement */}
           <ExpandableCard title="Body Composition">
             {(expanded) => <BodyCompositionChart wellness={sortedWellness} activities={allActivities} settings={settings} height={expanded ? 500 : undefined} />}
           </ExpandableCard>
-          <ExpandableCard title="Weight Evolution">
-            {(expanded) => <WeightChart wellness={sortedWellness} heightCm={settings.heightCm} height={expanded ? 480 : undefined} />}
-          </ExpandableCard>
-        </div>
-      )}
-
-      {/* ── TRAINING ─────────────────────────────────────────────────────── */}
-      {subTab === 'training' && (
-        <div className="space-y-4">
-          <ExpandableCard title="Training Load">
-            {(expanded) => (
-              <>
-                <TrainingLoadChart data={trainingLoad} height={expanded ? 500 : undefined} />
-                <div className="flex flex-col gap-1 mt-2 text-[10px] text-muted-foreground">
-                  <span><span className="text-blue-400 font-semibold">CTL</span> — Chronic Training Load (fitness): 42-day rolling average of daily stress. Higher = more base fitness.</span>
-                  <span><span className="text-red-400 font-semibold">ATL</span> — Acute Training Load (fatigue): 7-day rolling average. Spikes when you train hard.</span>
-                  <span><span className="text-green-400 font-semibold">TSB</span> — Training Stress Balance (form): CTL minus ATL. Positive = fresh &amp; ready to race. Negative = fatigued but building fitness.</span>
-                </div>
-              </>
-            )}
-          </ExpandableCard>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ExpandableCard title="Training Monotony">
-              {(expanded) => <TrainingMonotony activities={allActivities} thresholdHR={thresholdHR} height={expanded ? 480 : undefined} />}
+            <ExpandableCard title="Weight">
+              {(expanded) => <WeightChart wellness={sortedWellness} heightCm={settings.heightCm} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
-            <ExpandableCard title="Optimal Training Days">
-              {() => <OptimalTrainingDays trainingLoad={trainingLoad} />}
+            <ExpandableCard title="Daily Steps">
+              {(expanded) => <StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} height={expanded ? 460 : undefined} />}
             </ExpandableCard>
           </div>
-          <ExpandableCard title="Training Heatmap">
-            {() => <TrainingHeatmap activities={allActivities} />}
+
+          {/* Walking as lifestyle activity */}
+          <ExpandableCard title="Walking & Activity">
+            {(expanded) => <WalkingChart activities={allActivities} height={expanded ? 480 : undefined} />}
           </ExpandableCard>
-          <ExpandableCard title="Injury Risk Score">
-            {() => <InjuryRiskScore activities={allActivities} trainingLoad={trainingLoad} wellness={sortedWellness} />}
-          </ExpandableCard>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ExpandableCard title="Cardiovascular Age">
+              {() => <CardiovascularAge settings={settings} wellness={sortedWellness} activities={activities} />}
+            </ExpandableCard>
+            <ExpandableCard title="HR During Walks">
+              {(expanded) => <HRZoneChart data={computeHRZoneDistribution(activities.filter(a => a.activity_type === 'walking'), maxHR)} height={expanded ? 360 : undefined} />}
+            </ExpandableCard>
+          </div>
         </div>
       )}
     </div>
