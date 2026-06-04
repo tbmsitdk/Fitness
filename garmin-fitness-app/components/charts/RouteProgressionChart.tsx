@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import {
-  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, ComposedChart,
+  ComposedChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line,
 } from 'recharts';
 import { Activity } from '@/types';
 import { parseISO, format } from 'date-fns';
@@ -56,16 +56,17 @@ export default function RouteProgressionChart({ activities }: Props) {
 
   // Group by normalized route name, keep those with ≥3 rides
   const routeMap = useMemo(() => {
-    const map = new Map<string, Activity[]>();
+    const raw = new Map<string, Activity[]>();
     for (const a of zwiftActs) {
       const key = normalizeName(a.title || 'zwift ride');
-      const arr = map.get(key) ?? [];
+      const arr = raw.get(key) ?? [];
       arr.push(a);
-      map.set(key, arr);
+      raw.set(key, arr);
     }
-    // Keep only routes with ≥3 appearances
-    for (const [k, v] of map) {
-      if (v.length < 3) map.delete(k);
+    // Filter to routes with ≥3 appearances (don't mutate while iterating)
+    const map = new Map<string, Activity[]>();
+    for (const [k, v] of raw) {
+      if (v.length >= 3) map.set(k, v);
     }
     return map;
   }, [zwiftActs]);
@@ -199,23 +200,28 @@ export default function RouteProgressionChart({ activities }: Props) {
         </div>
       )}
 
-      {/* Scatter chart */}
+      {/* Chart — unified data array with both actual values and trend */}
       <ResponsiveContainer width="100%" height={280}>
-        <ComposedChart margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+        <ComposedChart
+          data={chartData.map((d, i) => ({
+            label: d.dateLabel,
+            power: d.y,
+            trend: trendLine
+              ? Math.round(trendLine.first.y + (trendLine.last.y - trendLine.first.y) * (i / Math.max(chartData.length - 1, 1)))
+              : undefined,
+            title: d.activity.title,
+          }))}
+          margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+        >
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
           <XAxis
-            dataKey="dateMs"
-            type="number"
-            scale="time"
-            domain={['dataMin', 'dataMax']}
-            tickFormatter={ms => format(new Date(ms), 'MMM d')}
+            dataKey="label"
             tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }}
             tickLine={false}
             axisLine={false}
+            interval="preserveStartEnd"
           />
           <YAxis
-            dataKey="y"
-            name={metricLabel}
             tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }}
             tickLine={false}
             axisLine={false}
@@ -223,32 +229,30 @@ export default function RouteProgressionChart({ activities }: Props) {
           />
           <Tooltip
             contentStyle={TOOLTIP_STYLE}
-            content={({ payload }) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            content={({ payload, label }: any) => {
               if (!payload?.length) return null;
-              const d = payload[0].payload as { dateLabel: string; y: number; activity: Activity };
+              const d = payload[0]?.payload;
               return (
                 <div style={TOOLTIP_STYLE} className="p-2 space-y-0.5">
-                  <p className="text-[10px] text-muted-foreground">{d.dateLabel}</p>
-                  <p className="font-mono font-semibold text-xs">{d.y.toFixed(0)} W</p>
-                  <p className="text-[10px] text-muted-foreground truncate max-w-[160px]">{d.activity.title}</p>
+                  <p className="text-[10px] text-muted-foreground">{label}</p>
+                  <p className="font-mono font-semibold text-xs">{d?.power?.toFixed(0)} W</p>
+                  <p className="text-[10px] text-muted-foreground truncate max-w-[160px]">{d?.title}</p>
                 </div>
               );
             }}
           />
-          <Scatter data={chartData} dataKey="y" fill="#3B82F6" fillOpacity={0.8} />
+          <Scatter dataKey="power" fill="#3B82F6" fillOpacity={0.8} />
           {trendLine && (
             <Line
-              data={[
-                { dateMs: trendLine.first.dateMs, y: trendLine.first.y },
-                { dateMs: trendLine.last.dateMs,  y: trendLine.last.y  },
-              ]}
-              dataKey="y"
+              dataKey="trend"
               dot={false}
               stroke={trendColor}
               strokeWidth={1.5}
               strokeDasharray="4 2"
               type="linear"
               isAnimationActive={false}
+              legendType="none"
             />
           )}
         </ComposedChart>
