@@ -34,7 +34,6 @@ import WalkingChart from './charts/WalkingChart';
 import dynamic from 'next/dynamic';
 const WeeklyReport        = dynamic(() => import('./charts/WeeklyReport'),        { ssr: false });
 const DailySuggestion     = dynamic(() => import('./charts/DailySuggestion'),     { ssr: false });
-const RouteProgressionChart = dynamic(() => import('./charts/RouteProgressionChart'), { ssr: false });
 const TrainingPlanGenerator = dynamic(() => import('./charts/TrainingPlanGenerator'), { ssr: false });
 const LongevityScore      = dynamic(() => import('./charts/LongevityScore'),      { ssr: false });
 const InjuryRiskScore     = dynamic(() => import('./charts/InjuryRiskScore'),     { ssr: false });
@@ -356,9 +355,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           </ExpandableCard>
           {/* Planning tools */}
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground pt-2">Planning</p>
-          <ExpandableCard title="Zwift Route Progression">
-            {() => <RouteProgressionChart activities={allActivities} />}
-          </ExpandableCard>
           <ExpandableCard title="Training Plan Generator">
             {() => <TrainingPlanGenerator activities={allActivities} />}
           </ExpandableCard>

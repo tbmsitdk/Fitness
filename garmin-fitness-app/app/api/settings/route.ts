@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
+import { initializeDatabase } from '@/lib/db';
 import { DEFAULT_SETTINGS, UserSettings } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
@@ -8,6 +9,7 @@ const ROW_ID = 'default';
 
 export async function GET() {
   try {
+    await initializeDatabase(); // ensures all columns exist before querying
     const result = await sql`
       SELECT birth_year, birth_date, sex, height_cm, max_hr, threshold_hr, ftp_watts, daily_steps_goal
       FROM user_settings WHERE id = ${ROW_ID}
