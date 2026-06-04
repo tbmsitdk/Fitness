@@ -132,12 +132,15 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
     return null;
   }, [allWellness]);
 
-  // FTP from most recent cycling activity that has one
+  // FTP = manual setting (most reliable) OR best-ever from all activities (not most recent —
+  // Zone 2 rides have low p20 and should never reduce this figure)
   const latestFtp = useMemo(() => {
-    const cycling = activities.filter(a => a.activity_type === 'cycling' && a.ftp && a.ftp > 0);
-    if (!cycling.length) return null;
-    return cycling.reduce((best, a) => (a.date > (best?.date ?? '') ? a : best), null as Activity | null)?.ftp ?? null;
-  }, [activities]);
+    if (settings.ftpWatts && settings.ftpWatts > 0) return settings.ftpWatts;
+    const ftps = allActivities
+      .filter(a => a.activity_type === 'cycling' && a.ftp && a.ftp > 0)
+      .map(a => a.ftp as number);
+    return ftps.length ? Math.max(...ftps) : null;
+  }, [allActivities, settings.ftpWatts]);
 
   // trainingLoad is already sliced to the selected period (but computed from full history for EWMA warmup)
   const firstLoad = trainingLoad[0];

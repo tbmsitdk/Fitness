@@ -134,7 +134,7 @@ export default function Settings({ settings, onSave, measuredMaxHR }: Props) {
       <Card>
         <CardHeader className="pb-2"><CardTitle>Cycling Power</CardTitle></CardHeader>
         <CardContent>
-          <Field label="FTP (watts)" hint="Functional Threshold Power — the power you can sustain for ~1 hour. Set this manually to prevent Zone 2 rides from dragging down the auto-estimate.">
+          <Field label="FTP (watts)" hint="Functional Threshold Power — your capacity, not today's effort. Zone 2 rides are deliberately easy and should never lower this. Set it here after a test or Zwift ramp test, and it will be used everywhere.">
             <NumericInput value={form.ftpWatts} onChange={v => update('ftpWatts', v)} placeholder="e.g. 193" min={50} max={500} />
           </Field>
         </CardContent>
