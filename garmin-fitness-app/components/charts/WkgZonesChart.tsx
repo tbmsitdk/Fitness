@@ -24,10 +24,12 @@ function getCategory(wkg: number) {
 export default function WkgZonesChart({
   activities,
   wellness,
+  manualFTP,
   height = 220,
 }: {
   activities: Activity[];
   wellness: WellnessRecord[];
+  manualFTP?: number | null;
   height?: number;
 }) {
   const { chartData, currentWkg, currentCategory } = useMemo(() => {
@@ -35,7 +37,7 @@ export default function WkgZonesChart({
       .filter(a => a.ftp != null && a.ftp > 0)
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    if (withFTP.length === 0) return { chartData: [], currentWkg: null, currentCategory: null };
+    if (withFTP.length === 0 && !manualFTP) return { chartData: [], currentWkg: null, currentCategory: null };
 
     // Most recent weight per month from wellness
     const monthWeight = new Map<string, number>();
@@ -56,14 +58,24 @@ export default function WkgZonesChart({
     }
 
     // Group by month, take max FTP per month
-    const monthFTP = new Map<string, number>();
+    const monthFTPRaw = new Map<string, number>();
     for (const a of withFTP) {
       const month = format(startOfMonth(parseISO(a.date)), 'yyyy-MM');
-      const cur = monthFTP.get(month) ?? 0;
-      if ((a.ftp as number) > cur) monthFTP.set(month, a.ftp as number);
+      const cur = monthFTPRaw.get(month) ?? 0;
+      if ((a.ftp as number) > cur) monthFTPRaw.set(month, a.ftp as number);
     }
 
-    const months = Array.from(monthFTP.keys()).sort();
+    // Rolling peak FTP — carry forward so Zone 2 months don't reset to low values
+    const months = Array.from(monthFTPRaw.keys()).sort();
+    let peak = 0;
+    const monthFTP = new Map<string, number>();
+    for (const m of months) {
+      peak = Math.max(peak, monthFTPRaw.get(m) ?? 0);
+      // If manual FTP is set and higher, use it
+      if (manualFTP && manualFTP > peak) peak = manualFTP;
+      monthFTP.set(m, peak);
+    }
+
     const spanYears = months.length > 0 && new Set(months.map(m => m.substring(0, 4))).size > 1;
     const dateFmt = spanYears ? "MMM ''yy" : 'MMM';
 

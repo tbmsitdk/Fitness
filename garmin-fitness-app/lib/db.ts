@@ -47,6 +47,8 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS fitness_age INTEGER`;
   // Accurate birth date (more precise than birth_year alone)
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS birth_date VARCHAR(10)`;
+  // Manual FTP override — prevents Zone 2 rides from collapsing the p20-derived estimate
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ftp_watts INTEGER`;
   // Body composition from Garmin smart scale
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS body_fat_pct DECIMAL(5,2)`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS muscle_mass_kg DECIMAL(5,2)`;

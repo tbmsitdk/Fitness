@@ -26,10 +26,12 @@ function linearTrend(values: number[]): (number | null)[] {
 export default function FTPProgressionChart({
   activities,
   weightKg,
+  manualFTP,
   height = 220,
 }: {
   activities: Activity[];
   weightKg?: number | null;
+  manualFTP?: number | null;
   height?: number;
 }) {
   const [metric, setMetric] = useState<'W' | 'W/kg'>('W');
@@ -52,7 +54,15 @@ export default function FTPProgressionChart({
     }
 
     const months = Array.from(monthMap.keys()).sort();
-    const ftpValues = months.map(m => monthMap.get(m) as number);
+
+    // Rolling peak FTP — carry forward so Zone 2 months don't show collapse
+    let peak = 0;
+    const rollingPeak = months.map(m => {
+      peak = Math.max(peak, monthMap.get(m) ?? 0);
+      return peak;
+    });
+
+    const ftpValues = rollingPeak;
     const trend = linearTrend(ftpValues);
 
     const spanYears = months.length > 0 && new Set(months.map(m => m.substring(0, 4))).size > 1;
@@ -61,20 +71,21 @@ export default function FTPProgressionChart({
     const data = months.map((m, i) => ({
       label: format(parseISO(m + '-01'), dateFmt),
       month: m,
-      ftp: monthMap.get(m) as number,
+      ftp: rollingPeak[i],
       trend: trend[i],
     }));
 
     const best = data.reduce((b, d) => d.ftp > b.ftp ? d : b);
-    const last = data[data.length - 1];
+    // "Current" = manual override if set, otherwise rolling peak (last entry)
+    const derivedCurrent = data[data.length - 1]?.ftp ?? null;
 
     return {
       chartData: data,
-      currentFTP: last?.ftp ?? null,
+      currentFTP: manualFTP ?? derivedCurrent,
       bestFTP: best?.ftp ?? null,
       bestDate: best?.label ?? null,
     };
-  }, [activities]);
+  }, [activities, manualFTP]);
 
   if (chartData.length === 0) {
     return (
@@ -94,8 +105,11 @@ export default function FTPProgressionChart({
       <div className="flex gap-3 flex-wrap items-center">
         {currentFTP && (
           <div className="p-3 rounded-lg border border-border bg-card space-y-0.5">
-            <p className="text-[10px] tracking-widest uppercase text-muted-foreground">Current FTP</p>
+            <p className="text-[10px] tracking-widest uppercase text-muted-foreground">
+              {manualFTP ? 'FTP (manual)' : 'Current FTP'}
+            </p>
             <p className="text-2xl font-bold font-mono text-yellow-400">{useWkg ? `${currentWkg} W/kg` : `${currentFTP}W`}</p>
+            {manualFTP && <p className="text-[10px] text-muted-foreground">Set in Settings · overrides auto-estimate</p>}
           </div>
         )}
         {bestFTP && (
@@ -149,7 +163,12 @@ export default function FTPProgressionChart({
             }}
           />
           <Legend wrapperStyle={{ fontSize: 11, color: 'hsl(240 5% 64.9%)' }} iconSize={6} />
-          <Line dataKey="ftp" name="ftp" stroke="#FBBF24" strokeWidth={2.5} dot={{ r: 3, fill: '#FBBF24' }} connectNulls />
+          {manualFTP && (
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            <ReferenceDot x={chartData[chartData.length-1]?.label} y={useWkg && weightKg ? Math.round((manualFTP/div)*100)/100 : manualFTP} r={0}
+              label={{ value: `Manual: ${useWkg && weightKg ? (manualFTP/div).toFixed(1)+' W/kg' : manualFTP+'W'}`, position: 'insideTopRight', fontSize: 9, fill: '#60A5FA' }} />
+          )}
+          <Line dataKey="ftp" name="Rolling peak FTP" stroke="#FBBF24" strokeWidth={2.5} dot={{ r: 3, fill: '#FBBF24' }} connectNulls />
           <Line dataKey="trend" name="trend" stroke="hsl(0 0% 55%)" strokeWidth={1.5} strokeDasharray="5 3" dot={false} connectNulls />
           {bestIdx >= 0 && bestFTP != null && (
             <ReferenceDot

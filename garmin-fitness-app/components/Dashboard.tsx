@@ -323,10 +323,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Power & performance */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="FTP Progression">
-              {(expanded) => <FTPProgressionChart activities={allActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
+              {(expanded) => <FTPProgressionChart activities={allActivities} weightKg={weightKg} manualFTP={settings.ftpWatts} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
             <ExpandableCard title="W/kg Over Time">
-              {(expanded) => <WkgZonesChart activities={allActivities} wellness={allWellness} height={expanded ? 480 : undefined} />}
+              {(expanded) => <WkgZonesChart activities={allActivities} wellness={allWellness} manualFTP={settings.ftpWatts} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
           <ExpandableCard title="Power Zones">
