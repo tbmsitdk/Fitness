@@ -191,12 +191,15 @@ export default function Home() {
           <SettingsPanel
             settings={settings}
             onSave={s => setSettings({ ...s })}
-            measuredMaxHR={allActivities.length > 0
-              ? Math.max(...allActivities
-                  .filter(a => a.max_hr != null && new Date(a.date) >= subDays(new Date(), 365))
-                  .map(a => a.max_hr as number)
-                  .filter(h => h > 100))
-              : undefined}
+            measuredMaxHR={(() => {
+              const hrs = allActivities
+                .filter(a => a.max_hr != null && new Date(a.date) >= subDays(new Date(), 365))
+                .map(a => a.max_hr as number)
+                .filter(h => h > 100)
+                .sort((a, b) => b - a)
+                .slice(0, 3);
+              return hrs.length > 0 ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : undefined;
+            })()}
           />
         )}
       </main>

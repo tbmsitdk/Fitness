@@ -53,8 +53,13 @@ export default function Settings({ settings, onSave, measuredMaxHR }: Props) {
 
   // Sync form when async DB fetch completes, but not if user has unsaved edits
   useEffect(() => {
-    if (!isDirty) setForm({ ...settings });
-  }, [settings]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!isDirty) {
+      // Auto-fill maxHR from measured data if not manually set
+      const merged = { ...settings };
+      if (!merged.maxHR && measuredMaxHR) merged.maxHR = measuredMaxHR;
+      setForm(merged);
+    }
+  }, [settings, measuredMaxHR]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function update<K extends keyof UserSettings>(key: K, val: UserSettings[K]) {
     setForm(prev => ({ ...prev, [key]: val }));
@@ -129,19 +134,13 @@ export default function Settings({ settings, onSave, measuredMaxHR }: Props) {
       <Card>
         <CardHeader className="pb-2"><CardTitle>Heart Rate Zones</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-2 gap-4">
-          <Field label="Max HR (bpm)" hint="Leave blank to auto-calculate: 220 − age. Set manually if you know your true max from a recent test.">
-            <div className="space-y-1.5">
-              <NumericInput value={form.maxHR} onChange={v => update('maxHR', v)} placeholder={`Auto: ${maxHR} bpm`} min={120} max={220} />
-              {measuredMaxHR != null && measuredMaxHR > 100 && (
-                <button
-                  type="button"
-                  onClick={() => update('maxHR', measuredMaxHR)}
-                  className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
-                >
-                  Use measured max: {measuredMaxHR} bpm (highest recorded in last year)
-                </button>
-              )}
-            </div>
+          <Field label="Max HR (bpm)" hint="Auto-filled from the average of your 3 highest recorded heart rates in the last year. Override if needed.">
+            <NumericInput value={form.maxHR} onChange={v => update('maxHR', v)} placeholder={`Auto: ${maxHR} bpm`} min={120} max={220} />
+            {measuredMaxHR != null && (
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Measured: avg of top 3 peaks = {measuredMaxHR} bpm (last 12 months)
+              </p>
+            )}
           </Field>
           <Field label="Threshold HR (bpm)" hint="The heart rate you can sustain for ~1 hour (FTP/LT2). Leave blank to use 85% of max HR.">
             <NumericInput value={form.thresholdHR} onChange={v => update('thresholdHR', v)} placeholder={`Auto: ${thrHR} bpm`} min={100} max={210} />
