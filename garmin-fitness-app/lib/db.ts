@@ -91,6 +91,15 @@ export async function initializeDatabase() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS weekly_report (
+      id SERIAL PRIMARY KEY,
+      week_start DATE NOT NULL,
+      report_json TEXT NOT NULL,
+      generated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
 }
 
 type ActivityRow = {

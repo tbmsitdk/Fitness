@@ -31,6 +31,12 @@ import PowerCurveChart from './charts/PowerCurveChart';
 import FTPProgressionChart from './charts/FTPProgressionChart';
 import WkgZonesChart from './charts/WkgZonesChart';
 import WalkingChart from './charts/WalkingChart';
+import WeeklyReport from './charts/WeeklyReport';
+import DailySuggestion from './charts/DailySuggestion';
+import RouteProgressionChart from './charts/RouteProgressionChart';
+import TrainingPlanGenerator from './charts/TrainingPlanGenerator';
+import LongevityScore from './charts/LongevityScore';
+import InjuryRiskScore from './charts/InjuryRiskScore';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -213,6 +219,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       {/* ── OVERVIEW ─────────────────────────────────────────────────────── */}
       {subTab === 'overview' && (
         <div className="space-y-4">
+          <WeeklyReport />
+          <DailySuggestion trainingLoad={trainingLoad} wellness={sortedWellness} activities={activities} />
+          <InjuryRiskScore activities={allActivities} trainingLoad={trainingLoad} wellness={sortedWellness} compact />
+          <LongevityScore wellness={sortedWellness} activities={allActivities} settings={settings} compact />
           <ExpandableCard
             title="Weekly Volume"
             headerRight={
@@ -294,6 +304,12 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           </ExpandableCard>
           <ExpandableCard title="Sleep × Cycling Performance">
             {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} defaultSport="cycling" hideSportToggle height={expanded ? 480 : undefined} />}
+          </ExpandableCard>
+          <ExpandableCard title="Zwift Route Progression">
+            {() => <RouteProgressionChart activities={allActivities} />}
+          </ExpandableCard>
+          <ExpandableCard title="4-Week Training Block Generator">
+            {() => <TrainingPlanGenerator activities={allActivities} />}
           </ExpandableCard>
         </div>
       )}
@@ -384,6 +400,9 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               {(expanded) => <BodyBatteryChart wellness={sortedWellness} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
+          <ExpandableCard title="Longevity Score">
+            {() => <LongevityScore wellness={sortedWellness} activities={allActivities} settings={settings} />}
+          </ExpandableCard>
           <ExpandableCard title="Body Composition">
             {(expanded) => <BodyCompositionChart wellness={sortedWellness} activities={allActivities} settings={settings} height={expanded ? 500 : undefined} />}
           </ExpandableCard>
@@ -437,6 +456,9 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           </ExpandableCard>
           <ExpandableCard title="Training Heatmap">
             {() => <TrainingHeatmap activities={allActivities} />}
+          </ExpandableCard>
+          <ExpandableCard title="Injury Risk Score">
+            {() => <InjuryRiskScore activities={allActivities} trainingLoad={trainingLoad} wellness={sortedWellness} />}
           </ExpandableCard>
         </div>
       )}
