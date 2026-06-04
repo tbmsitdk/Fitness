@@ -188,7 +188,16 @@ export default function Home() {
         ) : activeTab === 'ai-coach' ? (
           <AICoach activities={allActivities} wellness={allWellness} settings={settings} />
         ) : (
-          <SettingsPanel settings={settings} onSave={s => setSettings({ ...s })} />
+          <SettingsPanel
+            settings={settings}
+            onSave={s => setSettings({ ...s })}
+            measuredMaxHR={allActivities.length > 0
+              ? Math.max(...allActivities
+                  .filter(a => a.max_hr != null && new Date(a.date) >= subDays(new Date(), 365))
+                  .map(a => a.max_hr as number)
+                  .filter(h => h > 100))
+              : undefined}
+          />
         )}
       </main>
     </div>

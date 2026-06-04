@@ -8,6 +8,7 @@ import { CheckCircle2, Info } from 'lucide-react';
 interface Props {
   settings: UserSettings;
   onSave: (s: UserSettings) => void;
+  measuredMaxHR?: number;
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -45,7 +46,7 @@ function NumericInput({ value, onChange, placeholder, min, max, step = 1 }: {
   );
 }
 
-export default function Settings({ settings, onSave }: Props) {
+export default function Settings({ settings, onSave, measuredMaxHR }: Props) {
   const [form, setForm] = useState<UserSettings>({ ...settings });
   const [saved, setSaved] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -122,7 +123,18 @@ export default function Settings({ settings, onSave }: Props) {
         <CardHeader className="pb-2"><CardTitle>Heart Rate Zones</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-2 gap-4">
           <Field label="Max HR (bpm)" hint="Leave blank to auto-calculate: 220 − age. Set manually if you know your true max from a recent test.">
-            <NumericInput value={form.maxHR} onChange={v => update('maxHR', v)} placeholder={`Auto: ${maxHR} bpm`} min={120} max={220} />
+            <div className="space-y-1.5">
+              <NumericInput value={form.maxHR} onChange={v => update('maxHR', v)} placeholder={`Auto: ${maxHR} bpm`} min={120} max={220} />
+              {measuredMaxHR != null && measuredMaxHR > 100 && (
+                <button
+                  type="button"
+                  onClick={() => update('maxHR', measuredMaxHR)}
+                  className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  Use measured max: {measuredMaxHR} bpm (highest recorded in last year)
+                </button>
+              )}
+            </div>
           </Field>
           <Field label="Threshold HR (bpm)" hint="The heart rate you can sustain for ~1 hour (FTP/LT2). Leave blank to use 85% of max HR.">
             <NumericInput value={form.thresholdHR} onChange={v => update('thresholdHR', v)} placeholder={`Auto: ${thrHR} bpm`} min={100} max={210} />
