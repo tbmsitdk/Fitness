@@ -10,9 +10,9 @@ const CACHE_KEY = 'ai-weekly-summary';
 const CACHE_TTL = 60 * 60 * 24; // 24 hours
 
 async function buildSummary(userSettings?: UserSettings) {
-  // Fetch full history for accurate training load + body comp trends
-  const actCutoff  = new Date(Date.now() - 365 * 86400 * 1000).toISOString(); // 1 year for activities
-  const wellCutoff = new Date(Date.now() -  90 * 86400 * 1000).toISOString(); // 90 days for wellness
+  // 90 days of activities + wellness — enough for meaningful analysis without timeout risk
+  const actCutoff  = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
+  const wellCutoff = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
 
   const [actResult, wellResult] = await Promise.all([
     sql`SELECT * FROM activities WHERE date >= ${actCutoff} ORDER BY date`,
@@ -50,9 +50,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ...summary, cached: false });
   } catch (error) {
-    console.error('AI summary error:', error);
     const msg = error instanceof Error ? error.message : String(error);
     const status = (error as { status?: number }).status ?? 500;
+    console.error('[ai-summary]', status, msg);
     return NextResponse.json({ error: msg }, { status });
   }
 }
@@ -68,9 +68,9 @@ export async function GET() {
     try { await kv.set(CACHE_KEY, summary, { ex: CACHE_TTL }); } catch { /* KV not provisioned */ }
     return NextResponse.json({ ...summary, cached: false });
   } catch (error) {
-    console.error('AI summary error:', error);
     const msg = error instanceof Error ? error.message : String(error);
     const status = (error as { status?: number }).status ?? 500;
+    console.error('[ai-summary]', status, msg);
     return NextResponse.json({ error: msg }, { status });
   }
 }

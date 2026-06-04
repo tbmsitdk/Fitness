@@ -48,9 +48,9 @@ export default function AICoach({ activities, wellness, settings }: Props) {
         body: JSON.stringify({ settings }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed');
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       setSummary(json);
-    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setLoading(false); }
   }
 
