@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Activity } from '@/types';
-import type { TrainingPlan, TrainingSession } from '@/app/api/training-plan/route';
+import type { TrainingPlan, TrainingSession } from '@/types';
 
 interface Props {
   activities: Activity[];

@@ -95,6 +95,36 @@ export interface ParsedGarminData {
 
 export type SportType = 'running' | 'cycling' | 'walking' | 'other';
 
+export interface WeeklyReport {
+  week_start: string;
+  headline: string;
+  volume_summary: string;
+  key_insight: string;
+  recommendation: string;
+  recovery_status: 'good' | 'moderate' | 'poor';
+  generated_at: string;
+}
+
+export interface TrainingSession {
+  day: string;
+  type: string;
+  duration_min: number;
+  description: string;
+  tss_estimate: number;
+}
+
+export interface TrainingPlan {
+  goal: string;
+  ftp_input: number;
+  weeks: Array<{
+    week: number;
+    theme: string;
+    tss_target: number;
+    sessions: TrainingSession[];
+  }>;
+  key_principles: string[];
+}
+
 export interface ConsistencyData {
   month: string;
   active_days: number;

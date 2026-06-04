@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import type { WeeklyReport } from '@/app/api/weekly-report/route';
+import type { WeeklyReport } from '@/types';
 
 function RecoveryBadge({ status }: { status: WeeklyReport['recovery_status'] }) {
   const map = {
