@@ -26,10 +26,12 @@ function linearTrend(values: number[]): (number | null)[] {
 export default function FTPProgressionChart({
   activities,
   weightKg,
+  garminFtp,
   height = 220,
 }: {
   activities: Activity[];
   weightKg?: number | null;
+  garminFtp?: number | null;
   height?: number;
 }) {
   const [metric, setMetric] = useState<'W' | 'W/kg'>('W');
@@ -101,11 +103,18 @@ export default function FTPProgressionChart({
     <div className="space-y-3">
       {/* Summary */}
       <div className="flex gap-3 flex-wrap items-center">
+        {garminFtp && (
+          <div className="p-3 rounded-lg border border-blue-500/30 bg-blue-500/10 space-y-0.5">
+            <p className="text-[10px] tracking-widest uppercase text-muted-foreground">FTP (Zwift/Garmin)</p>
+            <p className="text-2xl font-bold font-mono text-blue-400">{useWkg && weightKg ? `${(garminFtp / weightKg).toFixed(2)} W/kg` : `${garminFtp}W`}</p>
+            <p className="text-[10px] text-muted-foreground">Synced from your Garmin profile</p>
+          </div>
+        )}
         {currentFTP && (
           <div className="p-3 rounded-lg border border-border bg-card space-y-0.5">
-            <p className="text-[10px] tracking-widest uppercase text-muted-foreground">Current FTP</p>
+            <p className="text-[10px] tracking-widest uppercase text-muted-foreground">{garminFtp ? 'Best from p20' : 'Current FTP'}</p>
             <p className="text-2xl font-bold font-mono text-yellow-400">{useWkg ? `${currentWkg} W/kg` : `${currentFTP}W`}</p>
-            <p className="text-[10px] text-muted-foreground">Peak from Zwift/Garmin data</p>
+            <p className="text-[10px] text-muted-foreground">Estimated from 20-min peak power</p>
           </div>
         )}
         {bestFTP && (

@@ -426,10 +426,11 @@ def main():
 
     # ── Fetch fitness age (try several endpoints, log results for diagnosis)
     current_fitness_age = None
-    # ── Fetch biometric profile (vo2Max + fitness age search)
-    print("\n  Fetching biometric profile + fitness age…")
+    # ── Fetch biometric profile (vo2Max + FTP set by Zwift)
+    print("\n  Fetching biometric profile…")
     _profile_vo2max   = None
     current_fitness_age = None
+    garmin_ftp        = None
     dn = api.display_name or ""
     try:
         resp = api.connectapi("/userprofile-service/userprofile/personal-information") or {}
@@ -438,6 +439,11 @@ def main():
         if bv2 and float(bv2) > 0:
             _profile_vo2max = round(float(bv2), 1)
             print(f"  ✓ VO2max (biometric profile): {_profile_vo2max}")
+        # functionalThresholdPower is set by Zwift after each FTP test — use as primary FTP source
+        ftp_raw = biometric.get("functionalThresholdPower")
+        if ftp_raw and float(ftp_raw) > 0:
+            garmin_ftp = int(float(ftp_raw))
+            print(f"  ✓ FTP from Garmin/Zwift profile: {garmin_ftp}W")
     except Exception as exc:
         print(f"  ⚠  biometric profile error: {exc}")
 
@@ -536,6 +542,24 @@ def main():
     acts_synced = result.get('insertedActivities', 0)
     well_synced = result.get('insertedWellness', 0)
     print(f"  ✓ {acts_synced} activities, {well_synced} wellness records upserted")
+
+    # ── Save Garmin/Zwift FTP to settings so all charts use the correct value
+    if garmin_ftp:
+        try:
+            # Fetch current settings, update garminFtp, save back
+            s_res = requests.get(f"{APP_URL}/api/settings", headers=HEADERS, timeout=10)
+            if s_res.ok:
+                current = s_res.json()
+                current["garminFtp"] = garmin_ftp
+                requests.put(
+                    f"{APP_URL}/api/settings",
+                    headers={**HEADERS, "Content-Type": "application/json"},
+                    json=current,
+                    timeout=10,
+                )
+                print(f"  ✓ Saved FTP {garmin_ftp}W to settings")
+        except Exception as exc:
+            print(f"  ⚠  Could not save FTP to settings: {exc}")
 
     duration = int(time.time() - _start)
     _post_sync_log("success", SYNC_DAYS, acts_synced, well_synced, duration)

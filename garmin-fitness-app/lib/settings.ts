@@ -5,6 +5,7 @@ export interface UserSettings {
   heightCm: number | null;
   maxHR: number | null;
   thresholdHR: number | null;
+  garminFtp: number | null;  // auto-synced from Garmin biometric profile (set by Zwift FTP tests)
   dailyStepsGoal: number;
 }
 
@@ -17,6 +18,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   heightCm: null,
   maxHR: null,
   thresholdHR: null,
+  garminFtp: null,
   dailyStepsGoal: 10000,
 };
 

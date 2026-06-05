@@ -24,10 +24,12 @@ function getCategory(wkg: number) {
 export default function WkgZonesChart({
   activities,
   wellness,
+  garminFtp,
   height = 220,
 }: {
   activities: Activity[];
   wellness: WellnessRecord[];
+  garminFtp?: number | null;
   height?: number;
 }) {
   const { chartData, currentWkg, currentCategory } = useMemo(() => {
@@ -35,7 +37,7 @@ export default function WkgZonesChart({
       .filter(a => a.ftp != null && a.ftp > 0)
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    if (withFTP.length === 0) return { chartData: [], currentWkg: null, currentCategory: null };
+    if (withFTP.length === 0 && !garminFtp) return { chartData: [], currentWkg: null, currentCategory: null };
 
     // Most recent weight per month from wellness
     const monthWeight = new Map<string, number>();
@@ -65,7 +67,8 @@ export default function WkgZonesChart({
 
     // Rolling peak FTP — carry forward so Zone 2 months don't reset to low values
     const months = Array.from(monthFTPRaw.keys()).sort();
-    let peak = 0;
+    // garminFtp (Zwift FTP tests synced to Garmin) is the most accurate — use as floor
+    let peak = garminFtp ?? 0;
     const monthFTP = new Map<string, number>();
     for (const m of months) {
       peak = Math.max(peak, monthFTPRaw.get(m) ?? 0);
