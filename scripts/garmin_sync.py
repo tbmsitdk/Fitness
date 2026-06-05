@@ -111,6 +111,12 @@ def _enrich_power_details(api: Garmin, activities: list) -> None:
         np  = dto.get("normalizedPower")
         p20 = dto.get("maxPowerTwentyMinutes")
         ftp = int(float(p20) * 0.95) if p20 and float(p20) > 0 else None
+        # Zwift FTP tests also store the result in thresholdPower on the activity
+        threshold = dto.get("thresholdPower") or dto.get("functionalThresholdPower")
+        if threshold and float(threshold) > 0:
+            zwift_ftp = int(float(threshold))
+            if ftp is None or zwift_ftp > ftp:
+                ftp = zwift_ftp
         if np and float(np) > 0:
             a["normalized_power"] = int(float(np))
         if ftp:
@@ -542,6 +548,13 @@ def main():
     acts_synced = result.get('insertedActivities', 0)
     well_synced = result.get('insertedWellness', 0)
     print(f"  ✓ {acts_synced} activities, {well_synced} wellness records upserted")
+
+    # Also check the max FTP recorded in any activity this sync window
+    # (Zwift FTP tests store it in thresholdPower on the activity itself)
+    activity_max_ftp = max((a.get("ftp") or 0 for a in activities), default=0)
+    if activity_max_ftp > (garmin_ftp or 0):
+        garmin_ftp = activity_max_ftp
+        print(f"  ✓ FTP from activity data: {garmin_ftp}W (exceeds profile value)")
 
     # ── Save Garmin/Zwift FTP to settings so all charts use the correct value
     if garmin_ftp:
