@@ -87,18 +87,25 @@ export function buildFullContext(
   })();
 
   // Cycling performance
+  // Priority: garminFtp (synced from Zwift FTP tests) > rolling peak from p20
   const cyclingWithFTP = [...activities]
     .filter(a => a.activity_type === 'cycling' && a.ftp && a.ftp > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
-  const latestFTP = cyclingWithFTP.at(-1)?.ftp ?? null;
+  const p20BestFTP = cyclingWithFTP.length > 0
+    ? Math.max(...cyclingWithFTP.map(a => a.ftp as number))
+    : null;
+  // garminFtp from settings is the most accurate (set by Zwift FTP tests)
+  const garminFtp = userSettings?.garminFtp ?? null;
+  const latestFTP = garminFtp ?? p20BestFTP;
   const latestWeight = [...sorted].reverse().find(w => w.weight_kg != null)?.weight_kg ?? null;
   const wkg = latestFTP && latestWeight ? Math.round((latestFTP / latestWeight) * 100) / 100 : null;
 
-  // FTP trend (first vs last in last 90 days)
-  const ftpIn90 = cyclingWithFTP.filter(a => now - new Date(a.date).getTime() < 90 * 86400000);
-  const ftpTrend = ftpIn90.length >= 2
-    ? ftpIn90.at(-1)!.ftp! - ftpIn90[0].ftp!
-    : null;
+  // FTP trend — compare best historical p20 estimate vs current Garmin FTP
+  const ftpTrend = garminFtp && p20BestFTP
+    ? garminFtp - p20BestFTP   // positive = improved vs p20 estimate
+    : cyclingWithFTP.length >= 2
+      ? Math.max(...cyclingWithFTP.map(a => a.ftp as number)) - cyclingWithFTP[0].ftp!
+      : null;
 
   // Running pace trend
   const runs90 = activities.filter(a =>
@@ -179,11 +186,14 @@ export function buildFullContext(
       note:                 'recovery_score = 100 - stress_score (Firstbeat HRV-derived)',
     },
     cycling_performance: {
-      latest_ftp_watts: latestFTP,
+      current_ftp_watts:   latestFTP,
+      ftp_source:          garminFtp ? 'Garmin/Zwift profile (most accurate)' : 'p20 × 0.95 estimate',
+      garmin_ftp:          garminFtp,
+      best_p20_ftp:        p20BestFTP,
       wkg,
-      coggan_category:  wkgCategory,
-      ftp_trend_90d:    ftpTrend !== null ? `${ftpTrend >= 0 ? '+' : ''}${ftpTrend}W` : null,
-      avg_power_all_rides: summary90.cycling?.avg_hr ?? null,
+      coggan_category:     wkgCategory,
+      ftp_vs_p20_estimate: ftpTrend !== null ? `${ftpTrend >= 0 ? '+' : ''}${ftpTrend}W` : null,
+      note: 'Zone 2 rides deliberately use low power — FTP represents CAPACITY not recent ride intensity',
     },
     recovery: {
       todays_recovery_score:  recovery7,
