@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceDot, Legend,
+  ReferenceDot, ReferenceLine, Legend,
 } from 'recharts';
 import { Activity } from '@/types';
 import { format, parseISO, startOfMonth } from 'date-fns';
@@ -168,7 +168,16 @@ export default function FTPProgressionChart({
             }}
           />
           <Legend wrapperStyle={{ fontSize: 11, color: 'hsl(240 5% 64.9%)' }} iconSize={6} />
-          <Line dataKey="ftp" name="Rolling peak FTP" stroke="#FBBF24" strokeWidth={2.5} dot={{ r: 3, fill: '#FBBF24' }} connectNulls />
+          {garminFtp && (
+            <ReferenceLine
+              y={useWkg && weightKg ? Math.round((garminFtp / div) * 100) / 100 : garminFtp}
+              stroke="#60A5FA"
+              strokeWidth={1.5}
+              strokeDasharray="6 3"
+              label={{ value: `Current FTP (Zwift): ${useWkg && weightKg ? (garminFtp/div).toFixed(1)+' W/kg' : garminFtp+'W'}`, position: 'insideTopRight', fontSize: 9, fill: '#60A5FA' }}
+            />
+          )}
+          <Line dataKey="ftp" name="Best p20 estimate (per period)" stroke="#FBBF24" strokeWidth={2.5} dot={{ r: 3, fill: '#FBBF24' }} connectNulls />
           <Line dataKey="trend" name="trend" stroke="hsl(0 0% 55%)" strokeWidth={1.5} strokeDasharray="5 3" dot={false} connectNulls />
           {bestIdx >= 0 && bestFTP != null && (
             <ReferenceDot
@@ -184,7 +193,7 @@ export default function FTPProgressionChart({
         </ComposedChart>
       </ResponsiveContainer>
       <p className="text-[10px] text-muted-foreground/60 italic">
-        Monthly maximum FTP. Populated from Zwift p20 / structured test data. Dashed = linear trend.
+        Yellow line = best p20-derived FTP estimate per period (rolls forward — Zone 2 rides don't reduce it). Blue dashed = your current FTP from the Zwift/Garmin profile, synced automatically after each FTP test.
       </p>
     </div>
   );
