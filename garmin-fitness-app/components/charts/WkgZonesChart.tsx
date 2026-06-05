@@ -24,12 +24,10 @@ function getCategory(wkg: number) {
 export default function WkgZonesChart({
   activities,
   wellness,
-  manualFTP,
   height = 220,
 }: {
   activities: Activity[];
   wellness: WellnessRecord[];
-  manualFTP?: number | null;
   height?: number;
 }) {
   const { chartData, currentWkg, currentCategory } = useMemo(() => {
@@ -37,7 +35,7 @@ export default function WkgZonesChart({
       .filter(a => a.ftp != null && a.ftp > 0)
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    if (withFTP.length === 0 && !manualFTP) return { chartData: [], currentWkg: null, currentCategory: null };
+    if (withFTP.length === 0) return { chartData: [], currentWkg: null, currentCategory: null };
 
     // Most recent weight per month from wellness
     const monthWeight = new Map<string, number>();
@@ -72,7 +70,6 @@ export default function WkgZonesChart({
     for (const m of months) {
       peak = Math.max(peak, monthFTPRaw.get(m) ?? 0);
       // If manual FTP is set and higher, use it
-      if (manualFTP && manualFTP > peak) peak = manualFTP;
       monthFTP.set(m, peak);
     }
 

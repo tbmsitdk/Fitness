@@ -130,15 +130,6 @@ export default function Settings({ settings, onSave, measuredMaxHR }: Props) {
         </CardContent>
       </Card>
 
-      {/* Cycling power */}
-      <Card>
-        <CardHeader className="pb-2"><CardTitle>Cycling Power</CardTitle></CardHeader>
-        <CardContent>
-          <Field label="FTP (watts)" hint="Functional Threshold Power — your capacity, not today's effort. Zone 2 rides are deliberately easy and should never lower this. Set it here after a test or Zwift ramp test, and it will be used everywhere.">
-            <NumericInput value={form.ftpWatts} onChange={v => update('ftpWatts', v)} placeholder="e.g. 193" min={50} max={500} />
-          </Field>
-        </CardContent>
-      </Card>
 
       {/* Heart rate zones */}
       <Card>

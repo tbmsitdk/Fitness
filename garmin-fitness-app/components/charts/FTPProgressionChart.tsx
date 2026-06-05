@@ -26,12 +26,10 @@ function linearTrend(values: number[]): (number | null)[] {
 export default function FTPProgressionChart({
   activities,
   weightKg,
-  manualFTP,
   height = 220,
 }: {
   activities: Activity[];
   weightKg?: number | null;
-  manualFTP?: number | null;
   height?: number;
 }) {
   const [metric, setMetric] = useState<'W' | 'W/kg'>('W');
@@ -81,11 +79,11 @@ export default function FTPProgressionChart({
 
     return {
       chartData: data,
-      currentFTP: manualFTP ?? derivedCurrent,
+      currentFTP: derivedCurrent,
       bestFTP: best?.ftp ?? null,
       bestDate: best?.label ?? null,
     };
-  }, [activities, manualFTP]);
+  }, [activities]);
 
   if (chartData.length === 0) {
     return (
@@ -105,11 +103,9 @@ export default function FTPProgressionChart({
       <div className="flex gap-3 flex-wrap items-center">
         {currentFTP && (
           <div className="p-3 rounded-lg border border-border bg-card space-y-0.5">
-            <p className="text-[10px] tracking-widest uppercase text-muted-foreground">
-              {manualFTP ? 'FTP (manual)' : 'Current FTP'}
-            </p>
+            <p className="text-[10px] tracking-widest uppercase text-muted-foreground">Current FTP</p>
             <p className="text-2xl font-bold font-mono text-yellow-400">{useWkg ? `${currentWkg} W/kg` : `${currentFTP}W`}</p>
-            {manualFTP && <p className="text-[10px] text-muted-foreground">Set in Settings · overrides auto-estimate</p>}
+            <p className="text-[10px] text-muted-foreground">Peak from Zwift/Garmin data</p>
           </div>
         )}
         {bestFTP && (
@@ -163,11 +159,6 @@ export default function FTPProgressionChart({
             }}
           />
           <Legend wrapperStyle={{ fontSize: 11, color: 'hsl(240 5% 64.9%)' }} iconSize={6} />
-          {manualFTP && (
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            <ReferenceDot x={chartData[chartData.length-1]?.label} y={useWkg && weightKg ? Math.round((manualFTP/div)*100)/100 : manualFTP} r={0}
-              label={{ value: `Manual: ${useWkg && weightKg ? (manualFTP/div).toFixed(1)+' W/kg' : manualFTP+'W'}`, position: 'insideTopRight', fontSize: 9, fill: '#60A5FA' }} />
-          )}
           <Line dataKey="ftp" name="Rolling peak FTP" stroke="#FBBF24" strokeWidth={2.5} dot={{ r: 3, fill: '#FBBF24' }} connectNulls />
           <Line dataKey="trend" name="trend" stroke="hsl(0 0% 55%)" strokeWidth={1.5} strokeDasharray="5 3" dot={false} connectNulls />
           {bestIdx >= 0 && bestFTP != null && (

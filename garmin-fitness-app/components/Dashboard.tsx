@@ -131,15 +131,14 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
     return null;
   }, [allWellness]);
 
-  // FTP = manual setting (most reliable) OR best-ever from all activities (not most recent —
-  // Zone 2 rides have low p20 and should never reduce this figure)
+  // FTP = best-ever from all activities (not most recent — Zone 2 rides have
+  // low p20 and should never reduce this figure; rolling peak in charts handles this)
   const latestFtp = useMemo(() => {
-    if (settings.ftpWatts && settings.ftpWatts > 0) return settings.ftpWatts;
     const ftps = allActivities
       .filter(a => a.activity_type === 'cycling' && a.ftp && a.ftp > 0)
       .map(a => a.ftp as number);
     return ftps.length ? Math.max(...ftps) : null;
-  }, [allActivities, settings.ftpWatts]);
+  }, [allActivities]);
 
   // trainingLoad is already sliced to the selected period (but computed from full history for EWMA warmup)
   const firstLoad = trainingLoad[0];
@@ -325,10 +324,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Power & performance */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="FTP Progression">
-              {(expanded) => <FTPProgressionChart activities={allActivities} weightKg={weightKg} manualFTP={settings.ftpWatts} height={expanded ? 480 : undefined} />}
+              {(expanded) => <FTPProgressionChart activities={allActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
             <ExpandableCard title="W/kg Over Time">
-              {(expanded) => <WkgZonesChart activities={allActivities} wellness={allWellness} manualFTP={settings.ftpWatts} height={expanded ? 480 : undefined} />}
+              {(expanded) => <WkgZonesChart activities={allActivities} wellness={allWellness} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
           <ExpandableCard title="Power Zones">

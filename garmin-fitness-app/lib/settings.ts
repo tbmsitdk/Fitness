@@ -5,7 +5,6 @@ export interface UserSettings {
   heightCm: number | null;
   maxHR: number | null;
   thresholdHR: number | null;
-  ftpWatts: number | null;   // manual FTP override (beats auto-derived p20 estimate)
   dailyStepsGoal: number;
 }
 
@@ -18,7 +17,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   heightCm: null,
   maxHR: null,
   thresholdHR: null,
-  ftpWatts: null,
   dailyStepsGoal: 10000,
 };
 
