@@ -292,22 +292,22 @@ ${JSON.stringify(context, null, 2)}`;
 
   // Build Anthropic message format — support text-only and text+file content
   const anthropicMessages = messages.map(m => {
-    if (!m.file || m.role === 'assistant') {
+    if (!m.files?.length || m.role === 'assistant') {
       return { role: m.role, content: m.content };
     }
-    const isImage = m.file.mediaType.startsWith('image/');
     const contentBlocks: Anthropic.Messages.ContentBlockParam[] = [];
-    if (isImage) {
-      contentBlocks.push({
-        type: 'image',
-        source: { type: 'base64', media_type: m.file.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: m.file.data },
-      });
-    } else {
-      // PDF / document
-      contentBlocks.push({
-        type: 'document',
-        source: { type: 'base64', media_type: 'application/pdf', data: m.file.data },
-      } as Anthropic.Messages.ContentBlockParam);
+    for (const file of m.files) {
+      if (file.mediaType.startsWith('image/')) {
+        contentBlocks.push({
+          type: 'image',
+          source: { type: 'base64', media_type: file.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: file.data },
+        });
+      } else {
+        contentBlocks.push({
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: file.data },
+        } as Anthropic.Messages.ContentBlockParam);
+      }
     }
     if (m.content.trim()) {
       contentBlocks.push({ type: 'text', text: m.content });

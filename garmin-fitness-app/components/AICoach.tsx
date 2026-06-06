@@ -33,7 +33,7 @@ export default function AICoach({ activities, wellness, settings }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const [attachedFile, setAttachedFile] = useState<ChatFile | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<ChatFile[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,24 +57,25 @@ export default function AICoach({ activities, wellness, settings }: Props) {
   }
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(',')[1];
-      setAttachedFile({ name: file.name, mediaType: file.type, data: base64 });
-    };
-    reader.readAsDataURL(file);
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        setAttachedFiles(prev => [...prev, { name: file.name, mediaType: file.type, data: base64 }]);
+      };
+      reader.readAsDataURL(file);
+    });
     e.target.value = '';
   }
 
   async function send(text: string) {
     if (!text.trim() && !attachedFile || chatLoading) return;
-    const userMsg: ChatMessage = { role: 'user', content: text.trim(), file: attachedFile ?? undefined };
+    const userMsg: ChatMessage = { role: 'user', content: text.trim(), files: attachedFiles.length ? attachedFiles : undefined };
     const updated = [...messages, userMsg];
     setMessages([...updated, { role: 'assistant', content: '' }]);
-    setInput(''); setAttachedFile(null); setChatLoading(true);
+    setInput(''); setAttachedFiles([]); setChatLoading(true);
     try {
       const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: updated, settings }) });
       if (!res.ok || !res.body) throw new Error('Chat failed');
@@ -236,14 +237,18 @@ export default function AICoach({ activities, wellness, settings }: Props) {
                 </div>
                 <div className={cn('max-w-[85%] rounded-lg text-sm overflow-hidden',
                   m.role === 'user' ? 'bg-foreground text-background rounded-tr-sm' : 'bg-secondary text-foreground rounded-tl-sm')}>
-                  {m.file && m.role === 'user' && (
-                    m.file.mediaType.startsWith('image/')
-                      // eslint-disable-next-line @next/next/no-img-element
-                      ? <img src={`data:${m.file.mediaType};base64,${m.file.data}`} alt={m.file.name} className="max-w-[260px] max-h-[200px] object-cover w-full" />
-                      : <div className="flex items-center gap-2 px-3 py-2 border-b border-background/20">
-                          <FileText className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span className="text-xs truncate">{m.file.name}</span>
-                        </div>
+                  {m.files?.length && m.role === 'user' && (
+                    <div className={m.files.length > 1 ? 'grid grid-cols-2 gap-0.5' : ''}>
+                      {m.files.map((f, fi) => (
+                        f.mediaType.startsWith('image/')
+                          // eslint-disable-next-line @next/next/no-img-element
+                          ? <img key={fi} src={`data:${f.mediaType};base64,${f.data}`} alt={f.name} className="max-w-[260px] max-h-[180px] object-cover w-full" />
+                          : <div key={fi} className="flex items-center gap-2 px-3 py-2 border-b border-background/20">
+                              <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span className="text-xs truncate">{f.name}</span>
+                            </div>
+                      ))}
+                    </div>
                   )}
                   {(m.content || m.role === 'assistant') && (
                     <div className="px-3 py-2">
@@ -257,25 +262,29 @@ export default function AICoach({ activities, wellness, settings }: Props) {
           </div>
 
           <div className="mt-3 space-y-2">
-            {/* File preview chip */}
-            {attachedFile && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-secondary w-fit max-w-xs">
-                {attachedFile.mediaType.startsWith('image/') ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={`data:${attachedFile.mediaType};base64,${attachedFile.data}`} alt="preview" className="w-6 h-6 rounded object-cover" />
-                ) : (
-                  <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                )}
-                <span className="text-xs text-muted-foreground truncate max-w-[160px]">{attachedFile.name}</span>
-                <button onClick={() => setAttachedFile(null)} className="text-muted-foreground/50 hover:text-muted-foreground ml-1">
-                  <X className="w-3 h-3" />
-                </button>
+            {/* File preview chips */}
+            {attachedFiles.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {attachedFiles.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-secondary max-w-xs">
+                    {f.mediaType.startsWith('image/') ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={`data:${f.mediaType};base64,${f.data}`} alt="preview" className="w-6 h-6 rounded object-cover flex-shrink-0" />
+                    ) : (
+                      <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    )}
+                    <span className="text-xs text-muted-foreground truncate max-w-[140px]">{f.name}</span>
+                    <button onClick={() => setAttachedFiles(prev => prev.filter((_, j) => j !== i))} className="text-muted-foreground/50 hover:text-muted-foreground ml-1 flex-shrink-0">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
 
             <div className="flex gap-2 items-end">
               {/* Hidden file input */}
-              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileSelect} />
+              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleFileSelect} />
 
               {/* Attach button */}
               <Button variant="outline" size="icon" onClick={() => fileInputRef.current?.click()} disabled={chatLoading} title="Attach image or PDF" className="flex-shrink-0">
@@ -288,7 +297,7 @@ export default function AICoach({ activities, wellness, settings }: Props) {
                 rows={2} disabled={chatLoading}
                 className="flex-1 resize-none rounded-md border border-border bg-secondary px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
               />
-              <Button onClick={() => send(input)} disabled={(!input.trim() && !attachedFile) || chatLoading} size="icon">
+              <Button onClick={() => send(input)} disabled={(!input.trim() && !attachedFiles.length) || chatLoading} size="icon">
                 {chatLoading ? <div className="w-3.5 h-3.5 border border-background border-t-transparent rounded-full animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               </Button>
             </div>

@@ -83,7 +83,7 @@ export interface ChatFile {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
-  file?: ChatFile;   // optional attachment (images or PDF)
+  files?: ChatFile[];  // optional attachments (images or PDFs)
 }
 
 export interface AISummary {
