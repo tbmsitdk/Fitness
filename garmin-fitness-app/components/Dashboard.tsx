@@ -1,6 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { Activity, WellnessRecord, FtpEntry } from '@/types';
+import { Activity, WellnessRecord } from '@/types';
 import { computeWeeklyVolume, computeTrainingLoadWithForecast, computeEfficiencyFactor, computeHRZoneDistribution, computePersonalBests, computeConsistency, computePeriodSummary, TrainingLoadForecast, EfficiencyFactorPoint } from '@/lib/training-load';
 import WeeklyVolumeChart from './charts/WeeklyVolumeChart';
 import FitnessTrendChart, { WellnessMetric } from './charts/FitnessTrendChart';
@@ -29,7 +29,6 @@ import BodyBatteryChart from './charts/BodyBatteryChart';
 import BodyCompositionChart from './charts/BodyCompositionChart';
 import PowerCurveChart from './charts/PowerCurveChart';
 import FTPProgressionChart from './charts/FTPProgressionChart';
-import FtpTracker from '@/components/FtpTracker';
 import WkgZonesChart from './charts/WkgZonesChart';
 import WalkingChart from './charts/WalkingChart';
 import dynamic from 'next/dynamic';
@@ -53,8 +52,6 @@ interface Props {
   allWellness: WellnessRecord[]; // full history for weight lookup
   cutoff: Date;                  // start of the selected period
   settings?: UserSettings;
-  ftpEntries: FtpEntry[];
-  onFtpEntriesChange: (entries: FtpEntry[]) => void;
 }
 
 function StatCard({ label, value, sub, accent, hint }: { label: string; value: string; sub?: string; accent: string; hint?: string }) {
@@ -81,7 +78,7 @@ function periodLabel(cutoff: Date): string {
   return 'All';
 }
 
-export default function Dashboard({ activities, allActivities, wellness, allWellness, cutoff, settings = DEFAULT_SETTINGS, ftpEntries, onFtpEntriesChange }: Props) {
+export default function Dashboard({ activities, allActivities, wellness, allWellness, cutoff, settings = DEFAULT_SETTINGS }: Props) {
   const [subTab, setSubTab] = useState<'home' | 'running' | 'cycling' | 'health' | 'training'>('home');
   const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
   const [wellMetric, setWellMetric] = useState<WellnessMetric>('rhr');
@@ -325,11 +322,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       {/* ── CYCLING ──────────────────────────────────────────────────────── */}
       {subTab === 'cycling' && (
         <div className="space-y-4">
-          {/* Manual Zwift FTP tracker */}
-          <ExpandableCard title="Zwift FTP — Manual Log">
-            {() => <FtpTracker entries={ftpEntries} onEntriesChange={onFtpEntriesChange} />}
-          </ExpandableCard>
-
           {/* Power & performance */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="FTP Progression (p20 estimate from activities)">

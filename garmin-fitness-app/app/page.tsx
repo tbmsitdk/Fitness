@@ -184,13 +184,15 @@ export default function Home() {
             <Upload onUploadComplete={onUploadComplete} />
           </div>
         ) : activeTab === 'dashboard' ? (
-          <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} ftpEntries={ftpEntries} onFtpEntriesChange={setFtpEntries} />
+          <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} />
         ) : activeTab === 'ai-coach' ? (
           <AICoach activities={allActivities} wellness={allWellness} settings={settings} />
         ) : (
           <SettingsPanel
             settings={settings}
             onSave={s => setSettings({ ...s })}
+            ftpEntries={ftpEntries}
+            onFtpEntriesChange={setFtpEntries}
             measuredMaxHR={(() => {
               const hrs = allActivities
                 .filter(a => a.max_hr != null && new Date(a.date) >= subDays(new Date(), 365))

@@ -4,11 +4,15 @@ import { UserSettings, saveSettings, getAge, getMaxHR, getThresholdHR } from '@/
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Info } from 'lucide-react';
+import FtpTracker from '@/components/FtpTracker';
+import { FtpEntry } from '@/types';
 
 interface Props {
   settings: UserSettings;
   onSave: (s: UserSettings) => void;
   measuredMaxHR?: number;
+  ftpEntries: FtpEntry[];
+  onFtpEntriesChange: (entries: FtpEntry[]) => void;
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -46,7 +50,7 @@ function NumericInput({ value, onChange, placeholder, min, max, step = 1 }: {
   );
 }
 
-export default function Settings({ settings, onSave, measuredMaxHR }: Props) {
+export default function Settings({ settings, onSave, measuredMaxHR, ftpEntries, onFtpEntriesChange }: Props) {
   const [form, setForm] = useState<UserSettings>({ ...settings });
   const [saved, setSaved] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -178,6 +182,19 @@ export default function Settings({ settings, onSave, measuredMaxHR }: Props) {
           {saved ? <><CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />Saved</> : 'Save settings'}
         </Button>
         {saved && <span className="text-xs text-green-400">Settings saved. Charts and AI coaching will use your updated profile.</span>}
+      </div>
+
+      {/* Zwift FTP log */}
+      <div>
+        <h2 className="text-base font-semibold">Zwift FTP Log</h2>
+        <p className="text-xs text-muted-foreground mt-0.5 mb-3">
+          Manually record FTP test results to track your power progress over time.
+        </p>
+        <Card>
+          <CardContent className="pt-4">
+            <FtpTracker entries={ftpEntries} onEntriesChange={onFtpEntriesChange} />
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
