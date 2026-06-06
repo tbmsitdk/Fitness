@@ -7,6 +7,7 @@ import type { TrainingPlan, TrainingSession } from '@/types';
 
 interface Props {
   activities: Activity[];
+  ftp?: number | null;
 }
 
 type Goal = 'base' | 'ftp' | 'race';
@@ -79,15 +80,15 @@ function downloadPlan(plan: TrainingPlan) {
   URL.revokeObjectURL(url);
 }
 
-export default function TrainingPlanGenerator({ activities }: Props) {
-  // Pre-fill FTP from latest cycling activity
-  const latestFtp = (() => {
+export default function TrainingPlanGenerator({ activities, ftp: ftpProp }: Props) {
+  // Pre-fill from prop (manual log / garmin sync), fall back to activity-derived estimate
+  const initialFtp = ftpProp ?? (() => {
     const cycling = activities.filter(a => a.activity_type === 'cycling' && a.ftp && a.ftp > 0);
     if (!cycling.length) return 200;
     return cycling.reduce((best, a) => (a.date > (best?.date ?? '') ? a : best), null as Activity | null)?.ftp ?? 200;
   })();
 
-  const [ftp, setFtp] = useState(latestFtp || 200);
+  const [ftp, setFtp] = useState(initialFtp || 200);
   const [daysPerWeek, setDaysPerWeek] = useState(4);
   const [goal, setGoal] = useState<Goal>('base');
   const [loading, setLoading] = useState(false);

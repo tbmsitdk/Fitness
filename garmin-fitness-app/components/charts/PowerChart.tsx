@@ -20,12 +20,12 @@ function linearTrend(values: number[]): (number | null)[] {
   return values.map((_, i) => Math.round(slope * i + intercept));
 }
 
-export default function PowerChart({ activities, weightKg, height = 220 }: { activities: Activity[]; weightKg?: number | null; height?: number }) {
+export default function PowerChart({ activities, weightKg, ftp: ftpOverride, height = 220 }: { activities: Activity[]; weightKg?: number | null; ftp?: number | null; height?: number }) {
   const [metric, setMetric] = useState<'W' | 'W/kg'>('W');
   const useWkg = metric === 'W/kg' && weightKg != null && weightKg > 0;
   const div = useWkg ? weightKg! : 1;
 
-  const { chartData, ftp, avgAll, tickInterval } = useMemo(() => {
+  const { chartData, ftp: ftpDerived, avgAll, tickInterval } = useMemo(() => {
     const cycling = activities
       .filter(a => a.activity_type === 'cycling' && a.avg_power && a.avg_power > 0)
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -78,6 +78,8 @@ export default function PowerChart({ activities, weightKg, height = 220 }: { act
       tickInterval: Math.max(1, Math.floor(data.length / 12)),
     };
   }, [activities]);
+
+  const ftp = ftpOverride ?? ftpDerived;
 
   if (!chartData.length) return (
     <div className="h-[240px] flex items-center justify-center text-xs text-muted-foreground">

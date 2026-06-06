@@ -341,7 +341,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             </ExpandableCard>
           </div>
           <ExpandableCard title="Power Zones">
-            {(expanded) => <PowerChart activities={activities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
+            {(expanded) => <PowerChart activities={activities} weightKg={weightKg} ftp={latestFtp} height={expanded ? 480 : undefined} />}
           </ExpandableCard>
           {latestFtp && (
             <ExpandableCard title="Zone Distribution">
@@ -365,7 +365,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Planning tools */}
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground pt-2">Planning</p>
           <ExpandableCard title="Training Plan Generator">
-            {() => <TrainingPlanGenerator activities={allActivities} />}
+            {() => <TrainingPlanGenerator activities={allActivities} ftp={latestFtp} />}
           </ExpandableCard>
         </div>
       )}
