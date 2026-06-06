@@ -9,6 +9,7 @@ export async function POST(request: NextRequest) {
   try {
     const { messages, settings }: { messages: ChatMessage[]; settings?: UserSettings } = await request.json();
 
+
     if (!messages || messages.length === 0) {
       return NextResponse.json({ error: 'No messages provided' }, { status: 400 });
     }
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          for await (const chunk of streamChat(messages, activities, wellness, settings)) {
+          for await (const chunk of streamChat(messages as Parameters<typeof streamChat>[0], activities, wellness, settings)) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: chunk })}\n\n`));
           }
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));

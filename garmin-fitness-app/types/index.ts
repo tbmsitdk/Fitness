@@ -74,9 +74,16 @@ export interface PersonalBest {
   activity_type: string;
 }
 
+export interface ChatFile {
+  name: string;
+  mediaType: string; // e.g. 'image/jpeg', 'application/pdf'
+  data: string;      // base64
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  file?: ChatFile;   // optional attachment (images or PDF)
 }
 
 export interface AISummary {

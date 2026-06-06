@@ -280,7 +280,7 @@ Be specific. Cite exact numbers. Give actionable targets not vague advice.`,
 }
 
 export async function* streamChat(
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  messages: Array<{ role: 'user' | 'assistant'; content: string; file?: { name: string; mediaType: string; data: string } }>,
   activities: Activity[],
   wellness: WellnessRecord[],
   userSettings?: Partial<UserSettings>
@@ -290,11 +290,36 @@ export async function* streamChat(
   const dataContext = `## Your Complete Fitness & Health Profile
 ${JSON.stringify(context, null, 2)}`;
 
+  // Build Anthropic message format — support text-only and text+file content
+  const anthropicMessages = messages.map(m => {
+    if (!m.file || m.role === 'assistant') {
+      return { role: m.role, content: m.content };
+    }
+    const isImage = m.file.mediaType.startsWith('image/');
+    const contentBlocks: Anthropic.Messages.ContentBlockParam[] = [];
+    if (isImage) {
+      contentBlocks.push({
+        type: 'image',
+        source: { type: 'base64', media_type: m.file.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp', data: m.file.data },
+      });
+    } else {
+      // PDF / document
+      contentBlocks.push({
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: m.file.data },
+      } as Anthropic.Messages.ContentBlockParam);
+    }
+    if (m.content.trim()) {
+      contentBlocks.push({ type: 'text', text: m.content });
+    }
+    return { role: m.role as 'user', content: contentBlocks };
+  });
+
   const stream = await client.messages.stream({
     model: MODEL,
     max_tokens: 1500,
     system: SYSTEM_PROMPT + '\n\n' + dataContext,
-    messages: messages.map(m => ({ role: m.role, content: m.content })),
+    messages: anthropicMessages,
   });
 
   for await (const chunk of stream) {
