@@ -71,7 +71,7 @@ export default function AICoach({ activities, wellness, settings }: Props) {
   }
 
   async function send(text: string) {
-    if (!text.trim() && !attachedFile || chatLoading) return;
+    if ((!text.trim() && !attachedFiles.length) || chatLoading) return;
     const userMsg: ChatMessage = { role: 'user', content: text.trim(), files: attachedFiles.length ? attachedFiles : undefined };
     const updated = [...messages, userMsg];
     setMessages([...updated, { role: 'assistant', content: '' }]);
