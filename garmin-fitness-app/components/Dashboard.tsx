@@ -29,6 +29,7 @@ import BodyBatteryChart from './charts/BodyBatteryChart';
 import BodyCompositionChart from './charts/BodyCompositionChart';
 import PowerCurveChart from './charts/PowerCurveChart';
 import FTPProgressionChart from './charts/FTPProgressionChart';
+import FtpHistoryChart from './charts/FtpHistoryChart';
 import WkgZonesChart from './charts/WkgZonesChart';
 import WalkingChart from './charts/WalkingChart';
 import dynamic from 'next/dynamic';
@@ -331,6 +332,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       {/* ── CYCLING ──────────────────────────────────────────────────────── */}
       {subTab === 'cycling' && (
         <div className="space-y-4">
+          {/* Manual FTP history */}
+          <ExpandableCard title="Zwift FTP History">
+            {(expanded) => <FtpHistoryChart entries={ftpEntries} height={expanded ? 480 : 220} />}
+          </ExpandableCard>
+
           {/* Power & performance */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="FTP Progression (p20 estimate from activities)">

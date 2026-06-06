@@ -1,20 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine,
-} from 'recharts';
 import { FtpEntry } from '@/types';
 import { format, parseISO } from 'date-fns';
 import { Trash2 } from 'lucide-react';
-
-const TOOLTIP_STYLE = {
-  background: 'hsl(240 10% 7%)',
-  border: '1px solid hsl(240 3.7% 13%)',
-  borderRadius: '8px',
-  fontSize: 11,
-};
 
 interface Props {
   entries: FtpEntry[];
@@ -30,11 +19,6 @@ export default function FtpTracker({ entries, onEntriesChange }: Props) {
 
   const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
   const latest = sorted[sorted.length - 1];
-
-  const chartData = sorted.map(e => ({
-    date: format(parseISO(e.date), 'MMM d, yy'),
-    FTP: e.ftp_watts,
-  }));
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -134,57 +118,6 @@ export default function FtpTracker({ entries, onEntriesChange }: Props) {
           {error && <p className="text-[11px] text-red-400 w-full">{error}</p>}
         </form>
       </div>
-
-      {/* Chart */}
-      {chartData.length >= 2 ? (
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
-            <XAxis
-              dataKey="date"
-              tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }}
-              tickLine={false}
-              axisLine={false}
-            />
-            <YAxis
-              tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }}
-              tickLine={false}
-              axisLine={false}
-              domain={['auto', 'auto']}
-              tickFormatter={(v: number) => `${v}W`}
-            />
-            <Tooltip
-              contentStyle={TOOLTIP_STYLE}
-              labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }}
-              formatter={(v: number) => [`${v}W`, 'FTP']}
-            />
-            {latest && (
-              <ReferenceLine
-                y={latest.ftp_watts}
-                stroke="#60A5FA"
-                strokeWidth={1}
-                strokeDasharray="6 3"
-              />
-            )}
-            <Line
-              type="monotone"
-              dataKey="FTP"
-              stroke="#60A5FA"
-              strokeWidth={2.5}
-              dot={{ r: 3, fill: '#60A5FA', strokeWidth: 0 }}
-              activeDot={{ r: 5 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      ) : chartData.length === 1 ? (
-        <div className="h-[200px] flex items-center justify-center text-xs text-muted-foreground">
-          Add at least 2 entries to see the trend chart.
-        </div>
-      ) : (
-        <div className="h-[200px] flex items-center justify-center text-xs text-muted-foreground">
-          No FTP entries yet — add your first one above.
-        </div>
-      )}
 
       {/* Entry table */}
       {sorted.length > 0 && (
