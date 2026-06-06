@@ -280,7 +280,7 @@ Be specific. Cite exact numbers. Give actionable targets not vague advice.`,
 }
 
 export async function* streamChat(
-  messages: Array<{ role: 'user' | 'assistant'; content: string; file?: { name: string; mediaType: string; data: string } }>,
+  messages: Array<{ role: 'user' | 'assistant'; content: string; files?: { name: string; mediaType: string; data: string }[] }>,
   activities: Activity[],
   wellness: WellnessRecord[],
   userSettings?: Partial<UserSettings>
