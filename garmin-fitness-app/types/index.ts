@@ -133,3 +133,11 @@ export interface ConsistencyData {
   cycling_days: number;
   walking_days: number;
 }
+
+export interface FtpEntry {
+  id: number;
+  date: string;
+  ftp_watts: number;
+  note: string | null;
+  created_at: string;
+}

@@ -104,6 +104,40 @@ export async function initializeDatabase() {
       generated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `;
+
+  // Manual Zwift FTP history — each row is a user-entered test result
+  await sql`
+    CREATE TABLE IF NOT EXISTS ftp_entries (
+      id SERIAL PRIMARY KEY,
+      date DATE NOT NULL,
+      ftp_watts INTEGER NOT NULL,
+      note VARCHAR(500),
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_ftp_entries_date ON ftp_entries(date)`;
+}
+
+export async function getFtpEntries() {
+  const result = await sql`
+    SELECT id, date::text, ftp_watts, note, created_at::text
+    FROM ftp_entries
+    ORDER BY date ASC
+  `;
+  return result.rows;
+}
+
+export async function insertFtpEntry(date: string, ftp_watts: number, note: string | null) {
+  const result = await sql`
+    INSERT INTO ftp_entries (date, ftp_watts, note)
+    VALUES (${date}, ${ftp_watts}, ${note})
+    RETURNING id, date::text, ftp_watts, note, created_at::text
+  `;
+  return result.rows[0];
+}
+
+export async function deleteFtpEntry(id: number) {
+  await sql`DELETE FROM ftp_entries WHERE id = ${id}`;
 }
 
 type ActivityRow = {

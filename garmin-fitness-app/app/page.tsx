@@ -7,7 +7,7 @@ import AICoach from '@/components/AICoach';
 import SettingsPanel from '@/components/Settings';
 import InsightCards from '@/components/InsightCards';
 import SyncStatus from '@/components/SyncStatus';
-import { Activity, WellnessRecord } from '@/types';
+import { Activity, WellnessRecord, FtpEntry } from '@/types';
 import { Activity as ActivityIcon, BarChart3, Sparkles, Upload as UploadIcon, Settings as SettingsIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { subDays, startOfYear, parseISO } from 'date-fns';
@@ -42,6 +42,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<PeriodLabel>('1Y');
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const [ftpEntries, setFtpEntries] = useState<FtpEntry[]>([]);
 
   useEffect(() => {
     // Load settings: DB is source of truth, localStorage is the fast cache
@@ -64,9 +65,10 @@ export default function Home() {
 
   async function loadData() {
     try {
-      const [actRes, wellRes] = await Promise.all([
+      const [actRes, wellRes, ftpRes] = await Promise.all([
         fetch('/api/activities'),
         fetch('/api/wellness'),
+        fetch('/api/ftp'),
       ]);
       if (actRes.ok && wellRes.ok) {
         const acts: Activity[] = await actRes.json();
@@ -75,6 +77,7 @@ export default function Home() {
         setAllWellness(well);
         if (acts.length > 0) { setHasData(true); setActiveTab('dashboard'); }
       }
+      if (ftpRes.ok) setFtpEntries(await ftpRes.json());
     } catch { /* DB not yet provisioned */ }
     finally { setLoading(false); }
   }
@@ -181,7 +184,7 @@ export default function Home() {
             <Upload onUploadComplete={onUploadComplete} />
           </div>
         ) : activeTab === 'dashboard' ? (
-          <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} />
+          <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} ftpEntries={ftpEntries} onFtpEntriesChange={setFtpEntries} />
         ) : activeTab === 'ai-coach' ? (
           <AICoach activities={allActivities} wellness={allWellness} settings={settings} />
         ) : (
