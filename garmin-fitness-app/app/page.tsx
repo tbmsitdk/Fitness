@@ -184,7 +184,7 @@ export default function Home() {
             <Upload onUploadComplete={onUploadComplete} />
           </div>
         ) : activeTab === 'dashboard' ? (
-          <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} />
+          <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} ftpEntries={ftpEntries} />
         ) : activeTab === 'ai-coach' ? (
           <AICoach activities={allActivities} wellness={allWellness} settings={settings} />
         ) : (

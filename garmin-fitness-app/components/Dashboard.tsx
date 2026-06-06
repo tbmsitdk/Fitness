@@ -1,6 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { Activity, WellnessRecord } from '@/types';
+import { Activity, WellnessRecord, FtpEntry } from '@/types';
 import { computeWeeklyVolume, computeTrainingLoadWithForecast, computeEfficiencyFactor, computeHRZoneDistribution, computePersonalBests, computeConsistency, computePeriodSummary, TrainingLoadForecast, EfficiencyFactorPoint } from '@/lib/training-load';
 import WeeklyVolumeChart from './charts/WeeklyVolumeChart';
 import FitnessTrendChart, { WellnessMetric } from './charts/FitnessTrendChart';
@@ -52,6 +52,7 @@ interface Props {
   allWellness: WellnessRecord[]; // full history for weight lookup
   cutoff: Date;                  // start of the selected period
   settings?: UserSettings;
+  ftpEntries?: FtpEntry[];
 }
 
 function StatCard({ label, value, sub, accent, hint }: { label: string; value: string; sub?: string; accent: string; hint?: string }) {
@@ -78,7 +79,7 @@ function periodLabel(cutoff: Date): string {
   return 'All';
 }
 
-export default function Dashboard({ activities, allActivities, wellness, allWellness, cutoff, settings = DEFAULT_SETTINGS }: Props) {
+export default function Dashboard({ activities, allActivities, wellness, allWellness, cutoff, settings = DEFAULT_SETTINGS, ftpEntries = [] }: Props) {
   const [subTab, setSubTab] = useState<'home' | 'running' | 'cycling' | 'health' | 'training'>('home');
   const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
   const [wellMetric, setWellMetric] = useState<WellnessMetric>('rhr');
@@ -131,15 +132,23 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
     return null;
   }, [allWellness]);
 
-  // FTP priority: 1) Garmin/Zwift profile value (synced automatically from Zwift FTP tests)
-  //              2) Best-ever p20-derived from activities (rolling peak, Zone 2 safe)
+  // FTP priority: 1) Latest manual entry (user-verified from Zwift test)
+  //              2) Garmin/Zwift profile sync (often inaccurate)
+  //              3) Best-ever p20-derived from activities (Zone 2 rides drag this down)
+  const manualFtp = useMemo(() => {
+    if (!ftpEntries.length) return null;
+    const latest = [...ftpEntries].sort((a, b) => b.date.localeCompare(a.date))[0];
+    return latest.ftp_watts;
+  }, [ftpEntries]);
+
   const latestFtp = useMemo(() => {
+    if (manualFtp) return manualFtp;
     if (settings.garminFtp && settings.garminFtp > 0) return settings.garminFtp;
     const ftps = allActivities
       .filter(a => a.activity_type === 'cycling' && a.ftp && a.ftp > 0)
       .map(a => a.ftp as number);
     return ftps.length ? Math.max(...ftps) : null;
-  }, [allActivities, settings.garminFtp]);
+  }, [allActivities, settings.garminFtp, manualFtp]);
 
   // trainingLoad is already sliced to the selected period (but computed from full history for EWMA warmup)
   const firstLoad = trainingLoad[0];
@@ -325,10 +334,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Power & performance */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="FTP Progression (p20 estimate from activities)">
-              {(expanded) => <FTPProgressionChart activities={allActivities} weightKg={weightKg} garminFtp={settings.garminFtp} height={expanded ? 480 : undefined} />}
+              {(expanded) => <FTPProgressionChart activities={allActivities} weightKg={weightKg} garminFtp={manualFtp ?? settings.garminFtp} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
             <ExpandableCard title="W/kg Over Time">
-              {(expanded) => <WkgZonesChart activities={allActivities} wellness={allWellness} garminFtp={settings.garminFtp} height={expanded ? 480 : undefined} />}
+              {(expanded) => <WkgZonesChart activities={allActivities} wellness={allWellness} garminFtp={manualFtp ?? settings.garminFtp} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
           <ExpandableCard title="Power Zones">

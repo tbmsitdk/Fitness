@@ -105,9 +105,9 @@ export default function FTPProgressionChart({
       <div className="flex gap-3 flex-wrap items-center">
         {garminFtp && (
           <div className="p-3 rounded-lg border border-blue-500/30 bg-blue-500/10 space-y-0.5">
-            <p className="text-[10px] tracking-widest uppercase text-muted-foreground">FTP (Zwift/Garmin)</p>
+            <p className="text-[10px] tracking-widests uppercase text-muted-foreground">Current FTP</p>
             <p className="text-2xl font-bold font-mono text-blue-400">{useWkg && weightKg ? `${(garminFtp / weightKg).toFixed(2)} W/kg` : `${garminFtp}W`}</p>
-            <p className="text-[10px] text-muted-foreground">Synced from your Garmin profile</p>
+            <p className="text-[10px] text-muted-foreground">From your manual FTP log</p>
           </div>
         )}
         {currentFTP && (
@@ -174,7 +174,7 @@ export default function FTPProgressionChart({
               stroke="#60A5FA"
               strokeWidth={1.5}
               strokeDasharray="6 3"
-              label={{ value: `Current FTP (Zwift): ${useWkg && weightKg ? (garminFtp/div).toFixed(1)+' W/kg' : garminFtp+'W'}`, position: 'insideTopRight', fontSize: 9, fill: '#60A5FA' }}
+              label={{ value: `FTP: ${useWkg && weightKg ? (garminFtp/div).toFixed(1)+' W/kg' : garminFtp+'W'}`, position: 'insideTopRight', fontSize: 9, fill: '#60A5FA' }}
             />
           )}
           <Line dataKey="ftp" name="Best p20 estimate (per period)" stroke="#FBBF24" strokeWidth={2.5} dot={{ r: 3, fill: '#FBBF24' }} connectNulls />
@@ -193,7 +193,7 @@ export default function FTPProgressionChart({
         </ComposedChart>
       </ResponsiveContainer>
       <p className="text-[10px] text-muted-foreground/60 italic">
-        Yellow line = best p20-derived FTP estimate per period (rolls forward — Zone 2 rides don't reduce it). Blue dashed = your current FTP from the Zwift/Garmin profile, synced automatically after each FTP test.
+        Yellow line = best p20-derived FTP estimate per period (rolls forward — Zone 2 rides don't reduce it). Blue dashed = your current FTP from the manual log.
       </p>
     </div>
   );
