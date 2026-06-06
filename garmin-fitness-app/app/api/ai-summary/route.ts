@@ -14,19 +14,21 @@ async function buildSummary(userSettings?: UserSettings) {
   const actCutoff  = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
   const wellCutoff = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
 
-  const [actResult, wellResult] = await Promise.all([
+  const [actResult, wellResult, ftpResult] = await Promise.all([
     sql`SELECT * FROM activities WHERE date >= ${actCutoff} ORDER BY date`,
     sql`SELECT * FROM wellness WHERE date >= ${wellCutoff} ORDER BY date`,
+    sql`SELECT ftp_watts FROM ftp_entries ORDER BY date DESC LIMIT 1`,
   ]);
 
   const activities = actResult.rows.map(coerceActivity);
   const wellness   = wellResult.rows.map(coerceWellness);
+  const manualFtpWatts: number | null = ftpResult.rows[0]?.ftp_watts ? Number(ftpResult.rows[0].ftp_watts) : null;
 
   if (activities.length === 0) {
     throw Object.assign(new Error('No activity data found. Please upload your Garmin export first.'), { status: 404 });
   }
 
-  return generateWeeklySummary(activities, wellness, userSettings);
+  return generateWeeklySummary(activities, wellness, userSettings, manualFtpWatts);
 }
 
 // POST — called from AICoach with optional settings

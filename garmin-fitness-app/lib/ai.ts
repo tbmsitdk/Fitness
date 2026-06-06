@@ -43,6 +43,7 @@ export function buildFullContext(
   activities: Activity[],
   wellness: WellnessRecord[],
   userSettings?: Partial<UserSettings>,
+  manualFtpWatts?: number | null,
 ): FullContext {
   const sorted = [...wellness].sort((a, b) => a.date.localeCompare(b.date));
   const now = Date.now();
@@ -87,16 +88,15 @@ export function buildFullContext(
   })();
 
   // Cycling performance
-  // Priority: garminFtp (synced from Zwift FTP tests) > rolling peak from p20
+  // FTP priority: 1) manual log (user-verified) 2) garminFtp from settings 3) p20 estimate
   const cyclingWithFTP = [...activities]
     .filter(a => a.activity_type === 'cycling' && a.ftp && a.ftp > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
   const p20BestFTP = cyclingWithFTP.length > 0
     ? Math.max(...cyclingWithFTP.map(a => a.ftp as number))
     : null;
-  // garminFtp from settings is the most accurate (set by Zwift FTP tests)
   const garminFtp = userSettings?.garminFtp ?? null;
-  const latestFTP = garminFtp ?? p20BestFTP;
+  const latestFTP = manualFtpWatts ?? garminFtp ?? p20BestFTP;
   const latestWeight = [...sorted].reverse().find(w => w.weight_kg != null)?.weight_kg ?? null;
   const wkg = latestFTP && latestWeight ? Math.round((latestFTP / latestWeight) * 100) / 100 : null;
 
@@ -187,7 +187,7 @@ export function buildFullContext(
     },
     cycling_performance: {
       current_ftp_watts:   latestFTP,
-      ftp_source:          garminFtp ? 'Garmin/Zwift profile (most accurate)' : 'p20 × 0.95 estimate',
+      ftp_source:          manualFtpWatts ? 'manual log (user-verified)' : garminFtp ? 'Garmin/Zwift profile' : 'p20 × 0.95 estimate',
       garmin_ftp:          garminFtp,
       best_p20_ftp:        p20BestFTP,
       wkg,
@@ -216,9 +216,10 @@ export function buildFullContext(
 export async function generateWeeklySummary(
   activities: Activity[],
   wellness: WellnessRecord[],
-  userSettings?: Partial<UserSettings>
+  userSettings?: Partial<UserSettings>,
+  manualFtpWatts?: number | null,
 ): Promise<AISummary> {
-  const context = buildFullContext(activities, wellness, userSettings);
+  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts);
 
   const response = await client.messages.create({
     model: MODEL,
@@ -283,9 +284,10 @@ export async function* streamChat(
   messages: Array<{ role: 'user' | 'assistant'; content: string; files?: { name: string; mediaType: string; data: string }[] }>,
   activities: Activity[],
   wellness: WellnessRecord[],
-  userSettings?: Partial<UserSettings>
+  userSettings?: Partial<UserSettings>,
+  manualFtpWatts?: number | null,
 ): AsyncGenerator<string> {
-  const context = buildFullContext(activities, wellness, userSettings);
+  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts);
 
   const dataContext = `## Your Complete Fitness & Health Profile
 ${JSON.stringify(context, null, 2)}`;

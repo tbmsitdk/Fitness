@@ -16,19 +16,21 @@ export async function POST(request: NextRequest) {
 
     const cutoff = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
 
-    const [actResult, wellResult] = await Promise.all([
+    const [actResult, wellResult, ftpResult] = await Promise.all([
       sql`SELECT * FROM activities WHERE date >= ${cutoff} ORDER BY date`,
       sql`SELECT * FROM wellness WHERE date >= ${cutoff} ORDER BY date`,
+      sql`SELECT ftp_watts FROM ftp_entries ORDER BY date DESC LIMIT 1`,
     ]);
 
     const activities = actResult.rows.map(coerceActivity);
     const wellness = wellResult.rows.map(coerceWellness);
+    const manualFtpWatts: number | null = ftpResult.rows[0]?.ftp_watts ? Number(ftpResult.rows[0].ftp_watts) : null;
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          for await (const chunk of streamChat(messages as Parameters<typeof streamChat>[0], activities, wellness, settings)) {
+          for await (const chunk of streamChat(messages as Parameters<typeof streamChat>[0], activities, wellness, settings, manualFtpWatts)) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: chunk })}\n\n`));
           }
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
