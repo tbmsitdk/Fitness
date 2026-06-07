@@ -45,6 +45,7 @@ import { cn } from '@/lib/utils';
 import { UserSettings, getAge, getMaxHR, getThresholdHR, DEFAULT_SETTINGS } from '@/lib/settings';
 import ExpandableCard from '@/components/ExpandableCard';
 import ActivityDetail from '@/components/ActivityDetail';
+import ActivitiesBrowser from '@/components/ActivitiesBrowser';
 import { subDays, parseISO, format } from 'date-fns';
 
 interface Props {
@@ -89,6 +90,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
   const [efSport, setEfSport] = useState<'running' | 'cycling'>('running');
   const [showYoY, setShowYoY] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [browserOpen, setBrowserOpen] = useState(false);
 
   const age        = getAge(settings);
   const maxHR      = getMaxHR(settings);
@@ -265,13 +267,24 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       )}
 
       <ActivityDetail activity={selectedActivity} onClose={() => setSelectedActivity(null)} />
+      <ActivitiesBrowser
+        activities={allActivities}
+        open={browserOpen}
+        onClose={() => setBrowserOpen(false)}
+        onSelect={(a) => { setSelectedActivity(a); setBrowserOpen(false); }}
+      />
 
       {/* ── TRAINING ─────────────────────────────────────────────────────── */}
       {subTab === 'training' && (
         <div className="space-y-4">
           {/* Recent activities — click for per-second HR/power/cadence detail */}
           <Card>
-            <CardHeader className="pb-2"><CardTitle>Recent Activities</CardTitle></CardHeader>
+            <CardHeader className="flex-row items-center justify-between pb-2">
+              <CardTitle>Recent Activities</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setBrowserOpen(true)} className="text-xs">
+                View all & search →
+              </Button>
+            </CardHeader>
             <CardContent>
               <div className="divide-y divide-border">
                 {[...activities].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10).map(a => (
