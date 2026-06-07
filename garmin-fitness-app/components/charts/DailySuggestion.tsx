@@ -17,6 +17,8 @@ interface Suggestion {
   text: string;
   tsb: number | null;
   recovery: number | null;
+  acwr: number | null;
+  sleepDebt: number | null;
   reason: string;
 }
 
@@ -49,15 +51,27 @@ function compute(
   wellness: WellnessRecord[],
   activities: Activity[],
 ): Suggestion {
-  // Get latest non-projected TSB
+  // Get latest non-projected TSB / ACWR (acute:chronic workload ratio = ATL/CTL)
   const historicalLoad = trainingLoad.filter(d => !d.projected);
   const latest = historicalLoad[historicalLoad.length - 1];
   const tsb = latest?.tsb ?? null;
+  const acwr = latest && latest.ctl > 0 ? Math.round((latest.atl / latest.ctl) * 100) / 100 : null;
+  const highInjuryRisk = acwr !== null && acwr > 1.5;
 
   // Recovery score from most recent stress_score
   const recentWell = [...wellness].sort((a, b) => b.date.localeCompare(a.date));
   const latestWell = recentWell[0];
   const recovery = latestWell?.stress_score != null ? 100 - latestWell.stress_score : null;
+
+  // Sleep debt — recent 7-day average vs 30-day baseline
+  const now = Date.now();
+  const last30 = recentWell.filter(w => now - new Date(w.date).getTime() < 30 * 86400000 && w.sleep_hours != null);
+  const last7  = recentWell.filter(w => now - new Date(w.date).getTime() < 7  * 86400000 && w.sleep_hours != null);
+  const baseline = last30.length ? last30.reduce((s, w) => s + w.sleep_hours!, 0) / last30.length : null;
+  const sleepDebt = baseline !== null && last7.length
+    ? Math.round(last7.reduce((s, w) => s + (baseline - w.sleep_hours!), 0) * 10) / 10
+    : null;
+  const highSleepDebt = sleepDebt !== null && sleepDebt > 4;
 
   // Check if last 3 days all have activities
   const today = new Date();
@@ -79,7 +93,35 @@ function compute(
       text: 'Rest day recommended — you have trained 3 or more consecutive days. Let your body absorb the work.',
       tsb,
       recovery,
+      acwr,
+      sleepDebt,
       reason: `${consecutiveDays} consecutive active days detected. Recovery is part of the training.`,
+    };
+  }
+
+  // ── Injury-risk override: ACWR > 1.5 means training load spiked too fast ──
+  if (highInjuryRisk) {
+    return {
+      intensity: 'rest',
+      text: 'Rest or very easy recovery only — your training load has spiked sharply. Pushing now raises injury risk significantly.',
+      tsb,
+      recovery,
+      acwr,
+      sleepDebt,
+      reason: `ACWR ${acwr!.toFixed(2)} (>1.5 = high injury-risk zone — acute load is far outpacing your chronic fitness).`,
+    };
+  }
+
+  // ── Sleep-debt override: a large accumulated deficit overrides a "fresh" TSB ──
+  if (highSleepDebt) {
+    return {
+      intensity: 'easy',
+      text: 'Easy aerobic only — you are running a significant sleep deficit. Prioritise sleep before adding training stress.',
+      tsb,
+      recovery,
+      acwr,
+      sleepDebt,
+      reason: `Sleep debt of ${sleepDebt!.toFixed(1)}h over the last week vs your 30-day baseline. Recovery capacity is reduced regardless of TSB${tsb !== null ? ` (${tsb.toFixed(1)})` : ''}.`,
     };
   }
 
@@ -89,6 +131,8 @@ function compute(
       text: 'Moderate session — not enough data to compute TSB yet.',
       tsb,
       recovery,
+      acwr,
+      sleepDebt,
       reason: 'Insufficient training load history.',
     };
   }
@@ -99,6 +143,8 @@ function compute(
       text: 'Rest or easy walk — you are carrying significant fatigue. Sleep and nutrition are your training today.',
       tsb,
       recovery,
+      acwr,
+      sleepDebt,
       reason: `TSB ${tsb.toFixed(1)} (high fatigue) and recovery score ${recovery} (poor).`,
     };
   }
@@ -108,6 +154,8 @@ function compute(
       text: 'Easy aerobic only (Zone 1–2). High fatigue but you are recovering well.',
       tsb,
       recovery,
+      acwr,
+      sleepDebt,
       reason: `TSB ${tsb.toFixed(1)} (high fatigue), recovery ${recovery !== null ? recovery : 'unknown'}.`,
     };
   }
@@ -117,6 +165,8 @@ function compute(
       text: 'Moderate session — build phase. Tempo run or Zone 2–3 ride.',
       tsb,
       recovery,
+      acwr,
+      sleepDebt,
       reason: `TSB ${tsb.toFixed(1)} — in the productive training zone.`,
     };
   }
@@ -126,6 +176,8 @@ function compute(
       text: 'Balanced. Any workout fits — good time for quality work.',
       tsb,
       recovery,
+      acwr,
+      sleepDebt,
       reason: `TSB ${tsb.toFixed(1)} — neutral form. Fatigue and fitness are balanced.`,
     };
   }
@@ -135,6 +187,8 @@ function compute(
       text: 'Optimal window — this is your peak performance day. Push hard.',
       tsb,
       recovery,
+      acwr,
+      sleepDebt,
       reason: `TSB ${tsb.toFixed(1)} (fresh) and recovery ${recovery} (good). Perfect conditions.`,
     };
   }
@@ -144,6 +198,8 @@ function compute(
       text: 'Good form but moderate recovery. Steady quality session.',
       tsb,
       recovery,
+      acwr,
+      sleepDebt,
       reason: `TSB ${tsb.toFixed(1)} (fresh), but recovery ${recovery !== null ? recovery : 'unknown'}.`,
     };
   }
@@ -153,6 +209,8 @@ function compute(
     text: 'Fresh but detraining risk. Get a session in — even a long walk counts.',
     tsb,
     recovery,
+      acwr,
+      sleepDebt,
     reason: `TSB ${tsb.toFixed(1)} — very fresh, too much rest risks losing fitness.`,
   };
 }
@@ -176,6 +234,16 @@ export default function DailySuggestion({ trainingLoad, wellness, activities }: 
           {suggestion.recovery !== null && (
             <span className="text-[10px] font-mono text-muted-foreground">
               Recovery {suggestion.recovery}
+            </span>
+          )}
+          {suggestion.acwr !== null && (
+            <span className={`text-[10px] font-mono ${suggestion.acwr > 1.5 ? 'text-red-400' : suggestion.acwr > 1.3 ? 'text-amber-400' : 'text-muted-foreground'}`}>
+              ACWR {suggestion.acwr.toFixed(2)}
+            </span>
+          )}
+          {suggestion.sleepDebt !== null && suggestion.sleepDebt > 1 && (
+            <span className={`text-[10px] font-mono ${suggestion.sleepDebt > 4 ? 'text-red-400' : 'text-muted-foreground'}`}>
+              Sleep debt {suggestion.sleepDebt.toFixed(1)}h
             </span>
           )}
           <span className="text-[10px] font-medium tracking-widest uppercase text-muted-foreground ml-auto">

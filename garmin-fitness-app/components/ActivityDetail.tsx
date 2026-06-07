@@ -1,11 +1,12 @@
 'use client';
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Activity } from '@/types';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import ActivitySamplesChart from '@/components/charts/ActivitySamplesChart';
+import { computeBestEfforts, computeDecoupling, type ActivitySample } from '@/lib/activity-analysis';
 
 interface Props {
   activity: Activity | null;
@@ -18,8 +19,24 @@ function fmtDuration(sec: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+const DECOUPLING_COLORS: Record<string, string> = {
+  excellent: 'text-emerald-400',
+  good:      'text-sky-400',
+  moderate:  'text-amber-400',
+  high:      'text-red-400',
+};
+
+const DECOUPLING_NOTES: Record<string, string> = {
+  excellent: 'Your aerobic system held the power:HR ratio steady — strong endurance fitness for this effort.',
+  good:      'Slight drift — normal for this duration/intensity. Aerobic base is solid.',
+  moderate:  'Noticeable drift — could indicate accumulated fatigue, heat, dehydration, or under-fueling.',
+  high:      'Significant drift — HR rose well above what power justified. Consider more easy-aerobic volume to build durability.',
+};
+
 export default function ActivityDetail({ activity, onClose }: Props) {
   const close = useCallback(() => onClose(), [onClose]);
+  const [samples, setSamples] = useState<ActivitySample[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activity) return;
@@ -28,6 +45,24 @@ export default function ActivityDetail({ activity, onClose }: Props) {
     document.body.style.overflow = 'hidden';
     return () => { window.removeEventListener('keydown', handler); document.body.style.overflow = ''; };
   }, [activity, close]);
+
+  useEffect(() => {
+    if (!activity) { setSamples(null); return; }
+    let cancelled = false;
+    setSamples(null);
+    setError(null);
+    fetch(`/api/activities/${activity.id}/samples`)
+      .then(r => r.json())
+      .then(data => { if (!cancelled) setSamples(data.samples ?? []); })
+      .catch(() => { if (!cancelled) setError('Failed to load detailed data'); });
+    return () => { cancelled = true; };
+  }, [activity]);
+
+  const bestEfforts = useMemo(() => samples ? computeBestEfforts(samples) : [], [samples]);
+  const decoupling = useMemo(() => {
+    if (!samples || activity?.activity_type !== 'cycling') return null;
+    return computeDecoupling(samples);
+  }, [samples, activity]);
 
   if (!activity || typeof document === 'undefined') return null;
 
@@ -56,9 +91,45 @@ export default function ActivityDetail({ activity, onClose }: Props) {
           <Stat label="Calories" value={`${activity.calories}`} />
         </div>
 
+        {/* Best Efforts — power/HR curve within this single workout */}
+        {bestEfforts.length > 0 && (
+          <div className="p-4 rounded-lg border border-border bg-card">
+            <p className="text-xs font-semibold mb-3">Best Efforts (this workout)</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {bestEfforts.map(e => (
+                <div key={e.windowSeconds} className="p-3 rounded-lg border border-border space-y-1">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{e.label}</p>
+                  {e.power != null && <p className="text-sm font-mono font-semibold text-blue-400">{e.power} W</p>}
+                  {e.hr != null && <p className="text-xs font-mono text-red-400">{e.hr} bpm</p>}
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground/60 italic mt-2">Best sustained average over each window, derived from 10s samples</p>
+          </div>
+        )}
+
+        {/* Aerobic decoupling — cycling with power data only */}
+        {decoupling && (
+          <div className="p-4 rounded-lg border border-border bg-card space-y-1.5">
+            <p className="text-xs font-semibold">Aerobic Decoupling (Power:HR drift)</p>
+            <p className={`text-2xl font-mono font-bold ${DECOUPLING_COLORS[decoupling.interpretation]}`}>
+              {decoupling.pctDrift > 0 ? '+' : ''}{decoupling.pctDrift}%
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              First half ratio {decoupling.firstHalfRatio} W/bpm → second half {decoupling.secondHalfRatio} W/bpm
+            </p>
+            <p className="text-[11px] text-muted-foreground/80">{DECOUPLING_NOTES[decoupling.interpretation]}</p>
+            <p className="text-[10px] text-muted-foreground/60 italic">Rule of thumb: &lt;5% = strong aerobic durability for this effort</p>
+          </div>
+        )}
+
         <div className="p-4 rounded-lg border border-border bg-card">
           <p className="text-xs font-semibold mb-2">Heart Rate / Power / Cadence over time</p>
-          <ActivitySamplesChart activityId={activity.id} height={320} />
+          {error ? (
+            <p className="text-xs text-muted-foreground italic py-6 text-center">{error}</p>
+          ) : (
+            <ActivitySamplesChart samples={samples} height={320} />
+          )}
         </div>
       </div>
     </div>,

@@ -15,21 +15,33 @@ function formatElapsed(sec: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export default function ActivitySamplesChart({ activityId, height = 280 }: { activityId: number; height?: number }) {
-  const [samples, setSamples] = useState<Sample[] | null>(null);
+interface Props {
+  activityId?: number;
+  /** Pre-fetched samples — skips the internal fetch when provided (avoids duplicate requests
+   *  when a parent component, e.g. ActivityDetail, already loaded them for analysis). */
+  samples?: Sample[] | null;
+  height?: number;
+}
+
+export default function ActivitySamplesChart({ activityId, samples: samplesProp, height = 280 }: Props) {
+  const [fetched, setFetched] = useState<Sample[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [show, setShow] = useState({ hr: true, power: true, cadence: false });
 
+  const usingExternal = samplesProp !== undefined;
+  const samples = usingExternal ? samplesProp : fetched;
+
   useEffect(() => {
+    if (usingExternal || activityId == null) return;
     let cancelled = false;
-    setSamples(null);
+    setFetched(null);
     setError(null);
     fetch(`/api/activities/${activityId}/samples`)
       .then(r => r.json())
-      .then(data => { if (!cancelled) setSamples(data.samples ?? []); })
+      .then(data => { if (!cancelled) setFetched(data.samples ?? []); })
       .catch(() => { if (!cancelled) setError('Failed to load detailed data'); });
     return () => { cancelled = true; };
-  }, [activityId]);
+  }, [activityId, usingExternal]);
 
   if (error) return <p className="text-xs text-muted-foreground italic py-6 text-center">{error}</p>;
   if (samples === null) return <p className="text-xs text-muted-foreground italic py-6 text-center">Loading per-second data…</p>;
