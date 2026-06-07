@@ -44,7 +44,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { UserSettings, getAge, getMaxHR, getThresholdHR, DEFAULT_SETTINGS } from '@/lib/settings';
 import ExpandableCard from '@/components/ExpandableCard';
-import { subDays, parseISO } from 'date-fns';
+import ActivityDetail from '@/components/ActivityDetail';
+import { subDays, parseISO, format } from 'date-fns';
 
 interface Props {
   activities: Activity[];
@@ -87,6 +88,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
   const [cadenceSport, setCadenceSport] = useState<'running' | 'cycling'>('running');
   const [efSport, setEfSport] = useState<'running' | 'cycling'>('running');
   const [showYoY, setShowYoY] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
 
   const age        = getAge(settings);
   const maxHR      = getMaxHR(settings);
@@ -259,8 +261,39 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             <CardHeader className="pb-2"><CardTitle>Personal Bests</CardTitle></CardHeader>
             <CardContent><PersonalBests data={personalBests} /></CardContent>
           </Card>
+
+          {/* Recent activities — click for per-second HR/power/cadence detail */}
+          <Card>
+            <CardHeader className="pb-2"><CardTitle>Recent Activities</CardTitle></CardHeader>
+            <CardContent>
+              <div className="divide-y divide-border">
+                {[...activities].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10).map(a => (
+                  <button
+                    key={a.id}
+                    onClick={() => setSelectedActivity(a)}
+                    className="w-full flex items-center justify-between py-2.5 text-left hover:bg-card/60 transition-colors px-2 -mx-2 rounded"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium truncate">{a.title || a.activity_type}</p>
+                      <p className="text-[10px] text-muted-foreground">{format(parseISO(a.date), 'MMM d, yyyy · HH:mm')} · {a.activity_type}</p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0 text-[10px] text-muted-foreground font-mono">
+                      <span>{a.distance_km > 0 ? `${a.distance_km.toFixed(1)} km` : ''}</span>
+                      <span>{Math.round(a.duration_seconds / 60)} min</span>
+                      {a.avg_hr != null && <span className="text-red-400">{a.avg_hr} bpm</span>}
+                    </div>
+                  </button>
+                ))}
+                {activities.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic py-4 text-center">No activities in this period</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
+
+      <ActivityDetail activity={selectedActivity} onClose={() => setSelectedActivity(null)} />
 
       {/* ── TRAINING ─────────────────────────────────────────────────────── */}
       {subTab === 'training' && (

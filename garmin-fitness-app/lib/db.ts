@@ -116,6 +116,88 @@ export async function initializeDatabase() {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_ftp_entries_date ON ftp_entries(date)`;
+
+  // Per-second (sampled every 10s) HR/power/cadence series for individual activities
+  await sql`
+    CREATE TABLE IF NOT EXISTS activity_samples (
+      activity_id INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      elapsed_seconds INTEGER NOT NULL,
+      hr SMALLINT,
+      power SMALLINT,
+      cadence SMALLINT,
+      PRIMARY KEY (activity_id, elapsed_seconds)
+    )
+  `;
+}
+
+// Map garmin_id -> internal activity id + whether samples already exist
+export async function getActivityIdMap(): Promise<Map<string, number>> {
+  const result = await sql`SELECT id, garmin_id FROM activities WHERE garmin_id IS NOT NULL`;
+  const map = new Map<string, number>();
+  for (const row of result.rows) {
+    map.set(String(row.garmin_id), Number(row.id));
+  }
+  return map;
+}
+
+export async function getActivityIdsWithSamples(): Promise<Set<number>> {
+  const result = await sql`SELECT DISTINCT activity_id FROM activity_samples`;
+  return new Set(result.rows.map(r => Number(r.activity_id)));
+}
+
+export async function getActivitySamples(activityId: number) {
+  const result = await sql`
+    SELECT elapsed_seconds, hr, power, cadence
+    FROM activity_samples
+    WHERE activity_id = ${activityId}
+    ORDER BY elapsed_seconds ASC
+  `;
+  return result.rows.map(r => ({
+    elapsed_seconds: Number(r.elapsed_seconds),
+    hr: r.hr != null ? Number(r.hr) : null,
+    power: r.power != null ? Number(r.power) : null,
+    cadence: r.cadence != null ? Number(r.cadence) : null,
+  }));
+}
+
+export type ActivitySampleRow = {
+  elapsed_seconds: number;
+  hr: number | null;
+  power: number | null;
+  cadence: number | null;
+};
+
+const SAMPLE_BATCH = 200; // rows per INSERT statement (4 cols each = 800 placeholders, under PG's 65535 limit)
+
+export async function insertActivitySamples(activityId: number, samples: ActivitySampleRow[]): Promise<number> {
+  if (samples.length === 0) return 0;
+  const client = await db.connect();
+  try {
+    // Replace any existing samples for this activity (re-processing safety)
+    await client.query(`DELETE FROM activity_samples WHERE activity_id = $1`, [activityId]);
+
+    let inserted = 0;
+    for (let i = 0; i < samples.length; i += SAMPLE_BATCH) {
+      const batch = samples.slice(i, i + SAMPLE_BATCH);
+      const values: unknown[] = [];
+      const rows: string[] = [];
+      batch.forEach((s, j) => {
+        const b = j * 5;
+        rows.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5})`);
+        values.push(activityId, s.elapsed_seconds, s.hr, s.power, s.cadence);
+      });
+      await client.query(
+        `INSERT INTO activity_samples (activity_id, elapsed_seconds, hr, power, cadence)
+         VALUES ${rows.join(',')}
+         ON CONFLICT (activity_id, elapsed_seconds) DO NOTHING`,
+        values
+      );
+      inserted += batch.length;
+    }
+    return inserted;
+  } finally {
+    client.release();
+  }
 }
 
 export async function getFtpEntries() {

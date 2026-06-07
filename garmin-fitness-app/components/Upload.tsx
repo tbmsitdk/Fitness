@@ -7,10 +7,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { parseGarminZip } from '@/lib/garmin-parser';
 import { parseAppleHealthZip, isAppleHealthZip } from '@/lib/apple-health-parser';
+import { upload } from '@vercel/blob/client';
 
 interface Props { onUploadComplete: () => void; }
 
-type State = 'idle' | 'dragging' | 'parsing' | 'inserting' | 'success' | 'error';
+type State = 'idle' | 'dragging' | 'parsing' | 'inserting' | 'samples' | 'success' | 'error';
 type Source = 'garmin' | 'apple' | null;
 
 const BATCH = 50;
@@ -118,8 +119,50 @@ export default function Upload({ onUploadComplete }: Props) {
       }
 
       setProgress(100);
-      setState('success');
       setStats({ activities: insertedActs, wellness: insertedWell, source });
+
+      // ── Backfill per-second HR/power/cadence samples (Garmin only) ───────
+      // Uploads the raw ZIP to Blob storage so the server can decode .fit files
+      // in resumable batches without hitting serverless timeouts.
+      if (!isApple) {
+        try {
+          setState('samples');
+          setProgress(0);
+          setMessage('Uploading export for detailed analysis…');
+          const blob = await upload(file.name, file, {
+            access: 'public',
+            handleUploadUrl: '/api/upload',
+          });
+
+          let done = false;
+          let safety = 0;
+          while (!done && !abortRef.current && safety < 200) {
+            safety++;
+            const res = await fetch('/api/process-samples', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ blobUrl: blob.url }),
+            });
+            if (!res.ok) {
+              const e = await res.json().catch(() => ({}));
+              throw new Error(e.error || 'Detailed-data processing failed');
+            }
+            const data = await res.json();
+            done = !!data.done;
+            const total = (data.processed ?? 0) + (data.remaining ?? 0) + (data.already_done ?? 0);
+            const doneCount = (data.already_done ?? 0) + (data.processed ?? 0);
+            setProgress(total > 0 ? Math.round((doneCount / total) * 100) : 100);
+            setMessage(`Backfilling per-second HR/power/cadence data… ${doneCount} / ${total} activities`);
+          }
+        } catch (err) {
+          // Non-fatal — summary data already imported successfully
+          console.error('Sample backfill error:', err);
+          setMessage('Detailed per-second backfill skipped (you can re-upload later to retry)');
+        }
+      }
+
+      setProgress(100);
+      setState('success');
       setTimeout(onUploadComplete, 1500);
 
     } catch (err) {
@@ -130,7 +173,7 @@ export default function Upload({ onUploadComplete }: Props) {
   }
 
   const clickable = state === 'idle' || state === 'error' || state === 'dragging';
-  const busy      = state === 'parsing' || state === 'inserting';
+  const busy      = state === 'parsing' || state === 'inserting' || state === 'samples';
 
   return (
     <div className="max-w-lg mx-auto space-y-4 pt-8">
