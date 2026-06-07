@@ -261,7 +261,14 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             <CardHeader className="pb-2"><CardTitle>Personal Bests</CardTitle></CardHeader>
             <CardContent><PersonalBests data={personalBests} /></CardContent>
           </Card>
+        </div>
+      )}
 
+      <ActivityDetail activity={selectedActivity} onClose={() => setSelectedActivity(null)} />
+
+      {/* ── TRAINING ─────────────────────────────────────────────────────── */}
+      {subTab === 'training' && (
+        <div className="space-y-4">
           {/* Recent activities — click for per-second HR/power/cadence detail */}
           <Card>
             <CardHeader className="pb-2"><CardTitle>Recent Activities</CardTitle></CardHeader>
@@ -290,14 +297,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               </div>
             </CardContent>
           </Card>
-        </div>
-      )}
 
-      <ActivityDetail activity={selectedActivity} onClose={() => setSelectedActivity(null)} />
-
-      {/* ── TRAINING ─────────────────────────────────────────────────────── */}
-      {subTab === 'training' && (
-        <div className="space-y-4">
           {/* Load management */}
           <ExpandableCard title="Training Load & Forecast">
             {(expanded) => (
