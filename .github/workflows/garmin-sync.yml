@@ -25,10 +25,13 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: garmin-fitness-app/scripts/requirements.txt
+          cache-dependency-path: scripts/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r garmin-fitness-app/scripts/requirements.txt
+        # garmin-fitness-app/scripts/requirements.txt is an untracked local
+        # duplicate (identical contents) — use the tracked top-level copy so
+        # the checkout actually has the file.
+        run: pip install -r scripts/requirements.txt
 
       - name: Run sync
         env:
