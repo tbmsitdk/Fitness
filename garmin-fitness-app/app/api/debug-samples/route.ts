@@ -27,7 +27,15 @@ export async function GET() {
       ORDER BY a.date DESC
       LIMIT 40
     `;
-    return NextResponse.json({ totals, specific });
+    // Mimic exact getActivitySamples query for activity 6466
+    const { rows: mirror } = await sql`
+      SELECT elapsed_seconds, hr, power, cadence, lat, lon
+      FROM activity_samples
+      WHERE activity_id = ${6466}
+      ORDER BY elapsed_seconds ASC
+      LIMIT 3
+    `;
+    return NextResponse.json({ totals, specific, mirror_count: mirror.length, mirror_first: mirror[0] ?? null });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: msg }, { status: 500 });
