@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { parseGarminZip } from '@/lib/garmin-parser';
 import { parseAppleHealthZip, isAppleHealthZip } from '@/lib/apple-health-parser';
-import { upload } from '@vercel/blob/client';
+import JSZip from 'jszip';
 
 interface Props { onUploadComplete: () => void; }
 
@@ -122,45 +122,58 @@ export default function Upload({ onUploadComplete }: Props) {
       setStats({ activities: insertedActs, wellness: insertedWell, source });
 
       // ── Backfill per-second HR/power/cadence samples (Garmin only) ───────
-      // Uploads the raw ZIP to Blob storage so the server can decode .fit files
-      // in resumable batches without hitting serverless timeouts.
+      // Scans the ZIP for .fit files in the browser (we already have it in
+      // memory) and posts each one — individually, same-origin — to our own
+      // API for server-side parsing & storage. This deliberately avoids
+      // uploading the whole export to Blob storage: that path requires the
+      // browser to talk directly to *.vercel-storage.com, which can hang
+      // indefinitely behind certain VPNs/extensions/firewalls with no useful
+      // error. Individual .fit files are tiny (typically well under 1 MB),
+      // so this comfortably fits within Vercel's request size limits.
       if (!isApple) {
         try {
           setState('samples');
           setProgress(0);
-          setMessage('Uploading export for detailed analysis… 0%');
-          const blob = await upload(file.name, file, {
-            access: 'public',
-            handleUploadUrl: '/api/upload',
-            // Large Garmin exports (50+ MB) need multipart upload — splits the file
-            // into parts uploaded in parallel with automatic retries. A single PUT
-            // of a large file can stall indefinitely on slower connections.
-            multipart: true,
-            onUploadProgress: ({ percentage }) => {
-              setProgress(percentage);
-              setMessage(`Uploading export for detailed analysis… ${percentage}%`);
-            },
-          });
+          setMessage('Scanning export for detailed (.fit) activity files…');
 
-          let done = false;
-          let safety = 0;
-          while (!done && !abortRef.current && safety < 200) {
-            safety++;
-            const res = await fetch('/api/process-samples', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ blobUrl: blob.url }),
-            });
-            if (!res.ok) {
-              const e = await res.json().catch(() => ({}));
-              throw new Error(e.error || 'Detailed-data processing failed');
+          const zip = await JSZip.loadAsync(buffer);
+          const fitEntries: { garminId: string; filePath: string }[] = [];
+          for (const [filePath, f] of Object.entries(zip.files)) {
+            if (f.dir) continue;
+            const nameLower = filePath.split('/').pop()?.toLowerCase() ?? '';
+            if (filePath.includes('__MACOSX') || nameLower.startsWith('._')) continue;
+            if (!nameLower.endsWith('.fit')) continue;
+            const match = nameLower.match(/(\d{6,})/); // activity IDs are long numeric strings
+            if (!match) continue;
+            fitEntries.push({ garminId: match[1], filePath });
+          }
+
+          const total = fitEntries.length;
+          let done = 0;
+          let skipped = 0;
+          const MAX_FIT_BYTES = 8 * 1024 * 1024; // guard against pathological outliers
+
+          for (const entry of fitEntries) {
+            if (abortRef.current) break;
+            try {
+              const zipFile = zip.files[entry.filePath];
+              const bytes = await zipFile.async('arraybuffer');
+              if (bytes.byteLength === 0 || bytes.byteLength > MAX_FIT_BYTES) {
+                skipped++;
+              } else {
+                const res = await fetch('/api/insert-fit-samples', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/octet-stream', 'X-Garmin-Id': entry.garminId },
+                  body: bytes,
+                });
+                if (!res.ok) skipped++;
+              }
+            } catch {
+              skipped++;
             }
-            const data = await res.json();
-            done = !!data.done;
-            const total = (data.processed ?? 0) + (data.remaining ?? 0) + (data.already_done ?? 0);
-            const doneCount = (data.already_done ?? 0) + (data.processed ?? 0);
-            setProgress(total > 0 ? Math.round((doneCount / total) * 100) : 100);
-            setMessage(`Backfilling per-second HR/power/cadence data… ${doneCount} / ${total} activities`);
+            done++;
+            setProgress(total > 0 ? Math.round((done / total) * 100) : 100);
+            setMessage(`Backfilling per-second HR/power/cadence data… ${done} / ${total} activities${skipped ? ` (${skipped} skipped)` : ''}`);
           }
         } catch (err) {
           // Non-fatal — summary data already imported successfully
