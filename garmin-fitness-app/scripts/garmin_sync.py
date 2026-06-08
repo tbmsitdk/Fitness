@@ -171,29 +171,52 @@ def _extract_sample_series(details: dict) -> list:
     return series
 
 
-def _sync_activity_samples(api: Garmin, activities: list) -> None:
-    """Fetch + store per-second HR/power/cadence for newly-synced workouts."""
+def _sync_activity_samples(api: Garmin, activities: list) -> str:
+    """Fetch + store per-second HR/power/cadence for newly-synced workouts.
+
+    Returns a short diagnostic summary string (counts per outcome) so the
+    caller can persist it alongside the sync-log entry — that's how we can
+    see *why* samples didn't land without reading local stdout.
+    """
     candidates = [a for a in activities if a["activity_type"] in ("running", "cycling", "walking")]
     if not candidates:
-        return
+        return "samples: no running/cycling/walking candidates in window"
     print(f"\n  Fetching detailed (per-second) data for {len(candidates)} activities…")
-    posted = 0
+    posted = no_details = empty_series = http_fail = exceptions = 0
+    first_error = None
     for a in candidates:
         try:
             details = api.get_activity_details(a["garmin_id"])
-            series = _extract_sample_series(details or {})
+            if not details:
+                no_details += 1
+                continue
+            series = _extract_sample_series(details)
             if not series:
+                empty_series += 1
                 continue
             r = requests.post(f"{APP_URL}/api/insert-samples", headers=HEADERS,
                               json={"garmin_id": a["garmin_id"], "samples": series}, timeout=60)
             if r.ok:
                 posted += 1
             else:
+                http_fail += 1
+                if first_error is None:
+                    first_error = f"HTTP {r.status_code} for {a['garmin_id']}: {r.text[:200]}"
                 print(f"    ⚠ insert-samples failed for {a['garmin_id']}: {r.status_code}")
         except Exception as exc:
+            exceptions += 1
+            if first_error is None:
+                first_error = f"{type(exc).__name__} for {a['garmin_id']}: {exc}"
             print(f"    ⚠ samples failed for {a['garmin_id']}: {exc}")
         time.sleep(0.3)
-    print(f"  ✓ stored detailed samples for {posted}/{len(candidates)} activities")
+    print(f"  ✓ stored detailed samples for {posted}/{len(candidates)} activities "
+          f"(no_details={no_details} empty_series={empty_series} http_fail={http_fail} exceptions={exceptions})")
+    summary = (f"samples: {posted}/{len(candidates)} posted | "
+               f"no_details={no_details} empty_series={empty_series} "
+               f"http_fail={http_fail} exceptions={exceptions}")
+    if first_error:
+        summary += f" | first_error: {first_error}"
+    return summary
 
 
 def _enrich_power_details(api: Garmin, activities: list) -> None:
@@ -652,9 +675,11 @@ def main():
     print(f"  ✓ {acts_synced} activities, {well_synced} wellness records upserted")
 
     # ── Per-second HR/power/cadence detail (now that activities exist in DB)
+    samples_summary = None
     try:
-        _sync_activity_samples(api, activities)
+        samples_summary = _sync_activity_samples(api, activities)
     except Exception as exc:
+        samples_summary = f"samples: sync crashed — {type(exc).__name__}: {exc}"
         print(f"  ⚠  Detailed sample sync failed: {exc}")
 
     # Also check the max FTP recorded in any activity this sync window
@@ -683,7 +708,10 @@ def main():
             print(f"  ⚠  Could not save FTP to settings: {exc}")
 
     duration = int(time.time() - _start)
-    _post_sync_log("success", SYNC_DAYS, acts_synced, well_synced, duration)
+    # Stash the per-second sample-sync diagnostic in error_message even on a
+    # successful run — it's the only way to see *why* samples aren't landing
+    # without reading local stdout (visible via GET /api/sync-log).
+    _post_sync_log("success", SYNC_DAYS, acts_synced, well_synced, duration, samples_summary)
     print(f"\nSync complete in {duration}s.")
 
 
