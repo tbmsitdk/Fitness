@@ -31,11 +31,18 @@ export async function POST(request: NextRequest) {
     const { rows } = await sql`SELECT id FROM activities WHERE garmin_id = ${garmin_id} LIMIT 1`;
     const activityId = rows[0]?.id;
     if (activityId == null) {
+      console.log(`[insert-samples] no activity for garmin_id=${garmin_id}`);
       return NextResponse.json({ error: `No activity found for garmin_id ${garmin_id}` }, { status: 404 });
     }
 
-    const inserted = await insertActivitySamples(Number(activityId), samples);
-    return NextResponse.json({ inserted });
+    const activityIdNum = Number(activityId);
+    console.log(`[insert-samples] garmin_id=${garmin_id} activityId=${activityIdNum} samples=${samples.length}`);
+    const inserted = await insertActivitySamples(activityIdNum, samples);
+    // Verify write landed by reading back the count
+    const { rows: countRows } = await sql`SELECT COUNT(*)::int AS n FROM activity_samples WHERE activity_id = ${activityIdNum}`;
+    const storedCount = countRows[0]?.n ?? -1;
+    console.log(`[insert-samples] garmin_id=${garmin_id} inserted=${inserted} storedCount=${storedCount}`);
+    return NextResponse.json({ inserted, storedCount });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error('[insert-samples] error:', msg);
