@@ -117,6 +117,8 @@ def _extract_sample_series(details: dict) -> list:
     idx_hr    = find_index("directHeartRate")
     idx_power = find_index("directPower")
     idx_cad   = find_index("directBikeCadence", "directRunCadence", "directDoubleCadence", "directCadence")
+    idx_lat   = find_index("directLatitude")
+    idx_lon   = find_index("directLongitude")
     if idx_time is None:
         return []
 
@@ -125,6 +127,14 @@ def _extract_sample_series(details: dict) -> list:
             return None
         try:
             return int(round(float(vals[idx])))
+        except (TypeError, ValueError):
+            return None
+
+    def fval(vals, idx):
+        if idx is None or idx >= len(vals) or vals[idx] is None:
+            return None
+        try:
+            return round(float(vals[idx]), 6)
         except (TypeError, ValueError):
             return None
 
@@ -145,11 +155,18 @@ def _extract_sample_series(details: dict) -> list:
             continue
 
         hr, power, cadence = val(vals, idx_hr), val(vals, idx_power), val(vals, idx_cad)
-        if hr is None and power is None and cadence is None:
+        lat, lon = fval(vals, idx_lat), fval(vals, idx_lon)
+        if lat is not None and lat == 0 and lon == 0:
+            lat, lon = None, None
+        if hr is None and power is None and cadence is None and lat is None:
             continue
 
         last_stored = elapsed
-        series.append({"elapsed_seconds": elapsed, "hr": hr, "power": power, "cadence": cadence})
+        series.append({
+            "elapsed_seconds": elapsed,
+            "hr": hr, "power": power, "cadence": cadence,
+            "lat": lat, "lon": lon,
+        })
 
     return series
 

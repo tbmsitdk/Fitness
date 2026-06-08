@@ -37,6 +37,8 @@ const WeeklyReport        = dynamic(() => import('./charts/WeeklyReport'),      
 const DailySuggestion     = dynamic(() => import('./charts/DailySuggestion'),     { ssr: false });
 const TrainingPlanGenerator = dynamic(() => import('./charts/TrainingPlanGenerator'), { ssr: false });
 const LongevityScore      = dynamic(() => import('./charts/LongevityScore'),      { ssr: false });
+const RouteLeaderboard    = dynamic(() => import('./charts/RouteLeaderboard'),    { ssr: false });
+const CorrelationExplorer = dynamic(() => import('./charts/CorrelationExplorer'), { ssr: false });
 const InjuryRiskScore     = dynamic(() => import('./charts/InjuryRiskScore'),     { ssr: false });
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -311,6 +313,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             </CardContent>
           </Card>
 
+          {/* Recurring-route leaderboard — ranks repeated efforts on the same route by time */}
+          <ExpandableCard title="Route Leaderboard">
+            {() => <RouteLeaderboard />}
+          </ExpandableCard>
+
           {/* Load management */}
           <ExpandableCard title="Training Load & Forecast">
             {(expanded) => (
@@ -439,6 +446,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           </ExpandableCard>
           <ExpandableCard title="HRV & Training Load">
             {(expanded) => <HRVTrainingLoadChart trainingLoad={trainingLoad} wellness={sortedWellness} height={expanded ? 500 : undefined} />}
+          </ExpandableCard>
+
+          {/* Correlation explorer — finds statistical relationships across your own metrics */}
+          <ExpandableCard title="Correlation Explorer">
+            {() => <CorrelationExplorer wellness={allWellness} activities={allActivities} trainingLoad={trainingLoad} />}
           </ExpandableCard>
 
           {/* Daily metrics */}

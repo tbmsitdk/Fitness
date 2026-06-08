@@ -67,9 +67,18 @@ export async function parseFitSamples(buffer: Buffer | ArrayBuffer): Promise<Act
     const power = r.power != null ? Math.round(Number(r.power)) : null;
     const cadence = r.cadence != null ? Math.round(Number(r.cadence)) : null;
 
-    if (hr == null && power == null && cadence == null) continue;
+    // fit-file-parser already converts position_lat/position_long from semicircles
+    // to degrees when given numeric values; guard against NaN/0,0 placeholder coords.
+    let lat: number | null = r.position_lat != null ? Number(r.position_lat) : null;
+    let lon: number | null = r.position_long != null ? Number(r.position_long) : null;
+    if (lat != null && (!isFinite(lat) || (lat === 0 && lon === 0))) lat = null;
+    if (lon != null && (!isFinite(lon) || (lat == null))) lon = null;
+    if (lat != null) lat = Math.round(lat * 1e6) / 1e6;
+    if (lon != null) lon = Math.round(lon * 1e6) / 1e6;
 
-    out.push({ elapsed_seconds: elapsed, hr, power, cadence });
+    if (hr == null && power == null && cadence == null && lat == null) continue;
+
+    out.push({ elapsed_seconds: elapsed, hr, power, cadence, lat, lon });
   }
 
   return out;
