@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { Activity, WellnessRecord, AISummary, ChatMessage, ChatFile } from '@/types';
-import { Bot, Send, RefreshCw, AlertTriangle, TrendingUp, Shield, Heart, Paperclip, X, FileText } from 'lucide-react';
+import { Bot, Send, RefreshCw, AlertTriangle, TrendingUp, Shield, Heart, Paperclip, X, FileText, Trash2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -25,18 +25,46 @@ function Prose({ text }: { text: string }) {
   return <div className="ai-prose text-sm" dangerouslySetInnerHTML={{ __html: `<p>${html}</p>` }} />;
 }
 
+const STORAGE_MESSAGES = 'ai-coach-messages-v1';
+const STORAGE_DRAFT    = 'ai-coach-draft-v1';
+const MAX_STORED_MSGS  = 60; // keep last 60 messages (~30 exchanges)
+
 export default function AICoach({ activities, wellness, settings }: Props) {
   const [section, setSection] = useState<'chat'|'summary'>('chat');
   const [summary, setSummary] = useState<AISummary | null>(null);
   const [loading, setLoading] = useState(false);  // not auto-started
   const [error, setError] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_MESSAGES) : null;
+      return saved ? (JSON.parse(saved) as ChatMessage[]) : [];
+    } catch { return []; }
+  });
+  const [input, setInput] = useState(() => {
+    try {
+      return typeof window !== 'undefined' ? (localStorage.getItem(STORAGE_DRAFT) ?? '') : '';
+    } catch { return ''; }
+  });
   const [chatLoading, setChatLoading] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<ChatFile[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Persist messages whenever they change (skip in-progress empty assistant placeholder)
+  useEffect(() => {
+    try {
+      const toSave = messages
+        .filter(m => !(m.role === 'assistant' && !m.content))  // skip streaming placeholder
+        .slice(-MAX_STORED_MSGS);
+      localStorage.setItem(STORAGE_MESSAGES, JSON.stringify(toSave));
+    } catch { /* storage full or SSR */ }
+  }, [messages]);
+
+  // Persist draft input
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_DRAFT, input); } catch { /* ignore */ }
+  }, [input]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
@@ -212,11 +240,21 @@ export default function AICoach({ activities, wellness, settings }: Props) {
 
       {section === 'chat' && (
         <div className="flex flex-col" style={{ height: 'calc(100vh - 220px)', minHeight: 500 }}>
-          {messages.length === 0 && (
+          {messages.length === 0 ? (
             <div className="flex flex-wrap gap-1.5 mb-4">
               {QUICK.map(q => (
                 <button key={q} onClick={() => send(q)} className="text-[11px] px-2.5 py-1 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors">{q}</button>
               ))}
+            </div>
+          ) : (
+            <div className="flex justify-end mb-2">
+              <button
+                onClick={() => { setMessages([]); setInput(''); try { localStorage.removeItem(STORAGE_MESSAGES); localStorage.removeItem(STORAGE_DRAFT); } catch {} }}
+                className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-secondary"
+                title="Clear conversation history"
+              >
+                <Trash2 className="w-3 h-3" />Clear history
+              </button>
             </div>
           )}
 
@@ -226,7 +264,7 @@ export default function AICoach({ activities, wellness, settings }: Props) {
                 <div className="text-center space-y-2">
                   <Bot className="w-8 h-8 text-muted-foreground mx-auto" />
                   <p className="text-sm text-muted-foreground">Ask anything about your training</p>
-                  <p className="text-xs text-muted-foreground/60">I have full context of your last 90 days</p>
+                  <p className="text-xs text-muted-foreground/60">Full context: 90 days of activities, wellness, per-second HR & power · conversation remembered across sessions</p>
                 </div>
               </div>
             ) : messages.map((m,i) => (

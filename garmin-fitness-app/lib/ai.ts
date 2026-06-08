@@ -286,11 +286,20 @@ export async function* streamChat(
   wellness: WellnessRecord[],
   userSettings?: Partial<UserSettings>,
   manualFtpWatts?: number | null,
+  // Per-second HR/power summaries computed from activity_samples (NP, best efforts, HR zones, decoupling)
+  sampleSummaries?: Array<Record<string, unknown>>,
 ): AsyncGenerator<string> {
   const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts);
 
+  const samplesSection = sampleSummaries && sampleSummaries.length > 0
+    ? `\n\n## Per-Second HR & Power Analysis (Last ${sampleSummaries.length} Activities)
+This is derived from raw second-by-second Garmin sensor data — use it for precise physiological insights.
+Fields: normalized_power (NP, fatigue-weighted avg power), intensity_factor (NP/FTP), best_5min_power & best_20min_power (best sustained efforts), hr_zones_pct (% time in each HR zone by max-HR), aerobic_decoupling_pct (Power:HR drift first→second half; <5% = aerobically efficient, >10% = significant cardiac drift).
+${JSON.stringify(sampleSummaries, null, 2)}`
+    : '';
+
   const dataContext = `## Your Complete Fitness & Health Profile
-${JSON.stringify(context, null, 2)}`;
+${JSON.stringify(context, null, 2)}${samplesSection}`;
 
   // Build Anthropic message format — support text-only and text+file content
   const anthropicMessages = messages.map(m => {
