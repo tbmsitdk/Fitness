@@ -7,11 +7,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { parseGarminZip } from '@/lib/garmin-parser';
 import { parseAppleHealthZip, isAppleHealthZip } from '@/lib/apple-health-parser';
-import JSZip from 'jszip';
 
 interface Props { onUploadComplete: () => void; }
 
-type State = 'idle' | 'dragging' | 'parsing' | 'inserting' | 'samples' | 'success' | 'error';
+type State = 'idle' | 'dragging' | 'parsing' | 'inserting' | 'success' | 'error';
 type Source = 'garmin' | 'apple' | null;
 
 const BATCH = 50;
@@ -121,87 +120,13 @@ export default function Upload({ onUploadComplete }: Props) {
       setProgress(100);
       setStats({ activities: insertedActs, wellness: insertedWell, source });
 
-      // ── Backfill per-second HR/power/cadence samples (Garmin only) ───────
-      // Scans the ZIP for .fit files in the browser (we already have it in
-      // memory) and posts each one — individually, same-origin — to our own
-      // API for server-side parsing & storage. This deliberately avoids
-      // uploading the whole export to Blob storage: that path requires the
-      // browser to talk directly to *.vercel-storage.com, which can hang
-      // indefinitely behind certain VPNs/extensions/firewalls with no useful
-      // error. Individual .fit files are tiny (typically well under 1 MB),
-      // so this comfortably fits within Vercel's request size limits.
-      if (!isApple) {
-        try {
-          setState('samples');
-          setProgress(0);
-          setMessage('Scanning export for detailed (.fit) activity files…');
-
-          const zip = await JSZip.loadAsync(buffer);
-          const fitEntries: { garminId: string; filePath: string }[] = [];
-          const allPaths: string[] = [];
-          const fitPaths: string[] = [];
-          for (const [filePath, f] of Object.entries(zip.files)) {
-            if (f.dir) continue;
-            allPaths.push(filePath);
-            const nameLower = filePath.split('/').pop()?.toLowerCase() ?? '';
-            if (filePath.includes('__MACOSX') || nameLower.startsWith('._')) continue;
-            if (!nameLower.endsWith('.fit')) continue;
-            fitPaths.push(filePath);
-            const match = nameLower.match(/(\d{6,})/); // activity IDs are long numeric strings
-            if (!match) continue;
-            fitEntries.push({ garminId: match[1], filePath });
-          }
-
-          // ── TEMP DIAGNOSTIC ── report what we found so we can inspect via
-          // server logs (no dev-tools needed). Safe to remove once resolved.
-          try {
-            await fetch('/api/debug-log', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                tag: 'zip-scan',
-                totalEntries: allPaths.length,
-                fitFileCount: fitPaths.length,
-                matchedFitCount: fitEntries.length,
-                sampleAllPaths: allPaths.slice(0, 40),
-                sampleFitPaths: fitPaths.slice(0, 40),
-              }),
-            });
-          } catch { /* ignore */ }
-
-          const total = fitEntries.length;
-          let done = 0;
-          let skipped = 0;
-          const MAX_FIT_BYTES = 8 * 1024 * 1024; // guard against pathological outliers
-
-          for (const entry of fitEntries) {
-            if (abortRef.current) break;
-            try {
-              const zipFile = zip.files[entry.filePath];
-              const bytes = await zipFile.async('arraybuffer');
-              if (bytes.byteLength === 0 || bytes.byteLength > MAX_FIT_BYTES) {
-                skipped++;
-              } else {
-                const res = await fetch('/api/insert-fit-samples', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/octet-stream', 'X-Garmin-Id': entry.garminId },
-                  body: bytes,
-                });
-                if (!res.ok) skipped++;
-              }
-            } catch {
-              skipped++;
-            }
-            done++;
-            setProgress(total > 0 ? Math.round((done / total) * 100) : 100);
-            setMessage(`Backfilling per-second HR/power/cadence data… ${done} / ${total} activities${skipped ? ` (${skipped} skipped)` : ''}`);
-          }
-        } catch (err) {
-          // Non-fatal — summary data already imported successfully
-          console.error('Sample backfill error:', err);
-          setMessage('Detailed per-second backfill skipped (you can re-upload later to retry)');
-        }
-      }
+      // NOTE: per-second HR/power/cadence backfill is intentionally NOT done
+      // from the bulk ZIP export here. We confirmed (via a diagnostic scan of
+      // a real export: 352 files, zero .fit files) that Garmin's "Export Your
+      // Data" bulk download contains only JSON/DB dumps — no raw .fit activity
+      // files at all. That data is only obtainable per-activity via the Garmin
+      // Connect API, which is what scripts/garmin_sync.py already does on its
+      // own schedule — that's the sole source of per-second sample data.
 
       setProgress(100);
       setState('success');
@@ -215,7 +140,7 @@ export default function Upload({ onUploadComplete }: Props) {
   }
 
   const clickable = state === 'idle' || state === 'error' || state === 'dragging';
-  const busy      = state === 'parsing' || state === 'inserting' || state === 'samples';
+  const busy      = state === 'parsing' || state === 'inserting';
 
   return (
     <div className="max-w-lg mx-auto space-y-4 pt-8">
