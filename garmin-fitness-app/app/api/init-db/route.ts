@@ -1,19 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { initializeDatabase } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-function authorized(req: NextRequest): boolean {
-  const secret = process.env.SYNC_SECRET;
-  if (!secret) return true; // not configured — open (dev mode)
-  const auth = req.headers.get('authorization') ?? '';
-  return auth === `Bearer ${secret}`;
-}
+// NOTE: deliberately NOT gated by SYNC_SECRET — see app/api/insert/route.ts for why:
+// this endpoint is called both by the automated sync and directly from the browser
+// upload flow (Upload.tsx), which cannot safely hold the secret.
 
-export async function POST(req: NextRequest) {
-  if (!authorized(req)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+export async function POST() {
   try {
     console.log('[init-db] creating tables if not exist…');
     await initializeDatabase();

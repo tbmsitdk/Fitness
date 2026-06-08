@@ -1,19 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { upsertActivities, upsertWellness } from '@/lib/db';
 
-function authorized(req: NextRequest): boolean {
-  const secret = process.env.SYNC_SECRET;
-  if (!secret) return true;
-  const auth = req.headers.get('authorization') ?? '';
-  return auth === `Bearer ${secret}`;
-}
+// NOTE: deliberately NOT gated by SYNC_SECRET — this endpoint is called both by the
+// automated Garmin sync (which sends the bearer token) AND directly from the browser
+// during a manual ZIP upload (Upload.tsx), which cannot safely hold that secret.
+// Gating it would lock out the browser upload flow whenever SYNC_SECRET is configured.
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  if (!authorized(request)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
   try {
     const body = await request.json();
     const { activities = [], wellness = [] } = body as {
