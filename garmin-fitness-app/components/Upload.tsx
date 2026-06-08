@@ -138,15 +138,36 @@ export default function Upload({ onUploadComplete }: Props) {
 
           const zip = await JSZip.loadAsync(buffer);
           const fitEntries: { garminId: string; filePath: string }[] = [];
+          const allPaths: string[] = [];
+          const fitPaths: string[] = [];
           for (const [filePath, f] of Object.entries(zip.files)) {
             if (f.dir) continue;
+            allPaths.push(filePath);
             const nameLower = filePath.split('/').pop()?.toLowerCase() ?? '';
             if (filePath.includes('__MACOSX') || nameLower.startsWith('._')) continue;
             if (!nameLower.endsWith('.fit')) continue;
+            fitPaths.push(filePath);
             const match = nameLower.match(/(\d{6,})/); // activity IDs are long numeric strings
             if (!match) continue;
             fitEntries.push({ garminId: match[1], filePath });
           }
+
+          // ── TEMP DIAGNOSTIC ── report what we found so we can inspect via
+          // server logs (no dev-tools needed). Safe to remove once resolved.
+          try {
+            await fetch('/api/debug-log', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                tag: 'zip-scan',
+                totalEntries: allPaths.length,
+                fitFileCount: fitPaths.length,
+                matchedFitCount: fitEntries.length,
+                sampleAllPaths: allPaths.slice(0, 40),
+                sampleFitPaths: fitPaths.slice(0, 40),
+              }),
+            });
+          } catch { /* ignore */ }
 
           const total = fitEntries.length;
           let done = 0;
