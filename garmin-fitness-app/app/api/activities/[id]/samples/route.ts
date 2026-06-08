@@ -14,7 +14,9 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid activity id' }, { status: 400 });
     }
 
+    console.log(`[samples] fetching activityId=${activityId}`);
     const samples = await getActivitySamples(activityId);
+    console.log(`[samples] activityId=${activityId} count=${samples.length}`);
     return NextResponse.json({ samples });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
