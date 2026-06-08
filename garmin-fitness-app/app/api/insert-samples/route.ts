@@ -36,13 +36,8 @@ export async function POST(request: NextRequest) {
     }
 
     const activityIdNum = Number(activityId);
-    console.log(`[insert-samples] garmin_id=${garmin_id} activityId=${activityIdNum} samples=${samples.length}`);
     const inserted = await insertActivitySamples(activityIdNum, samples);
-    // Verify write landed by reading back the count
-    const { rows: countRows } = await sql`SELECT COUNT(*)::int AS n FROM activity_samples WHERE activity_id = ${activityIdNum}`;
-    const storedCount = countRows[0]?.n ?? -1;
-    console.log(`[insert-samples] garmin_id=${garmin_id} inserted=${inserted} storedCount=${storedCount}`);
-    return NextResponse.json({ inserted, storedCount });
+    return NextResponse.json({ inserted });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error('[insert-samples] error:', msg);
