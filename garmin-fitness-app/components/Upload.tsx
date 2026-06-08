@@ -128,10 +128,14 @@ export default function Upload({ onUploadComplete }: Props) {
         try {
           setState('samples');
           setProgress(0);
-          setMessage('Uploading export for detailed analysis…');
+          setMessage('Uploading export for detailed analysis… (large files can take a few minutes)');
           const blob = await upload(file.name, file, {
             access: 'public',
             handleUploadUrl: '/api/upload',
+            // Large Garmin exports (50+ MB) need multipart upload — splits the file
+            // into parts uploaded in parallel with automatic retries. A single PUT
+            // of a large file can stall indefinitely on slower connections.
+            multipart: true,
           });
 
           let done = false;
