@@ -128,7 +128,7 @@ export default function Upload({ onUploadComplete }: Props) {
         try {
           setState('samples');
           setProgress(0);
-          setMessage('Uploading export for detailed analysis… (large files can take a few minutes)');
+          setMessage('Uploading export for detailed analysis… 0%');
           const blob = await upload(file.name, file, {
             access: 'public',
             handleUploadUrl: '/api/upload',
@@ -136,6 +136,10 @@ export default function Upload({ onUploadComplete }: Props) {
             // into parts uploaded in parallel with automatic retries. A single PUT
             // of a large file can stall indefinitely on slower connections.
             multipart: true,
+            onUploadProgress: ({ percentage }) => {
+              setProgress(percentage);
+              setMessage(`Uploading export for detailed analysis… ${percentage}%`);
+            },
           });
 
           let done = false;
