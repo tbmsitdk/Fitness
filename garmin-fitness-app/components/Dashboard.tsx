@@ -33,6 +33,7 @@ import FtpHistoryChart from './charts/FtpHistoryChart';
 import WkgZonesChart from './charts/WkgZonesChart';
 import WalkingChart from './charts/WalkingChart';
 import AppleHealthVitals from './charts/AppleHealthVitals';
+import ChartErrorBoundary from './ChartErrorBoundary';
 import dynamic from 'next/dynamic';
 const WeeklyReport        = dynamic(() => import('./charts/WeeklyReport'),        { ssr: false });
 const DailySuggestion     = dynamic(() => import('./charts/DailySuggestion'),     { ssr: false });
@@ -500,7 +501,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
 
           {/* Apple Health mobility & gait metrics */}
           <ExpandableCard title="Apple Health Vitals">
-            {(expanded) => <AppleHealthVitals wellness={sortedWellness} height={expanded ? 600 : undefined} />}
+            {(expanded) => (
+              <ChartErrorBoundary title="Apple Health Vitals">
+                <AppleHealthVitals wellness={sortedWellness} height={expanded ? 600 : undefined} />
+              </ChartErrorBoundary>
+            )}
           </ExpandableCard>
 
           {/* Walking as lifestyle activity */}

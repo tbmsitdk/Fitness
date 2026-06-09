@@ -118,12 +118,16 @@ export default function AppleHealthVitals({ wellness, height }: Props) {
     return v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : null;
   };
 
+  // Coerce undefined → null for pre-migration rows (columns didn't exist yet)
+  const safe = (v: number | null | undefined): number | null =>
+    v != null && !isNaN(v) ? v : null;
+
   // Check if we have ANY Apple Health mobility data at all
   const hasAHData = sorted.some(w =>
-    w.flights_climbed != null || w.respiratory_rate != null ||
-    w.walking_asymmetry_pct != null || w.walking_speed != null ||
-    w.walking_double_support_pct != null || w.oxygen_saturation != null ||
-    w.mindful_minutes != null
+    safe(w.flights_climbed) != null || safe(w.respiratory_rate) != null ||
+    safe(w.walking_asymmetry_pct) != null || safe(w.walking_speed) != null ||
+    safe(w.walking_double_support_pct) != null || safe(w.oxygen_saturation) != null ||
+    safe(w.mindful_minutes) != null
   );
 
   if (!hasAHData) {
@@ -136,52 +140,51 @@ export default function AppleHealthVitals({ wellness, height }: Props) {
     );
   }
 
-  // Latest values
+  // Latest values — using safe() to guard against pre-migration undefined fields
   const latest = (key: keyof WellnessRecord) =>
-    [...sorted].reverse().find(w => w[key] != null)?.[key] as number | null ?? null;
+    safe([...sorted].reverse().find(w => safe(w[key] as number | null | undefined) != null)?.[key] as number | null | undefined);
 
   // 30-day trend (last value minus first value in window)
   const trend30 = (key: keyof WellnessRecord): number | null => {
-    const vals = last30.filter(w => w[key] != null).map(w => w[key] as number);
+    const vals = last30.map(w => safe(w[key] as number | null | undefined)).filter((v): v is number => v != null);
     if (vals.length < 4) return null;
     return Math.round((vals[vals.length - 1] - vals[0]) * 10) / 10;
   };
 
   // Spark data helpers
   const sparkData = (key: keyof WellnessRecord, window: WellnessRecord[]) =>
-    window.map(w => ({ date: w.date, v: w[key] as number | null }));
+    window.map(w => ({ date: w.date, v: safe(w[key] as number | null | undefined) }));
 
   // Flights
-  const totalFlights30 = last30.reduce((s, w) => s + (w.flights_climbed ?? 0), 0);
-  const avgFlights30   = last30.filter(w => w.flights_climbed != null).length > 0
-    ? Math.round(totalFlights30 / last30.filter(w => w.flights_climbed != null).length)
-    : null;
+  const totalFlights30 = last30.reduce((s, w) => s + (safe(w.flights_climbed) ?? 0), 0);
+  const validFlights30 = last30.filter(w => safe(w.flights_climbed) != null).length;
+  const avgFlights30   = validFlights30 > 0 ? Math.round(totalFlights30 / validFlights30) : null;
 
   // Mindful minutes
-  const totalMindful30 = last30.reduce((s, w) => s + (w.mindful_minutes ?? 0), 0);
+  const totalMindful30 = last30.reduce((s, w) => s + (safe(w.mindful_minutes) ?? 0), 0);
 
   // Respiratory rate
   const latestRespRate = latest('respiratory_rate');
-  const avgRespRate30  = avg(last30.map(w => w.respiratory_rate));
+  const avgRespRate30  = avg(last30.map(w => safe(w.respiratory_rate)));
   const trendResp      = trend30('respiratory_rate');
 
   // Walking asymmetry — lower is better
   const latestAsymm = latest('walking_asymmetry_pct');
-  const avgAsymm30  = avg(last30.map(w => w.walking_asymmetry_pct));
+  const avgAsymm30  = avg(last30.map(w => safe(w.walking_asymmetry_pct)));
   const trendAsymm  = trend30('walking_asymmetry_pct');
 
   // Walking speed
   const latestSpeed = latest('walking_speed');
-  const avgSpeed30  = avg(last30.map(w => w.walking_speed));
+  const avgSpeed30  = avg(last30.map(w => safe(w.walking_speed)));
   const trendSpeed  = trend30('walking_speed');
 
   // Double support
   const latestDS = latest('walking_double_support_pct');
-  const avgDS30  = avg(last30.map(w => w.walking_double_support_pct));
+  const avgDS30  = avg(last30.map(w => safe(w.walking_double_support_pct)));
 
   // SpO2
   const latestSpo2 = latest('oxygen_saturation');
-  const avgSpo2_30 = avg(last30.map(w => w.oxygen_saturation));
+  const avgSpo2_30 = avg(last30.map(w => safe(w.oxygen_saturation)));
 
   return (
     <Card>
