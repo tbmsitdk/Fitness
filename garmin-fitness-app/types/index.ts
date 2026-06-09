@@ -40,6 +40,14 @@ export interface WellnessRecord {
   weight_kg: number | null;
   vo2max: number | null;
   fitness_age: number | null;
+  // Apple Health mobility / gait (iPhone motion sensors)
+  flights_climbed: number | null;
+  respiratory_rate: number | null;        // breaths/min — nightly avg from Apple Watch
+  walking_asymmetry_pct: number | null;   // % — higher = more asymmetric gait
+  walking_speed: number | null;           // km/h — daily avg
+  walking_double_support_pct: number | null; // % time both feet on ground (balance)
+  oxygen_saturation: number | null;       // SpO2 %
+  mindful_minutes: number | null;         // meditation/mindfulness minutes
 }
 
 export interface WeeklyVolume {

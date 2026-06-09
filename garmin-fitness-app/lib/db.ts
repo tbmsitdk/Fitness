@@ -56,6 +56,14 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS body_water_pct DECIMAL(5,2)`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS visceral_fat INTEGER`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS metabolic_age INTEGER`;
+  // Apple Health mobility & gait metrics
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS flights_climbed INTEGER`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS respiratory_rate DECIMAL(5,2)`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS walking_asymmetry_pct DECIMAL(5,2)`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS walking_speed DECIMAL(5,3)`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS walking_double_support_pct DECIMAL(5,2)`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS oxygen_saturation DECIMAL(5,2)`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS mindful_minutes INTEGER`;
 
   // User settings table — single row keyed by 'default', persists across deployments & devices
   await sql`
@@ -434,19 +442,24 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
       const rows: string[] = [];
 
       batch.forEach((r, j) => {
-        const b = j * 17;
-        rows.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16},$${b+17})`);
+        const b = j * 24;
+        rows.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16},$${b+17},$${b+18},$${b+19},$${b+20},$${b+21},$${b+22},$${b+23},$${b+24})`);
         values.push(
           r.date, r.steps, r.resting_hr, r.hrv_rmssd, r.sleep_hours, r.sleep_score,
           r.stress_score, r.body_battery, r.weight_kg ?? null, r.vo2max ?? null, r.fitness_age ?? null,
           r.body_fat_pct ?? null, r.muscle_mass_kg ?? null, r.bone_mass_kg ?? null,
           r.body_water_pct ?? null, r.visceral_fat ?? null, r.metabolic_age ?? null,
+          r.flights_climbed ?? null, r.respiratory_rate ?? null, r.walking_asymmetry_pct ?? null,
+          r.walking_speed ?? null, r.walking_double_support_pct ?? null,
+          r.oxygen_saturation ?? null, r.mindful_minutes ?? null,
         );
       });
 
       await client.query(
         `INSERT INTO wellness (date,steps,resting_hr,hrv_rmssd,sleep_hours,sleep_score,stress_score,body_battery,
-           weight_kg,vo2max,fitness_age,body_fat_pct,muscle_mass_kg,bone_mass_kg,body_water_pct,visceral_fat,metabolic_age)
+           weight_kg,vo2max,fitness_age,body_fat_pct,muscle_mass_kg,bone_mass_kg,body_water_pct,visceral_fat,metabolic_age,
+           flights_climbed,respiratory_rate,walking_asymmetry_pct,walking_speed,walking_double_support_pct,
+           oxygen_saturation,mindful_minutes)
          VALUES ${rows.join(',')}
          ON CONFLICT (date) DO UPDATE SET
            steps=COALESCE(EXCLUDED.steps,wellness.steps),
@@ -464,7 +477,14 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
            bone_mass_kg=COALESCE(EXCLUDED.bone_mass_kg,wellness.bone_mass_kg),
            body_water_pct=COALESCE(EXCLUDED.body_water_pct,wellness.body_water_pct),
            visceral_fat=COALESCE(EXCLUDED.visceral_fat,wellness.visceral_fat),
-           metabolic_age=COALESCE(EXCLUDED.metabolic_age,wellness.metabolic_age)`,
+           metabolic_age=COALESCE(EXCLUDED.metabolic_age,wellness.metabolic_age),
+           flights_climbed=COALESCE(EXCLUDED.flights_climbed,wellness.flights_climbed),
+           respiratory_rate=COALESCE(EXCLUDED.respiratory_rate,wellness.respiratory_rate),
+           walking_asymmetry_pct=COALESCE(EXCLUDED.walking_asymmetry_pct,wellness.walking_asymmetry_pct),
+           walking_speed=COALESCE(EXCLUDED.walking_speed,wellness.walking_speed),
+           walking_double_support_pct=COALESCE(EXCLUDED.walking_double_support_pct,wellness.walking_double_support_pct),
+           oxygen_saturation=COALESCE(EXCLUDED.oxygen_saturation,wellness.oxygen_saturation),
+           mindful_minutes=COALESCE(EXCLUDED.mindful_minutes,wellness.mindful_minutes)`,
         values
       );
       inserted += batch.length;
@@ -524,5 +544,12 @@ export function coerceWellness(row: any) {
     body_water_pct: row.body_water_pct != null ? Number(row.body_water_pct) : null,
     visceral_fat:   row.visceral_fat   != null ? Number(row.visceral_fat)   : null,
     metabolic_age:  row.metabolic_age  != null ? Number(row.metabolic_age)  : null,
+    flights_climbed:             row.flights_climbed             != null ? Number(row.flights_climbed)             : null,
+    respiratory_rate:            row.respiratory_rate            != null ? Number(row.respiratory_rate)            : null,
+    walking_asymmetry_pct:       row.walking_asymmetry_pct       != null ? Number(row.walking_asymmetry_pct)       : null,
+    walking_speed:               row.walking_speed               != null ? Number(row.walking_speed)               : null,
+    walking_double_support_pct:  row.walking_double_support_pct  != null ? Number(row.walking_double_support_pct)  : null,
+    oxygen_saturation:           row.oxygen_saturation           != null ? Number(row.oxygen_saturation)           : null,
+    mindful_minutes:             row.mindful_minutes             != null ? Number(row.mindful_minutes)             : null,
   };
 }

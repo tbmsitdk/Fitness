@@ -166,6 +166,14 @@ const RELEVANT_TYPES = [
   'HKQuantityTypeIdentifierBodyMass',
   'HKQuantityTypeIdentifierVO2Max',
   'HKCategoryTypeIdentifierSleepAnalysis',
+  // Apple Health mobility & gait (iPhone / Apple Watch)
+  'HKQuantityTypeIdentifierFlightsClimbed',
+  'HKQuantityTypeIdentifierRespiratoryRate',
+  'HKQuantityTypeIdentifierWalkingAsymmetryPercentage',
+  'HKQuantityTypeIdentifierWalkingSpeed',
+  'HKQuantityTypeIdentifierWalkingDoubleSupportPercentage',
+  'HKQuantityTypeIdentifierOxygenSaturation',
+  'HKCategoryTypeIdentifierMindfulSession',
 ];
 
 function parseXML(xml: string): ParsedGarminData {
@@ -193,6 +201,13 @@ function parseXML(xml: string): ParsedGarminData {
         body_water_pct: null,
         visceral_fat: null,
         metabolic_age: null,
+        flights_climbed: null,
+        respiratory_rate: null,
+        walking_asymmetry_pct: null,
+        walking_speed: null,
+        walking_double_support_pct: null,
+        oxygen_saturation: null,
+        mindful_minutes: null,
       });
     }
     return wellnessMap.get(d)!;
@@ -270,6 +285,55 @@ function parseXML(xml: string): ParsedGarminData {
         const sleepDate = endDate.substring(0, 10);
         const w = getOrCreate(sleepDate);
         w.sleep_hours = Math.round(((w.sleep_hours ?? 0) + hours) * 100) / 100;
+        break;
+      }
+      case 'HKQuantityTypeIdentifierFlightsClimbed': {
+        const w = getOrCreate(startDate);
+        w.flights_climbed = (w.flights_climbed ?? 0) + Math.round(parseFloat(value));
+        break;
+      }
+      case 'HKQuantityTypeIdentifierRespiratoryRate': {
+        // Nightly respiratory rate — keep the last reading of the day
+        const w = getOrCreate(startDate);
+        w.respiratory_rate = Math.round(parseFloat(value) * 10) / 10;
+        break;
+      }
+      case 'HKQuantityTypeIdentifierWalkingAsymmetryPercentage': {
+        // Daily average — keep last reading
+        const w = getOrCreate(startDate);
+        w.walking_asymmetry_pct = Math.round(parseFloat(value) * 10) / 10;
+        break;
+      }
+      case 'HKQuantityTypeIdentifierWalkingSpeed': {
+        // Apple Health exports in m/s — convert to km/h
+        const w = getOrCreate(startDate);
+        const unit = attr(a, 'unit') ?? 'm/s';
+        let kmh = parseFloat(value);
+        if (unit === 'm/s') kmh = kmh * 3.6;
+        w.walking_speed = Math.round(kmh * 100) / 100;
+        break;
+      }
+      case 'HKQuantityTypeIdentifierWalkingDoubleSupportPercentage': {
+        const w = getOrCreate(startDate);
+        w.walking_double_support_pct = Math.round(parseFloat(value) * 10) / 10;
+        break;
+      }
+      case 'HKQuantityTypeIdentifierOxygenSaturation': {
+        // Apple Health exports as fraction (0-1) or percentage — normalise to %
+        const w = getOrCreate(startDate);
+        let pct = parseFloat(value);
+        if (pct <= 1.0) pct = pct * 100; // fraction → %
+        w.oxygen_saturation = Math.round(pct * 10) / 10;
+        break;
+      }
+      case 'HKCategoryTypeIdentifierMindfulSession': {
+        // Category records have startDate + endDate, no value — compute duration
+        const start = parseAHDate(startDate);
+        const end   = parseAHDate(endDate);
+        const mins  = Math.round((end.getTime() - start.getTime()) / 60_000);
+        if (mins <= 0 || mins > 180) break;
+        const w = getOrCreate(startDate);
+        w.mindful_minutes = (w.mindful_minutes ?? 0) + mins;
         break;
       }
     }

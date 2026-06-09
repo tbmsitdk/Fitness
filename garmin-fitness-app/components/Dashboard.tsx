@@ -32,6 +32,7 @@ import FTPProgressionChart from './charts/FTPProgressionChart';
 import FtpHistoryChart from './charts/FtpHistoryChart';
 import WkgZonesChart from './charts/WkgZonesChart';
 import WalkingChart from './charts/WalkingChart';
+import AppleHealthVitals from './charts/AppleHealthVitals';
 import dynamic from 'next/dynamic';
 const WeeklyReport        = dynamic(() => import('./charts/WeeklyReport'),        { ssr: false });
 const DailySuggestion     = dynamic(() => import('./charts/DailySuggestion'),     { ssr: false });
@@ -496,6 +497,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               {(expanded) => <StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} height={expanded ? 460 : undefined} />}
             </ExpandableCard>
           </div>
+
+          {/* Apple Health mobility & gait metrics */}
+          <ExpandableCard title="Apple Health Vitals">
+            {(expanded) => <AppleHealthVitals wellness={sortedWellness} height={expanded ? 600 : undefined} />}
+          </ExpandableCard>
 
           {/* Walking as lifestyle activity */}
           <ExpandableCard title="Walking & Activity">
