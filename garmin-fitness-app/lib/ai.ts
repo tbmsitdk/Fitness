@@ -287,7 +287,8 @@ export async function* streamChat(
   userSettings?: Partial<UserSettings>,
   manualFtpWatts?: number | null,
   // Per-second HR/power summaries computed from activity_samples (NP, best efforts, HR zones, decoupling)
-  sampleSummaries?: Array<Record<string, unknown>>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sampleSummaries?: any[],
 ): AsyncGenerator<string> {
   const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts);
 
