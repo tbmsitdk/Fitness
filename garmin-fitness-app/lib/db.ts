@@ -325,6 +325,14 @@ type WellnessRow = {
   body_water_pct: number | null;
   visceral_fat: number | null;
   metabolic_age: number | null;
+  // Apple Health mobility & gait
+  flights_climbed: number | null;
+  respiratory_rate: number | null;
+  walking_asymmetry_pct: number | null;
+  walking_speed: number | null;
+  walking_double_support_pct: number | null;
+  oxygen_saturation: number | null;
+  mindful_minutes: number | null;
 };
 
 const BATCH = 50; // rows per INSERT statement
