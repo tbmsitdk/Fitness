@@ -113,6 +113,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
   const consistency = useMemo(() => computeConsistency(activities), [activities]);
   const summary = useMemo(() => computePeriodSummary(activities, cutoff, thresholdHR), [activities, cutoff, thresholdHR]);
   const sortedWellness = useMemo(() => [...wellness].sort((a,b) => a.date.localeCompare(b.date)), [wellness]);
+  const sortedAllWellness = useMemo(() => [...allWellness].sort((a,b) => a.date.localeCompare(b.date)), [allWellness]);
 
   // Efficiency Factor data computed from all activities for best trend
   const efData = useMemo((): EfficiencyFactorPoint[] => computeEfficiencyFactor(activities), [activities]);
@@ -503,7 +504,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           <ExpandableCard title="Apple Health Vitals">
             {(expanded) => (
               <ChartErrorBoundary title="Apple Health Vitals">
-                <AppleHealthVitals wellness={sortedWellness} height={expanded ? 600 : undefined} />
+                <AppleHealthVitals wellness={sortedAllWellness} height={expanded ? 600 : undefined} />
               </ChartErrorBoundary>
             )}
           </ExpandableCard>
