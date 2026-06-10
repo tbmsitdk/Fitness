@@ -282,40 +282,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       {/* ── TRAINING ─────────────────────────────────────────────────────── */}
       {subTab === 'training' && (
         <div className="space-y-4">
-          {/* Recent activities — click for per-second HR/power/cadence detail */}
-          <Card>
-            <CardHeader className="flex-row items-center justify-between pb-2">
-              <CardTitle>Recent Activities</CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => setBrowserOpen(true)} className="text-xs">
-                View all & search →
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="divide-y divide-border">
-                {[...activities].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10).map(a => (
-                  <button
-                    key={a.id}
-                    onClick={() => setSelectedActivity(a)}
-                    className="w-full flex items-center justify-between py-2.5 text-left hover:bg-card/60 transition-colors px-2 -mx-2 rounded"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium truncate">{a.title || a.activity_type}</p>
-                      <p className="text-[10px] text-muted-foreground">{format(parseISO(a.date), 'MMM d, yyyy · HH:mm')} · {a.activity_type}</p>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0 text-[10px] text-muted-foreground font-mono">
-                      <span>{a.distance_km > 0 ? `${a.distance_km.toFixed(1)} km` : ''}</span>
-                      <span>{Math.round(a.duration_seconds / 60)} min</span>
-                      {a.avg_hr != null && <span className="text-red-400">{a.avg_hr} bpm</span>}
-                    </div>
-                  </button>
-                ))}
-                {activities.length === 0 && (
-                  <p className="text-xs text-muted-foreground italic py-4 text-center">No activities in this period</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Recurring-route leaderboard — ranks repeated efforts on the same route by time */}
           <ExpandableCard title="Route Leaderboard">
             {() => <RouteLeaderboard />}
@@ -356,6 +322,40 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               {(expanded) => <CaloriesChart activities={activities} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
+
+          {/* Recent activities — click for per-second HR/power/cadence detail */}
+          <Card>
+            <CardHeader className="flex-row items-center justify-between pb-2">
+              <CardTitle>Recent Activities</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setBrowserOpen(true)} className="text-xs">
+                View all & search →
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="divide-y divide-border">
+                {[...activities].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10).map(a => (
+                  <button
+                    key={a.id}
+                    onClick={() => setSelectedActivity(a)}
+                    className="w-full flex items-center justify-between py-2.5 text-left hover:bg-card/60 transition-colors px-2 -mx-2 rounded"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium truncate">{a.title || a.activity_type}</p>
+                      <p className="text-[10px] text-muted-foreground">{format(parseISO(a.date), 'MMM d, yyyy · HH:mm')} · {a.activity_type}</p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0 text-[10px] text-muted-foreground font-mono">
+                      <span>{a.distance_km > 0 ? `${a.distance_km.toFixed(1)} km` : ''}</span>
+                      <span>{Math.round(a.duration_seconds / 60)} min</span>
+                      {a.avg_hr != null && <span className="text-red-400">{a.avg_hr} bpm</span>}
+                    </div>
+                  </button>
+                ))}
+                {activities.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic py-4 text-center">No activities in this period</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
