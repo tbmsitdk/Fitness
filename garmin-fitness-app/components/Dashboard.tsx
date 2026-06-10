@@ -408,12 +408,12 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             <ExpandableCard title="Aerobic Efficiency">
               {(expanded) => <EfficiencyFactorChart data={efData} sport="cycling" height={expanded ? 480 : undefined} />}
             </ExpandableCard>
-            <ExpandableCard title="Cadence">
-              {(expanded) => <CadenceChart activities={activities} sport="cycling" height={expanded ? 480 : undefined} />}
+            <ExpandableCard title="Power Curve">
+              {(expanded) => <PowerCurveChart activities={allActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
-          <ExpandableCard title="Power Curve">
-            {(expanded) => <PowerCurveChart activities={allActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
+          <ExpandableCard title="Cadence">
+            {(expanded) => <CadenceChart activities={activities} sport="cycling" height={expanded ? 480 : undefined} />}
           </ExpandableCard>
           <ExpandableCard title="Sleep & Performance">
             {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} defaultSport="cycling" hideSportToggle height={expanded ? 480 : undefined} />}
@@ -443,11 +443,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           </ExpandableCard>
           <ExpandableCard title="HRV & Training Load">
             {(expanded) => <HRVTrainingLoadChart trainingLoad={trainingLoad} wellness={sortedWellness} height={expanded ? 500 : undefined} />}
-          </ExpandableCard>
-
-          {/* Correlation explorer — finds statistical relationships across your own metrics */}
-          <ExpandableCard title="Correlation Explorer">
-            {() => <CorrelationExplorer wellness={allWellness} activities={allActivities} trainingLoad={trainingLoad} />}
           </ExpandableCard>
 
           {/* Daily metrics */}
@@ -515,6 +510,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               {(expanded) => <HRZoneChart data={computeHRZoneDistribution(activities.filter(a => a.activity_type === 'walking'), maxHR)} height={expanded ? 360 : undefined} />}
             </ExpandableCard>
           </div>
+
+          {/* Correlation explorer — finds statistical relationships across your own metrics */}
+          <ExpandableCard title="Correlation Explorer">
+            {() => <CorrelationExplorer wellness={allWellness} activities={allActivities} trainingLoad={trainingLoad} />}
+          </ExpandableCard>
         </div>
       )}
     </div>
