@@ -158,53 +158,6 @@ export async function getActivityIdsWithSamples(): Promise<Set<number>> {
   return new Set(result.rows.map(r => Number(r.activity_id)));
 }
 
-export type RouteCandidate = {
-  id: number;
-  garmin_id: string;
-  title: string;
-  activity_type: string;
-  date: string;
-  distance_km: number;
-  duration_seconds: number;
-  avg_power: number | null;
-  avg_hr: number | null;
-  start_lat: number;
-  start_lon: number;
-};
-
-// Activities that have GPS samples — used to cluster into recurring routes for the leaderboard.
-// Returns each activity's start coordinate (first GPS-bearing sample) plus summary stats.
-export async function getRouteCandidates(): Promise<RouteCandidate[]> {
-  const result = await sql`
-    SELECT
-      a.id, a.garmin_id, a.title, a.activity_type, a.date,
-      a.distance_km, a.duration_seconds, a.avg_power, a.avg_hr,
-      first_gps.lat AS start_lat, first_gps.lon AS start_lon
-    FROM activities a
-    JOIN LATERAL (
-      SELECT lat, lon FROM activity_samples s
-      WHERE s.activity_id = a.id AND s.lat IS NOT NULL AND s.lon IS NOT NULL
-      ORDER BY s.elapsed_seconds ASC
-      LIMIT 1
-    ) first_gps ON true
-    WHERE a.distance_km > 0.5
-    ORDER BY a.date ASC
-  `;
-  return result.rows.map(r => ({
-    id: Number(r.id),
-    garmin_id: String(r.garmin_id),
-    title: String(r.title ?? ''),
-    activity_type: String(r.activity_type),
-    date: String(r.date),
-    distance_km: Number(r.distance_km),
-    duration_seconds: Number(r.duration_seconds),
-    avg_power: r.avg_power != null ? Number(r.avg_power) : null,
-    avg_hr: r.avg_hr != null ? Number(r.avg_hr) : null,
-    start_lat: Number(r.start_lat),
-    start_lon: Number(r.start_lon),
-  }));
-}
-
 export async function getActivitySamples(activityId: number) {
   const result = await sql`
     SELECT elapsed_seconds, hr, power, cadence, lat, lon

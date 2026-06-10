@@ -39,7 +39,6 @@ const WeeklyReport        = dynamic(() => import('./charts/WeeklyReport'),      
 const DailySuggestion     = dynamic(() => import('./charts/DailySuggestion'),     { ssr: false });
 const TrainingPlanGenerator = dynamic(() => import('./charts/TrainingPlanGenerator'), { ssr: false });
 const LongevityScore      = dynamic(() => import('./charts/LongevityScore'),      { ssr: false });
-const RouteLeaderboard    = dynamic(() => import('./charts/RouteLeaderboard'),    { ssr: false });
 const CorrelationExplorer = dynamic(() => import('./charts/CorrelationExplorer'), { ssr: false });
 const InjuryRiskScore     = dynamic(() => import('./charts/InjuryRiskScore'),     { ssr: false });
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -282,11 +281,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       {/* ── TRAINING ─────────────────────────────────────────────────────── */}
       {subTab === 'training' && (
         <div className="space-y-4">
-          {/* Recurring-route leaderboard — ranks repeated efforts on the same route by time */}
-          <ExpandableCard title="Route Leaderboard">
-            {() => <RouteLeaderboard />}
-          </ExpandableCard>
-
           {/* Load management */}
           <ExpandableCard title="Training Load & Forecast">
             {(expanded) => (
