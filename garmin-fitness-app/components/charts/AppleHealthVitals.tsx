@@ -67,6 +67,14 @@ function Tile({
   spark: React.ReactNode;
   note?: string;
 }) {
+  // fmt: safely format a value — guards against strings/NaN reaching toFixed
+  const fmt = (v: number | null | undefined): string => {
+    if (v == null) return '—';
+    const n = Number(v);
+    if (!isFinite(n)) return '—';
+    return n.toFixed(n >= 10 ? 0 : 1);
+  };
+
   if (latest == null && avg30 == null) return null;
 
   const trendColor = trend == null ? '' : (
@@ -74,6 +82,8 @@ function Tile({
     (trendGoodDir === 'down' && trend < 0)
       ? 'text-green-400' : trend === 0 ? 'text-muted-foreground' : 'text-amber-400'
   );
+
+  const display = latest != null ? fmt(latest) : fmt(avg30);
 
   return (
     <div className="space-y-2">
@@ -83,17 +93,15 @@ function Tile({
         </div>
         {trend != null && (
           <span className={`text-[10px] ${trendColor}`}>
-            {trend > 0 ? '+' : ''}{trend.toFixed(1)} 30d
+            {trend > 0 ? '+' : ''}{fmt(trend)} 30d
           </span>
         )}
       </div>
       <div className="flex items-baseline gap-1.5">
-        <span className="text-2xl font-bold tabular-nums">
-          {latest != null ? latest.toFixed(latest >= 10 ? 0 : 1) : (avg30 != null ? avg30.toFixed(avg30 >= 10 ? 0 : 1) : '—')}
-        </span>
+        <span className="text-2xl font-bold tabular-nums">{display}</span>
         <span className="text-xs text-muted-foreground">{unit}</span>
         {avg30 != null && latest != null && (
-          <span className="text-[10px] text-muted-foreground ml-auto">avg {avg30.toFixed(avg30 >= 10 ? 0 : 1)}</span>
+          <span className="text-[10px] text-muted-foreground ml-auto">avg {fmt(avg30)}</span>
         )}
       </div>
       {spark}
@@ -118,9 +126,14 @@ export default function AppleHealthVitals({ wellness, height }: Props) {
     return v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : null;
   };
 
-  // Coerce undefined → null for pre-migration rows (columns didn't exist yet)
-  const safe = (v: number | null | undefined): number | null =>
-    v != null && !isNaN(v) ? v : null;
+  // Coerce undefined/string/NaN → null. Always returns a real JS number or null.
+  // Must force Number() conversion because Postgres DECIMAL cols arrive as strings
+  // even after coerceWellness in some edge cases.
+  const safe = (v: number | null | undefined): number | null => {
+    if (v == null) return null;
+    const n = Number(v);
+    return isFinite(n) ? n : null;
+  };
 
   // Check if we have ANY Apple Health mobility data at all
   const hasAHData = sorted.some(w =>
