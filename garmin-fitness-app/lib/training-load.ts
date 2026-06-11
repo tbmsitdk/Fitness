@@ -156,28 +156,24 @@ export function computePersonalBests(activities: Activity[]): PersonalBest[] {
   const runs = activities.filter(a => a.activity_type === 'running' && a.distance_km > 0);
   const rides = activities.filter(a => a.activity_type === 'cycling' && a.distance_km > 0);
 
-  // Fastest 5K (paced run ≥ 5km)
-  const sub5ks = runs.filter(a => a.distance_km >= 4.8 && a.distance_km <= 5.5);
-  if (sub5ks.length > 0) {
-    const fastest = sub5ks.reduce((best, a) => {
+  // Fastest pace for a given target distance (±tolerance), e.g. 1K/5K/10K/Half/Marathon
+  function fastestPaceBest(label: string, minKm: number, maxKm: number) {
+    const candidates = runs.filter(a => a.distance_km >= minKm && a.distance_km <= maxKm);
+    if (candidates.length === 0) return;
+    const fastest = candidates.reduce((best, a) => {
       const pace = a.duration_seconds / a.distance_km;
       const bestPace = best.duration_seconds / best.distance_km;
       return pace < bestPace ? a : best;
     });
     const paceStr = formatPace(fastest.duration_seconds / fastest.distance_km);
-    bests.push({ label: 'Fastest 5K pace', value: paceStr + '/km', date: new Date(fastest.date).toISOString().split('T')[0], activity_type: 'running' });
+    bests.push({ label, value: paceStr + '/km', date: new Date(fastest.date).toISOString().split('T')[0], activity_type: 'running' });
   }
 
-  // Fastest 10K
-  const sub10ks = runs.filter(a => a.distance_km >= 9.5 && a.distance_km <= 11);
-  if (sub10ks.length > 0) {
-    const fastest = sub10ks.reduce((best, a) => {
-      const pace = a.duration_seconds / a.distance_km;
-      return pace < best.duration_seconds / best.distance_km ? a : best;
-    });
-    const paceStr = formatPace(fastest.duration_seconds / fastest.distance_km);
-    bests.push({ label: 'Fastest 10K pace', value: paceStr + '/km', date: new Date(fastest.date).toISOString().split('T')[0], activity_type: 'running' });
-  }
+  fastestPaceBest('Fastest 1K pace',     0.9,  1.15);
+  fastestPaceBest('Fastest 5K pace',     4.8,  5.5);
+  fastestPaceBest('Fastest 10K pace',    9.5,  11);
+  fastestPaceBest('Fastest Half Marathon pace', 20.5, 22.5);
+  fastestPaceBest('Fastest Marathon pace',      40.5, 44);
 
   // Longest run
   if (runs.length > 0) {
@@ -205,6 +201,27 @@ export function computePersonalBests(activities: Activity[]): PersonalBest[] {
     bests.push({ label: 'Peak avg power (ride)', value: `${strongest.avg_power} W`, date: new Date(strongest.date).toISOString().split('T')[0], activity_type: 'cycling' });
   }
 
+  // Highest normalized power (rides ≥ 20 min — short enough efforts skew NP)
+  const withNP = rides.filter(a => (a.normalized_power ?? 0) > 0 && a.duration_seconds >= 1200);
+  if (withNP.length > 0) {
+    const strongest = withNP.reduce((best, a) => (a.normalized_power ?? 0) > (best.normalized_power ?? 0) ? a : best);
+    bests.push({ label: 'Peak normalized power', value: `${strongest.normalized_power} W`, date: new Date(strongest.date).toISOString().split('T')[0], activity_type: 'cycling' });
+  }
+
+  // Best ~1hr effort — highest normalized power among rides 50-70 min (proxy for FTP-style effort)
+  const hourRides = rides.filter(a => (a.normalized_power ?? 0) > 0 && a.duration_seconds >= 3000 && a.duration_seconds <= 4200);
+  if (hourRides.length > 0) {
+    const strongest = hourRides.reduce((best, a) => (a.normalized_power ?? 0) > (best.normalized_power ?? 0) ? a : best);
+    bests.push({ label: 'Best ~1hr power', value: `${strongest.normalized_power} W`, date: new Date(strongest.date).toISOString().split('T')[0], activity_type: 'cycling' });
+  }
+
+  // Highest avg speed for a substantial ride
+  const fastRides = rides.filter(a => a.distance_km >= 20 && (a.avg_speed_kmh ?? 0) > 0);
+  if (fastRides.length > 0) {
+    const fastest = fastRides.reduce((best, a) => (a.avg_speed_kmh ?? 0) > (best.avg_speed_kmh ?? 0) ? a : best);
+    bests.push({ label: 'Fastest avg speed (≥20km)', value: `${fastest.avg_speed_kmh?.toFixed(1)} km/h`, date: new Date(fastest.date).toISOString().split('T')[0], activity_type: 'cycling' });
+  }
+
   // Highest calorie burn
   const withCal = activities.filter(a => (a.calories ?? 0) > 0);
   if (withCal.length > 0) {
@@ -212,7 +229,7 @@ export function computePersonalBests(activities: Activity[]): PersonalBest[] {
     bests.push({ label: 'Most calories burned', value: `${max.calories} kcal`, date: new Date(max.date).toISOString().split('T')[0], activity_type: max.activity_type });
   }
 
-  return bests.slice(0, 8);
+  return bests;
 }
 
 function formatPace(secsPerKm: number): string {

@@ -19,6 +19,7 @@ import TrainingHeatmap from './charts/TrainingHeatmap';
 import SleepPerformanceChart from './charts/SleepPerformanceChart';
 import HeartRateChart from './charts/HeartRateChart';
 import HRVReadinessCard from './charts/HRVReadinessCard';
+import ReadinessScore from './charts/ReadinessScore';
 import HRVTrainingLoadChart from './charts/HRVTrainingLoadChart';
 import RacePredictor from './charts/RacePredictor';
 import TrainingMonotony from './charts/TrainingMonotony';
@@ -108,7 +109,8 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
   }, [allActivities, cutoff, thresholdHR]);
 
   const hrZones = useMemo(() => computeHRZoneDistribution(activities, maxHR), [activities, maxHR]);
-  const personalBests = useMemo(() => computePersonalBests(activities), [activities]);
+  // All-time records — independent of the selected period filter
+  const personalBests = useMemo(() => computePersonalBests(allActivities), [allActivities]);
   const consistency = useMemo(() => computeConsistency(activities), [activities]);
   const summary = useMemo(() => computePeriodSummary(activities, cutoff, thresholdHR), [activities, cutoff, thresholdHR]);
   const sortedWellness = useMemo(() => [...wellness].sort((a,b) => a.date.localeCompare(b.date)), [wellness]);
@@ -244,6 +246,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       {subTab === 'home' && (
         <div className="space-y-4">
           {/* Today's status */}
+          <ReadinessScore wellness={sortedAllWellness} />
           <WeeklyReport />
           <DailySuggestion trainingLoad={trainingLoad} wellness={sortedWellness} activities={activities} />
 
@@ -264,7 +267,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
 
           {/* Records */}
           <Card>
-            <CardHeader className="pb-2"><CardTitle>Personal Bests</CardTitle></CardHeader>
+            <CardHeader className="pb-2"><CardTitle>Personal Bests (all-time)</CardTitle></CardHeader>
             <CardContent><PersonalBests data={personalBests} /></CardContent>
           </Card>
         </div>
