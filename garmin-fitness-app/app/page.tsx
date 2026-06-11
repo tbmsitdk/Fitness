@@ -184,7 +184,10 @@ export default function Home() {
             <Upload onUploadComplete={onUploadComplete} />
           </div>
         ) : activeTab === 'dashboard' ? (
-          <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} ftpEntries={ftpEntries} />
+          <div className="space-y-4">
+            <InsightCards />
+            <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} ftpEntries={ftpEntries} />
+          </div>
         ) : activeTab === 'ai-coach' ? (
           <AICoach activities={allActivities} wellness={allWellness} settings={settings} />
         ) : (
