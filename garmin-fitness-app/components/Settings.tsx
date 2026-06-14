@@ -153,6 +153,16 @@ export default function Settings({ settings, onSave, measuredMaxHR, ftpEntries, 
         </CardContent>
       </Card>
 
+      {/* Cycling */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle>Cycling</CardTitle></CardHeader>
+        <CardContent>
+          <Field label="Minimum power for KPIs (W)" hint="Rides averaging below this power are treated as recovery rides and excluded from power curve, efficiency factor, power zones, FTP progression, and power-based personal bests. They still count toward weekly volume, cadence, and training load. Leave blank to include all rides.">
+            <NumericInput value={form.minCyclingPower} onChange={v => update('minCyclingPower', v)} placeholder="e.g. 100" min={0} max={500} step={5} />
+          </Field>
+        </CardContent>
+      </Card>
+
       {/* Goals */}
       <Card>
         <CardHeader className="pb-2"><CardTitle>Daily Goals</CardTitle></CardHeader>

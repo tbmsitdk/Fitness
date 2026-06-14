@@ -1,6 +1,14 @@
 import { Activity, TrainingLoad, WeeklyVolume, HRZoneData, PersonalBest, ConsistencyData } from '@/types';
 import { format, startOfWeek, eachWeekOfInterval, subDays, parseISO, isValid } from 'date-fns';
 
+// Drop cycling activities whose avg power is below the user's recovery-ride threshold,
+// so they don't drag down power curve / EF / power zones / FTP progression / power PRs.
+// Non-cycling activities and rides without a threshold are always kept.
+export function filterCyclingByPower(activities: Activity[], minCyclingPower: number | null | undefined): Activity[] {
+  if (minCyclingPower == null || minCyclingPower <= 0) return activities;
+  return activities.filter(a => a.activity_type !== 'cycling' || (a.avg_power ?? 0) >= minCyclingPower);
+}
+
 // Estimate TSS when not provided by Garmin
 function estimateTSS(activity: Activity, thresholdHR = 165): number {
   if (activity.tss != null && activity.tss > 0) return activity.tss;
@@ -151,10 +159,14 @@ export function computeHRZoneDistribution(activities: Activity[], maxHR: number 
   }));
 }
 
-export function computePersonalBests(activities: Activity[]): PersonalBest[] {
+export function computePersonalBests(activities: Activity[], minCyclingPower: number | null = null): PersonalBest[] {
   const bests: PersonalBest[] = [];
   const runs = activities.filter(a => a.activity_type === 'running' && a.distance_km > 0);
   const rides = activities.filter(a => a.activity_type === 'cycling' && a.distance_km > 0);
+  // Recovery rides (avg power below threshold) don't count toward power-based PRs
+  const powerRides = minCyclingPower != null && minCyclingPower > 0
+    ? rides.filter(a => (a.avg_power ?? 0) >= minCyclingPower)
+    : rides;
 
   // Fastest pace for a given target distance (±tolerance), e.g. 1K/5K/10K/Half/Marathon
   function fastestPaceBest(label: string, minKm: number, maxKm: number) {
@@ -195,21 +207,21 @@ export function computePersonalBests(activities: Activity[]): PersonalBest[] {
   }
 
   // Highest single-ride avg power
-  const withPower = rides.filter(a => (a.avg_power ?? 0) > 0);
+  const withPower = powerRides.filter(a => (a.avg_power ?? 0) > 0);
   if (withPower.length > 0) {
     const strongest = withPower.reduce((best, a) => (a.avg_power ?? 0) > (best.avg_power ?? 0) ? a : best);
     bests.push({ label: 'Peak avg power (ride)', value: `${strongest.avg_power} W`, date: new Date(strongest.date).toISOString().split('T')[0], activity_type: 'cycling' });
   }
 
   // Highest normalized power (rides ≥ 20 min — short enough efforts skew NP)
-  const withNP = rides.filter(a => (a.normalized_power ?? 0) > 0 && a.duration_seconds >= 1200);
+  const withNP = powerRides.filter(a => (a.normalized_power ?? 0) > 0 && a.duration_seconds >= 1200);
   if (withNP.length > 0) {
     const strongest = withNP.reduce((best, a) => (a.normalized_power ?? 0) > (best.normalized_power ?? 0) ? a : best);
     bests.push({ label: 'Peak normalized power', value: `${strongest.normalized_power} W`, date: new Date(strongest.date).toISOString().split('T')[0], activity_type: 'cycling' });
   }
 
   // Best ~1hr effort — highest normalized power among rides 50-70 min (proxy for FTP-style effort)
-  const hourRides = rides.filter(a => (a.normalized_power ?? 0) > 0 && a.duration_seconds >= 3000 && a.duration_seconds <= 4200);
+  const hourRides = powerRides.filter(a => (a.normalized_power ?? 0) > 0 && a.duration_seconds >= 3000 && a.duration_seconds <= 4200);
   if (hourRides.length > 0) {
     const strongest = hourRides.reduce((best, a) => (a.normalized_power ?? 0) > (best.normalized_power ?? 0) ? a : best);
     bests.push({ label: 'Best ~1hr power', value: `${strongest.normalized_power} W`, date: new Date(strongest.date).toISOString().split('T')[0], activity_type: 'cycling' });

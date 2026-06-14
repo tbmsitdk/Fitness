@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { Activity, WellnessRecord, FtpEntry } from '@/types';
-import { computeWeeklyVolume, computeTrainingLoadWithForecast, computeEfficiencyFactor, computeHRZoneDistribution, computePersonalBests, computeConsistency, computePeriodSummary, TrainingLoadForecast, EfficiencyFactorPoint } from '@/lib/training-load';
+import { computeWeeklyVolume, computeTrainingLoadWithForecast, computeEfficiencyFactor, computeHRZoneDistribution, computePersonalBests, computeConsistency, computePeriodSummary, filterCyclingByPower, TrainingLoadForecast, EfficiencyFactorPoint } from '@/lib/training-load';
 import WeeklyVolumeChart from './charts/WeeklyVolumeChart';
 import FitnessTrendChart, { WellnessMetric } from './charts/FitnessTrendChart';
 import TrainingLoadChart from './charts/TrainingLoadChart';
@@ -110,14 +110,18 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
 
   const hrZones = useMemo(() => computeHRZoneDistribution(activities, maxHR), [activities, maxHR]);
   // All-time records — independent of the selected period filter
-  const personalBests = useMemo(() => computePersonalBests(allActivities), [allActivities]);
+  const personalBests = useMemo(() => computePersonalBests(allActivities, settings.minCyclingPower), [allActivities, settings.minCyclingPower]);
   const consistency = useMemo(() => computeConsistency(activities), [activities]);
   const summary = useMemo(() => computePeriodSummary(activities, cutoff, thresholdHR), [activities, cutoff, thresholdHR]);
   const sortedWellness = useMemo(() => [...wellness].sort((a,b) => a.date.localeCompare(b.date)), [wellness]);
   const sortedAllWellness = useMemo(() => [...allWellness].sort((a,b) => a.date.localeCompare(b.date)), [allWellness]);
 
+  // Recovery rides (avg power below settings.minCyclingPower) excluded from power-based charts/KPIs
+  const powerActivities = useMemo(() => filterCyclingByPower(activities, settings.minCyclingPower), [activities, settings.minCyclingPower]);
+  const powerAllActivities = useMemo(() => filterCyclingByPower(allActivities, settings.minCyclingPower), [allActivities, settings.minCyclingPower]);
+
   // Efficiency Factor data computed from all activities for best trend
-  const efData = useMemo((): EfficiencyFactorPoint[] => computeEfficiencyFactor(activities), [activities]);
+  const efData = useMemo((): EfficiencyFactorPoint[] => computeEfficiencyFactor(powerActivities), [powerActivities]);
 
   // YoY: same period one year ago
   const prevActivities = useMemo(() => {
@@ -393,18 +397,18 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Power & performance */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="FTP Progression (p20 estimate from activities)">
-              {(expanded) => <FTPProgressionChart activities={allActivities} weightKg={weightKg} garminFtp={manualFtp ?? settings.garminFtp} height={expanded ? 480 : undefined} />}
+              {(expanded) => <FTPProgressionChart activities={powerAllActivities} weightKg={weightKg} garminFtp={manualFtp ?? settings.garminFtp} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
             <ExpandableCard title="W/kg Over Time">
-              {(expanded) => <WkgZonesChart activities={allActivities} wellness={allWellness} garminFtp={manualFtp ?? settings.garminFtp} height={expanded ? 480 : undefined} />}
+              {(expanded) => <WkgZonesChart activities={powerAllActivities} wellness={allWellness} garminFtp={manualFtp ?? settings.garminFtp} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
           <ExpandableCard title="Power Zones">
-            {(expanded) => <PowerChart activities={activities} weightKg={weightKg} ftp={latestFtp} height={expanded ? 480 : undefined} />}
+            {(expanded) => <PowerChart activities={powerActivities} weightKg={weightKg} ftp={latestFtp} height={expanded ? 480 : undefined} />}
           </ExpandableCard>
           {latestFtp && (
             <ExpandableCard title="Zone Distribution">
-              {(expanded) => <PowerZonesChart activities={activities} ftp={latestFtp} height={expanded ? 480 : undefined} />}
+              {(expanded) => <PowerZonesChart activities={powerActivities} ftp={latestFtp} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           )}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -412,7 +416,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               {(expanded) => <EfficiencyFactorChart data={efData} sport="cycling" height={expanded ? 480 : undefined} />}
             </ExpandableCard>
             <ExpandableCard title="Power Curve">
-              {(expanded) => <PowerCurveChart activities={allActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
+              {(expanded) => <PowerCurveChart activities={powerAllActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
           <ExpandableCard title="Cadence">

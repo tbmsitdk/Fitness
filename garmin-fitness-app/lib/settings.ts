@@ -7,6 +7,7 @@ export interface UserSettings {
   thresholdHR: number | null;
   garminFtp: number | null;  // auto-synced from Garmin biometric profile (set by Zwift FTP tests)
   dailyStepsGoal: number;
+  minCyclingPower: number | null;  // rides averaging below this (W) are excluded from power KPIs
 }
 
 const STORAGE_KEY = 'fitness_user_settings';
@@ -20,6 +21,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   thresholdHR: null,
   garminFtp: null,
   dailyStepsGoal: 10000,
+  minCyclingPower: null,
 };
 
 export function getAge(s: UserSettings): number {
