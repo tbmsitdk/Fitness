@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@vercel/postgres';
+import { sql, db } from '@vercel/postgres';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,10 +32,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       lockedExpr = `(COALESCE(locked_fields,'[]')::jsonb - '${field}')::text`;
     }
 
-    await sql.query(
-      `UPDATE wellness SET ${field} = $1, locked_fields = ${lockedExpr} WHERE id = $2`,
-      [value, id]
-    );
+    const client = await db.connect();
+    try {
+      await client.query(
+        `UPDATE wellness SET ${field} = $1, locked_fields = ${lockedExpr} WHERE id = $2`,
+        [value, id]
+      );
+    } finally {
+      client.release();
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {
