@@ -24,10 +24,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ error: 'Field not editable' }, { status: 400 });
     }
 
-    // Build locked_fields update expression
+    // Build locked_fields update expression — deduplicate to avoid repeated entries
     let lockedExpr = `COALESCE(locked_fields,'[]')`;
     if (lock === true) {
-      lockedExpr = `(COALESCE(locked_fields,'[]')::jsonb || to_jsonb(ARRAY['${field}']::text[]))::text`;
+      // Add field if not already present: remove first, then append (ensures no duplicates)
+      lockedExpr = `((COALESCE(locked_fields,'[]')::jsonb - '${field}') || to_jsonb(ARRAY['${field}']::text[]))::text`;
     } else if (lock === false) {
       lockedExpr = `(COALESCE(locked_fields,'[]')::jsonb - '${field}')::text`;
     }

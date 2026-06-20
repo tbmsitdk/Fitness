@@ -25,12 +25,15 @@ export async function GET(req: NextRequest) {
       sql`SELECT COUNT(*)::int as total FROM wellness`,
     ]);
 
-    return NextResponse.json({
-      records: dataResult.rows,
-      total: countResult.rows[0].total,
-      page,
-      pages: Math.ceil(countResult.rows[0].total / limit),
-    });
+    return NextResponse.json(
+      {
+        records: dataResult.rows,
+        total: countResult.rows[0].total,
+        page,
+        pages: Math.ceil(countResult.rows[0].total / limit),
+      },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
   } catch (e) {
     console.error('GET /api/data/wellness:', e);
     return NextResponse.json({ error: 'DB error' }, { status: 500 });
