@@ -7,13 +7,14 @@ import AICoach from '@/components/AICoach';
 import SettingsPanel from '@/components/Settings';
 import InsightCards from '@/components/InsightCards';
 import SyncStatus from '@/components/SyncStatus';
+import DataManager from '@/components/DataManager';
 import { Activity, WellnessRecord, FtpEntry } from '@/types';
-import { Activity as ActivityIcon, BarChart3, Sparkles, Upload as UploadIcon, Settings as SettingsIcon } from 'lucide-react';
+import { Activity as ActivityIcon, BarChart3, Sparkles, Upload as UploadIcon, Settings as SettingsIcon, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { subDays, startOfYear, parseISO } from 'date-fns';
 import { UserSettings, loadSettings, DEFAULT_SETTINGS } from '@/lib/settings';
 
-type Tab = 'upload' | 'dashboard' | 'ai-coach' | 'settings';
+type Tab = 'upload' | 'dashboard' | 'ai-coach' | 'data' | 'settings';
 
 const PERIODS = [
   { label: '1W',   days: 7 },
@@ -104,6 +105,7 @@ export default function Home() {
     { id: 'upload' as Tab, label: 'Upload', icon: UploadIcon },
     { id: 'dashboard' as Tab, label: 'Dashboard', icon: BarChart3, disabled: !hasData },
     { id: 'ai-coach' as Tab, label: 'AI Coach', icon: Sparkles, disabled: !hasData },
+    { id: 'data' as Tab, label: 'Data', icon: Database, disabled: !hasData },
     { id: 'settings' as Tab, label: 'Settings', icon: SettingsIcon },
   ];
 
@@ -190,6 +192,8 @@ export default function Home() {
           </div>
         ) : activeTab === 'ai-coach' ? (
           <AICoach activities={allActivities} wellness={allWellness} settings={settings} />
+        ) : activeTab === 'data' ? (
+          <DataManager />
         ) : (
           <SettingsPanel
             settings={settings}

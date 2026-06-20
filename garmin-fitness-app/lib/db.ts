@@ -51,6 +51,14 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ftp_watts INTEGER`;
   // Recovery ride cutoff — cycling activities below this avg power are excluded from power KPIs
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS min_cycling_power INTEGER`;
+  // Data management: user-locked wellness fields survive re-uploads; tombstoned activities skip re-import
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS locked_fields TEXT DEFAULT '[]'`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS activity_tombstones (
+      garmin_id TEXT PRIMARY KEY,
+      deleted_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
   // Body composition from Garmin smart scale
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS body_fat_pct DECIMAL(5,2)`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS muscle_mass_kg DECIMAL(5,2)`;
@@ -346,6 +354,15 @@ export async function upsertActivities(activities: ActivityRow[]): Promise<numbe
   }
 
   if (activities.length === 0) return 0;
+
+  // Never re-import user-deleted activities
+  const tombstoneResult = await sql`SELECT garmin_id FROM activity_tombstones`;
+  if (tombstoneResult.rows.length > 0) {
+    const tombstoned = new Set(tombstoneResult.rows.map(r => r.garmin_id as string));
+    activities = activities.filter(a => !tombstoned.has(a.garmin_id));
+    if (activities.length === 0) return 0;
+  }
+
   const client = await db.connect();
   try {
     let inserted = 0;
@@ -418,6 +435,11 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
         );
       });
 
+      // locked() macro: if field is in the locked_fields JSON array, keep the existing DB value;
+      // otherwise COALESCE (prefer incoming, fall back to existing).
+      const locked = (col: string) =>
+        `CASE WHEN COALESCE(wellness.locked_fields,'[]')::jsonb ? '${col}' THEN wellness.${col} ELSE COALESCE(EXCLUDED.${col},wellness.${col}) END`;
+
       await client.query(
         `INSERT INTO wellness (date,steps,resting_hr,hrv_rmssd,sleep_hours,sleep_score,stress_score,body_battery,
            weight_kg,vo2max,fitness_age,body_fat_pct,muscle_mass_kg,bone_mass_kg,body_water_pct,visceral_fat,metabolic_age,
@@ -425,29 +447,30 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
            oxygen_saturation,mindful_minutes)
          VALUES ${rows.join(',')}
          ON CONFLICT (date) DO UPDATE SET
-           steps=COALESCE(EXCLUDED.steps,wellness.steps),
-           resting_hr=COALESCE(EXCLUDED.resting_hr,wellness.resting_hr),
-           hrv_rmssd=COALESCE(EXCLUDED.hrv_rmssd,wellness.hrv_rmssd),
-           sleep_hours=COALESCE(EXCLUDED.sleep_hours,wellness.sleep_hours),
-           sleep_score=COALESCE(EXCLUDED.sleep_score,wellness.sleep_score),
-           stress_score=COALESCE(EXCLUDED.stress_score,wellness.stress_score),
-           body_battery=COALESCE(EXCLUDED.body_battery,wellness.body_battery),
-           weight_kg=COALESCE(EXCLUDED.weight_kg,wellness.weight_kg),
-           vo2max=COALESCE(EXCLUDED.vo2max,wellness.vo2max),
-           fitness_age=COALESCE(EXCLUDED.fitness_age,wellness.fitness_age),
-           body_fat_pct=COALESCE(EXCLUDED.body_fat_pct,wellness.body_fat_pct),
-           muscle_mass_kg=COALESCE(EXCLUDED.muscle_mass_kg,wellness.muscle_mass_kg),
-           bone_mass_kg=COALESCE(EXCLUDED.bone_mass_kg,wellness.bone_mass_kg),
-           body_water_pct=COALESCE(EXCLUDED.body_water_pct,wellness.body_water_pct),
-           visceral_fat=COALESCE(EXCLUDED.visceral_fat,wellness.visceral_fat),
-           metabolic_age=COALESCE(EXCLUDED.metabolic_age,wellness.metabolic_age),
-           flights_climbed=COALESCE(EXCLUDED.flights_climbed,wellness.flights_climbed),
-           respiratory_rate=COALESCE(EXCLUDED.respiratory_rate,wellness.respiratory_rate),
-           walking_asymmetry_pct=COALESCE(EXCLUDED.walking_asymmetry_pct,wellness.walking_asymmetry_pct),
-           walking_speed=COALESCE(EXCLUDED.walking_speed,wellness.walking_speed),
-           walking_double_support_pct=COALESCE(EXCLUDED.walking_double_support_pct,wellness.walking_double_support_pct),
-           oxygen_saturation=COALESCE(EXCLUDED.oxygen_saturation,wellness.oxygen_saturation),
-           mindful_minutes=COALESCE(EXCLUDED.mindful_minutes,wellness.mindful_minutes)`,
+           steps=${locked('steps')},
+           resting_hr=${locked('resting_hr')},
+           hrv_rmssd=${locked('hrv_rmssd')},
+           sleep_hours=${locked('sleep_hours')},
+           sleep_score=${locked('sleep_score')},
+           stress_score=${locked('stress_score')},
+           body_battery=${locked('body_battery')},
+           weight_kg=${locked('weight_kg')},
+           vo2max=${locked('vo2max')},
+           fitness_age=${locked('fitness_age')},
+           body_fat_pct=${locked('body_fat_pct')},
+           muscle_mass_kg=${locked('muscle_mass_kg')},
+           bone_mass_kg=${locked('bone_mass_kg')},
+           body_water_pct=${locked('body_water_pct')},
+           visceral_fat=${locked('visceral_fat')},
+           metabolic_age=${locked('metabolic_age')},
+           flights_climbed=${locked('flights_climbed')},
+           respiratory_rate=${locked('respiratory_rate')},
+           walking_asymmetry_pct=${locked('walking_asymmetry_pct')},
+           walking_speed=${locked('walking_speed')},
+           walking_double_support_pct=${locked('walking_double_support_pct')},
+           oxygen_saturation=${locked('oxygen_saturation')},
+           mindful_minutes=${locked('mindful_minutes')},
+           locked_fields=COALESCE(wellness.locked_fields,'[]')`,
         values
       );
       inserted += batch.length;
