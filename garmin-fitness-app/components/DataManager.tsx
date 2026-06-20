@@ -134,7 +134,7 @@ function WellnessTable() {
 
   const load = useCallback(async (p = page) => {
     setLoading(true);
-    const res = await fetch(`/api/data/wellness?page=${p}`);
+    const res = await fetch(`/api/data/wellness?page=${p}`, { cache: 'no-store' });
     const data = await res.json();
     setRows(data.records ?? []);
     setPages(data.pages ?? 1);
