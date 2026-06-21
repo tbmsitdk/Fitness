@@ -60,26 +60,35 @@ function lockedFields(row: WellnessRow): string[] {
 function EditableCell({
   id, field, value, locked, onSaved,
 }: {
-  id: number; field: string; value: number | null; locked: boolean; onSaved: () => void;
+  id: number; field: string; value: number | null; locked: boolean;
+  onSaved: (field: string, newValue: number | null, newLock: boolean | undefined) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [lockOnSave, setLockOnSave] = useState(locked);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(false);
 
-  function startEdit() { setDraft(value != null ? String(value) : ''); setEditing(true); }
+  function startEdit() { setDraft(value != null ? String(value) : ''); setEditing(true); setError(false); }
 
   async function save() {
     setSaving(true);
     const parsed = draft === '' ? null : Number(draft);
-    await fetch(`/api/data/wellness/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ field, value: parsed, lock: lockOnSave !== locked ? lockOnSave : undefined }),
-    });
-    setSaving(false);
-    setEditing(false);
-    onSaved();
+    const lockChanged = lockOnSave !== locked;
+    try {
+      const res = await fetch(`/api/data/wellness/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field, value: parsed, lock: lockChanged ? lockOnSave : undefined }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setEditing(false);
+      onSaved(field, parsed, lockChanged ? lockOnSave : undefined);
+    } catch {
+      setError(true);
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (editing) {
@@ -90,9 +99,12 @@ function EditableCell({
           type="number"
           step="any"
           value={draft}
-          onChange={e => setDraft(e.target.value)}
+          onChange={e => { setDraft(e.target.value); setError(false); }}
           onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
-          className="w-20 rounded border border-border bg-secondary px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+          className={cn(
+            'w-20 rounded border bg-secondary px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring',
+            error ? 'border-red-500' : 'border-border'
+          )}
         />
         <button
           title={lockOnSave ? 'Will persist on re-upload' : 'Will be overwritten on re-upload'}
@@ -107,6 +119,7 @@ function EditableCell({
         <button onClick={() => setEditing(false)} className="text-muted-foreground hover:text-foreground p-0.5">
           <X className="w-3 h-3" />
         </button>
+        {error && <span className="text-[10px] text-red-400">Save failed</span>}
       </div>
     );
   }
@@ -143,6 +156,21 @@ function WellnessTable() {
   }, [page]);
 
   useEffect(() => { load(page); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Optimistic in-place update — no server reload needed, PATCH already saved to DB
+  function handleCellSaved(rowId: number, field: string, newValue: number | null, newLock: boolean | undefined) {
+    setRows(prev => prev.map(r => {
+      if (r.id !== rowId) return r;
+      const updated = { ...r, [field]: newValue };
+      if (newLock === true) {
+        const existing = lockedFields(r).filter(f => f !== field);
+        updated.locked_fields = JSON.stringify([...existing, field]);
+      } else if (newLock === false) {
+        updated.locked_fields = JSON.stringify(lockedFields(r).filter(f => f !== field));
+      }
+      return updated;
+    }));
+  }
 
   async function deleteRow(id: number) {
     if (!confirm('Delete this entire wellness record?')) return;
@@ -197,7 +225,7 @@ function WellnessTable() {
                         field={c.key}
                         value={row[c.key] as number | null}
                         locked={locked.includes(c.key)}
-                        onSaved={() => load(page)}
+                        onSaved={(field, val, lock) => handleCellSaved(row.id, field, val, lock)}
                       />
                     </td>
                   ))}
