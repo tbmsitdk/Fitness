@@ -67,22 +67,29 @@ ${JSON.stringify(activityRows, null, 2)}`;
 
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
+      max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }],
     });
 
     const text = response.content[0].type === 'text' ? response.content[0].text : '[]';
+    console.log('[outliers] stop_reason:', response.stop_reason, '| raw length:', text.length);
+    console.log('[outliers] raw response:', text.slice(0, 500));
 
     // Strip markdown code fences if present
     const jsonStr = text.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
     let proposals: OutlierProposal[] = [];
     try {
       proposals = JSON.parse(jsonStr);
-      if (!Array.isArray(proposals)) proposals = [];
-    } catch {
+      if (!Array.isArray(proposals)) {
+        console.error('[outliers] parsed value is not an array:', typeof proposals);
+        proposals = [];
+      }
+    } catch (parseErr) {
+      console.error('[outliers] JSON parse failed:', parseErr, '| text:', jsonStr.slice(0, 200));
       proposals = [];
     }
 
+    console.log('[outliers] returning', proposals.length, 'proposals');
     return NextResponse.json({ proposals });
   } catch (e) {
     console.error('POST /api/data/outliers:', e);
