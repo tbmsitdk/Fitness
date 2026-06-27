@@ -120,8 +120,8 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
   const powerActivities = useMemo(() => filterCyclingByPower(activities, settings.minCyclingPower), [activities, settings.minCyclingPower]);
   const powerAllActivities = useMemo(() => filterCyclingByPower(allActivities, settings.minCyclingPower), [allActivities, settings.minCyclingPower]);
 
-  // Efficiency Factor data computed from all activities for best trend
-  const efData = useMemo((): EfficiencyFactorPoint[] => computeEfficiencyFactor(powerActivities), [powerActivities]);
+  // Efficiency Factor: use full history (not period-filtered) so the trend shows all-time progression
+  const efData = useMemo((): EfficiencyFactorPoint[] => computeEfficiencyFactor(powerAllActivities), [powerAllActivities]);
 
   // YoY: same period one year ago
   const prevActivities = useMemo(() => {
