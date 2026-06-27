@@ -65,25 +65,34 @@ function EditableCell({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
-  const [lockOnSave, setLockOnSave] = useState(locked);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(false);
 
   function startEdit() { setDraft(value != null ? String(value) : ''); setEditing(true); setError(false); }
 
+  async function toggleLock() {
+    const newLock = !locked;
+    await fetch(`/api/data/wellness/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ field, value, lock: newLock }),
+    });
+    onSaved(field, value, newLock);
+  }
+
   async function save() {
     setSaving(true);
     const parsed = draft === '' ? null : Number(draft);
-    const lockChanged = lockOnSave !== locked;
     try {
       const res = await fetch(`/api/data/wellness/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field, value: parsed, lock: lockChanged ? lockOnSave : undefined }),
+        // Always lock on manual edit — prevents Garmin sync from overwriting
+        body: JSON.stringify({ field, value: parsed, lock: true }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setEditing(false);
-      onSaved(field, parsed, lockChanged ? lockOnSave : undefined);
+      onSaved(field, parsed, true);
     } catch {
       setError(true);
     } finally {
@@ -106,13 +115,6 @@ function EditableCell({
             error ? 'border-red-500' : 'border-border'
           )}
         />
-        <button
-          title={lockOnSave ? 'Will persist on re-upload' : 'Will be overwritten on re-upload'}
-          onClick={() => setLockOnSave(v => !v)}
-          className={cn('p-0.5 rounded', lockOnSave ? 'text-amber-400' : 'text-muted-foreground')}
-        >
-          {lockOnSave ? <Lock className="w-3 h-3" /> : <LockOpen className="w-3 h-3" />}
-        </button>
         <button onClick={save} disabled={saving} className="text-green-400 hover:text-green-300 p-0.5">
           {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
         </button>
@@ -125,12 +127,21 @@ function EditableCell({
   }
 
   return (
-    <div className="flex items-center gap-1 group cursor-pointer" onClick={startEdit}>
-      <span className={cn('text-xs font-mono', value == null && 'text-muted-foreground/40')}>
+    <div className="flex items-center gap-1 group">
+      <span
+        className={cn('text-xs font-mono cursor-pointer', value == null && 'text-muted-foreground/40')}
+        onClick={startEdit}
+      >
         {value != null ? Number(value).toFixed(field === 'steps' || field.endsWith('_hr') || field.endsWith('_score') || field === 'body_battery' ? 0 : 1) : '—'}
       </span>
-      {locked && <Lock className="w-2.5 h-2.5 text-amber-400 shrink-0" />}
-      <Pencil className="w-2.5 h-2.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 shrink-0" />
+      <button
+        onClick={toggleLock}
+        title={locked ? 'Locked — click to let Garmin overwrite' : 'Unlocked — click to protect from re-upload'}
+        className={cn('p-0.5 shrink-0 transition-colors', locked ? 'text-amber-400' : 'text-muted-foreground/20 opacity-0 group-hover:opacity-100')}
+      >
+        {locked ? <Lock className="w-2.5 h-2.5" /> : <LockOpen className="w-2.5 h-2.5" />}
+      </button>
+      <Pencil className="w-2.5 h-2.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 shrink-0 cursor-pointer" onClick={startEdit} />
     </div>
   );
 }
