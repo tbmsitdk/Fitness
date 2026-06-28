@@ -35,6 +35,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       );
       console.log(`[wellness PATCH] field=${field} value=${value} id=${id} rowCount=${r1.rowCount}`);
 
+      // Read back immediately to verify the write within same connection
+      const check = await client.query(`SELECT ${field}, locked_fields FROM wellness WHERE id = $1`, [id]);
+      console.log(`[wellness PATCH] readback:`, JSON.stringify(check.rows[0]));
+
       // Query 2: update locked_fields if requested
       if (lock === true) {
         const r2 = await client.query(
