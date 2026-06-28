@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, db } from '@vercel/postgres';
+import { sql, db, createClient } from '@vercel/postgres';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,23 +24,33 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ error: 'Field not editable' }, { status: 400 });
     }
 
-    // Build locked_fields update expression — deduplicate to avoid repeated entries
-    let lockedExpr = `COALESCE(locked_fields,'[]')`;
-    if (lock === true) {
-      // Add field if not already present: remove first, then append (ensures no duplicates)
-      lockedExpr = `((COALESCE(locked_fields,'[]')::jsonb - '${field}') || to_jsonb(ARRAY['${field}']::text[]))::text`;
-    } else if (lock === false) {
-      lockedExpr = `(COALESCE(locked_fields,'[]')::jsonb - '${field}')::text`;
-    }
-
-    const client = await db.connect();
+    // Use createClient() — correct pattern for Vercel serverless (avoids pool state issues)
+    const client = createClient();
+    await client.connect();
     try {
-      await client.query(
-        `UPDATE wellness SET ${field} = $1, locked_fields = ${lockedExpr} WHERE id = $2`,
+      // Query 1: update the field value
+      const r1 = await client.query(
+        `UPDATE wellness SET ${field} = $1 WHERE id = $2`,
         [value, id]
       );
+      console.log(`[wellness PATCH] field=${field} value=${value} id=${id} rowCount=${r1.rowCount}`);
+
+      // Query 2: update locked_fields if requested
+      if (lock === true) {
+        const r2 = await client.query(
+          `UPDATE wellness SET locked_fields = ((COALESCE(locked_fields,'[]')::jsonb - $1) || to_jsonb(ARRAY[$1]::text[]))::text WHERE id = $2`,
+          [field, id]
+        );
+        console.log(`[wellness PATCH] lock=true rowCount=${r2.rowCount}`);
+      } else if (lock === false) {
+        const r2 = await client.query(
+          `UPDATE wellness SET locked_fields = (COALESCE(locked_fields,'[]')::jsonb - $1)::text WHERE id = $2`,
+          [field, id]
+        );
+        console.log(`[wellness PATCH] lock=false rowCount=${r2.rowCount}`);
+      }
     } finally {
-      client.release();
+      await client.end();
     }
 
     return NextResponse.json({ ok: true });
