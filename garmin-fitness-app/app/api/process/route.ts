@@ -27,10 +27,11 @@ export async function POST(request: NextRequest) {
     // Parse the ZIP
     const parsed = await parseGarminZip(buffer);
 
-    if (parsed.activities.length === 0) {
+    // Wellness-only exports are valid — Garmin lets you export subsets.
+    if (parsed.activities.length === 0 && parsed.wellness.length === 0) {
       return NextResponse.json({
-        error: 'No activities found in the export.',
-        hint: 'Make sure you uploaded the full Garmin data export ZIP containing Activities.csv.',
+        error: 'No activities or wellness data found in the export.',
+        hint: 'Make sure you uploaded the full Garmin data export ZIP (it should contain *_summarizedActivities.json and/or UDS wellness files).',
       }, { status: 422 });
     }
 

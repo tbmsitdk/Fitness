@@ -57,7 +57,7 @@ function describe(a: MetricSeries, b: MetricSeries, lagDays: number, r: number, 
     : `${lagDays} day${lagDays > 1 ? 's' : ''} later`;
   const subject = lagDays === 0 ? `${a.label} tends to track with ${b.label.toLowerCase()}` : `${a.label} tends to be followed by ${direction} ${b.label.toLowerCase()}`;
   if (lagDays === 0) {
-    return `${a.label} and ${b.label} show ${strength} ${r > 0 ? 'positive' : 'negative'} relationship ${timing} (r = ${r.toFixed(2)}, n = ${n} days). When one is ${direction === 'higher' ? 'higher' : 'higher'}, the other tends to be ${r > 0 ? 'higher' : 'lower'} too.`;
+    return `${a.label} and ${b.label} show ${strength} ${r > 0 ? 'positive' : 'negative'} relationship ${timing} (r = ${r.toFixed(2)}, n = ${n} days). When one is higher, the other tends to be ${r > 0 ? 'higher' : 'lower'} too.`;
   }
   return `${subject} ${timing} — ${strength} ${r > 0 ? 'positive' : 'negative'} relationship (r = ${r.toFixed(2)}, n = ${n} days).`;
 }
@@ -78,10 +78,10 @@ export function findCorrelations(series: MetricSeries[], lags: number[] = [0, 1,
       if (i === j) continue;
       const a = series[i];
       const b = series[j];
-      // Avoid emitting both (a,b,lag=0) and (b,a,lag=0) — they're identical.
-      if (lags.includes(0) && i > j) continue;
 
       for (const lag of lags) {
+        // Avoid emitting both (a,b,lag=0) and (b,a,lag=0) — they're identical.
+        // Lagged pairs stay directional: (a → b, +1d) differs from (b → a, +1d).
         if (lag === 0 && i > j) continue;
         const xs: number[] = [];
         const ys: number[] = [];

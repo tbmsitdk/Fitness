@@ -6,6 +6,9 @@ import { coerceActivity, coerceWellness } from '@/lib/db';
 import { AISummary } from '@/types';
 import type { UserSettings } from '@/lib/settings';
 
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 const CACHE_KEY = 'ai-weekly-summary';
 const CACHE_TTL = 60 * 60 * 24; // 24 hours
 

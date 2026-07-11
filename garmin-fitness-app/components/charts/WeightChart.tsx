@@ -1,7 +1,7 @@
 'use client';
 import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, ReferenceArea,
+  ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 import { WellnessRecord } from '@/types';
 import { format, parseISO } from 'date-fns';
@@ -12,14 +12,6 @@ const TOOLTIP_STYLE = {
   borderRadius: '8px',
   fontSize: 11,
 };
-
-// BMI zone reference bands
-const BMI_ZONES = [
-  { y1: 0,    y2: 18.5, label: 'Underweight', color: '#60A5FA', opacity: 0.06 },
-  { y1: 18.5, y2: 25,   label: 'Normal',      color: '#22C55E', opacity: 0.06 },
-  { y1: 25,   y2: 30,   label: 'Overweight',  color: '#F59E0B', opacity: 0.06 },
-  { y1: 30,   y2: 60,   label: 'Obese',       color: '#EF4444', opacity: 0.06 },
-];
 
 function bmi(weightKg: number, heightCm: number): number {
   const h = heightCm / 100;

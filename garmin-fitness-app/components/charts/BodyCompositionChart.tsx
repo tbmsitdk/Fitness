@@ -137,7 +137,6 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
   const corrData = (() => {
     if (!showCorrelation) return [];
     const cutoff = subDays(new Date(), 90);
-    const wellMap = new Map(sorted.map(w => [w.date.slice(0, 10), w]));
     return sorted
       .filter(w => new Date(w.date) >= cutoff && w.body_fat_pct != null && w.resting_hr != null)
       .map(w => ({ fat: w.body_fat_pct as number, rhr: w.resting_hr as number }));

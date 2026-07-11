@@ -98,7 +98,7 @@ export default function WkgZonesChart({
       currentWkg: last?.wkg ?? null,
       currentCategory: last?.category ?? null,
     };
-  }, [activities, wellness]);
+  }, [activities, wellness, garminFtp]);
 
   if (chartData.length === 0) {
     return (

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, db, createClient } from '@vercel/postgres';
+import { sql, createClient } from '@vercel/postgres';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,34 +24,30 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ error: 'Field not editable' }, { status: 400 });
     }
 
-    // Use createClient() — correct pattern for Vercel serverless (avoids pool state issues)
+    // createClient() = direct connection to the primary. The pooled sql`` template
+    // can read from a lagged replica, which made edits appear to vanish.
     const client = createClient();
     await client.connect();
     try {
-      // Query 1: update the field value
-      const r1 = await client.query(
+      const result = await client.query(
         `UPDATE wellness SET ${field} = $1 WHERE id = $2`,
         [value, id]
       );
-      console.log(`[wellness PATCH] field=${field} value=${value} id=${id} rowCount=${r1.rowCount}`);
+      if (result.rowCount === 0) {
+        return NextResponse.json({ error: 'Record not found' }, { status: 404 });
+      }
 
-      // Read back immediately to verify the write within same connection
-      const check = await client.query(`SELECT ${field}, locked_fields FROM wellness WHERE id = $1`, [id]);
-      console.log(`[wellness PATCH] readback:`, JSON.stringify(check.rows[0]));
-
-      // Query 2: update locked_fields if requested
       if (lock === true) {
-        const r2 = await client.query(
+        // Remove-then-append keeps the JSON array duplicate-free
+        await client.query(
           `UPDATE wellness SET locked_fields = ((COALESCE(locked_fields,'[]')::jsonb - $1) || to_jsonb(ARRAY[$1]::text[]))::text WHERE id = $2`,
           [field, id]
         );
-        console.log(`[wellness PATCH] lock=true rowCount=${r2.rowCount}`);
       } else if (lock === false) {
-        const r2 = await client.query(
+        await client.query(
           `UPDATE wellness SET locked_fields = (COALESCE(locked_fields,'[]')::jsonb - $1)::text WHERE id = $2`,
           [field, id]
         );
-        console.log(`[wellness PATCH] lock=false rowCount=${r2.rowCount}`);
       }
     } finally {
       await client.end();

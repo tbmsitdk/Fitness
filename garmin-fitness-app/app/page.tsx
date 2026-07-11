@@ -101,6 +101,17 @@ export default function Home() {
     [allWellness, cutoff]
   );
 
+  // Avg of the 3 highest recorded HRs in the last year — Settings uses it as the measured max HR
+  const measuredMaxHR = useMemo(() => {
+    const hrs = allActivities
+      .filter(a => a.max_hr != null && new Date(a.date) >= subDays(new Date(), 365))
+      .map(a => a.max_hr as number)
+      .filter(h => h > 100)
+      .sort((a, b) => b - a)
+      .slice(0, 3);
+    return hrs.length > 0 ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : undefined;
+  }, [allActivities]);
+
   const tabs = [
     { id: 'upload' as Tab, label: 'Upload', icon: UploadIcon },
     { id: 'dashboard' as Tab, label: 'Dashboard', icon: BarChart3, disabled: !hasData },
@@ -200,15 +211,7 @@ export default function Home() {
             onSave={s => setSettings({ ...s })}
             ftpEntries={ftpEntries}
             onFtpEntriesChange={setFtpEntries}
-            measuredMaxHR={(() => {
-              const hrs = allActivities
-                .filter(a => a.max_hr != null && new Date(a.date) >= subDays(new Date(), 365))
-                .map(a => a.max_hr as number)
-                .filter(h => h > 100)
-                .sort((a, b) => b - a)
-                .slice(0, 3);
-              return hrs.length > 0 ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : undefined;
-            })()}
+            measuredMaxHR={measuredMaxHR}
           />
         )}
       </main>

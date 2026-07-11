@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Maximize2, X } from 'lucide-react';
+import ChartErrorBoundary from '@/components/ChartErrorBoundary';
 
 interface Props {
   title: React.ReactNode;
@@ -51,7 +52,7 @@ export default function ExpandableCard({ title, headerRight, children }: Props) 
           </div>
           {/* Chart content — takes all remaining height */}
           <div className="flex-1 overflow-auto p-6">
-            {children(true)}
+            <ChartErrorBoundary>{children(true)}</ChartErrorBoundary>
           </div>
         </div>,
         document.body
@@ -76,7 +77,10 @@ export default function ExpandableCard({ title, headerRight, children }: Props) 
             </Button>
           </div>
         </CardHeader>
-        <CardContent>{children(false)}</CardContent>
+        <CardContent>
+          {/* Boundary here fault-isolates every chart card — one crash can't take down the dashboard */}
+          <ChartErrorBoundary>{children(false)}</ChartErrorBoundary>
+        </CardContent>
       </Card>
       {modal}
     </>

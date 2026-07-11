@@ -45,12 +45,6 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS weight_kg DECIMAL(5,2)`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS vo2max DECIMAL(5,2)`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS fitness_age INTEGER`;
-  // Accurate birth date (more precise than birth_year alone)
-  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS birth_date VARCHAR(10)`;
-  // Manual FTP override — prevents Zone 2 rides from collapsing the p20-derived estimate
-  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ftp_watts INTEGER`;
-  // Recovery ride cutoff — cycling activities below this avg power are excluded from power KPIs
-  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS min_cycling_power INTEGER`;
   // Data management: user-locked wellness fields survive re-uploads; tombstoned activities skip re-import
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS locked_fields TEXT DEFAULT '[]'`;
   await sql`
@@ -87,6 +81,28 @@ export async function initializeDatabase() {
       threshold_hr INTEGER,
       daily_steps_goal INTEGER,
       updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  // user_settings migrations — must run AFTER the CREATE TABLE above, or a fresh DB
+  // fails bootstrap with 'relation "user_settings" does not exist'
+  // Accurate birth date (more precise than birth_year alone)
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS birth_date VARCHAR(10)`;
+  // Manual FTP override — prevents Zone 2 rides from collapsing the p20-derived estimate
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ftp_watts INTEGER`;
+  // Recovery ride cutoff — cycling activities below this avg power are excluded from power KPIs
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS min_cycling_power INTEGER`;
+
+  // Log of automated Garmin sync runs (written by the GitHub Actions workflow via /api/sync-log)
+  await sql`
+    CREATE TABLE IF NOT EXISTS sync_log (
+      id SERIAL PRIMARY KEY,
+      synced_at TIMESTAMPTZ DEFAULT NOW(),
+      status VARCHAR(20),
+      sync_days INTEGER,
+      activities_synced INTEGER,
+      wellness_synced INTEGER,
+      error_message TEXT,
+      duration_seconds INTEGER
     )
   `;
 

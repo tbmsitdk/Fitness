@@ -1,29 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
+import { coerceActivity } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
-
-// Postgres returns DECIMAL columns as strings — coerce to numbers here
-// so all downstream chart/computation code can safely do arithmetic.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function coerce(row: any) {
-  return {
-    ...row,
-    id:               Number(row.id),
-    distance_km:      Number(row.distance_km)      || 0,
-    duration_seconds: Number(row.duration_seconds) || 0,
-    calories:         Number(row.calories)         || 0,
-    avg_hr:           row.avg_hr       != null ? Number(row.avg_hr)       : null,
-    max_hr:           row.max_hr       != null ? Number(row.max_hr)       : null,
-    training_effect:  row.training_effect != null ? Number(row.training_effect) : null,
-    avg_cadence:      row.avg_cadence  != null ? Number(row.avg_cadence)  : null,
-    avg_speed_kmh:    row.avg_speed_kmh!= null ? Number(row.avg_speed_kmh): null,
-    tss:              row.tss          != null ? Number(row.tss)          : null,
-    avg_power:        row.avg_power    != null ? Number(row.avg_power)    : null,
-    max_power:        row.max_power    != null ? Number(row.max_power)    : null,
-    elevation_gain:   row.elevation_gain != null ? Number(row.elevation_gain) : null,
-  };
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -73,7 +52,7 @@ export async function GET(request: NextRequest) {
       `;
     }
 
-    return NextResponse.json(result.rows.map(coerce));
+    return NextResponse.json(result.rows.map(coerceActivity));
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     if (msg.includes('relation') && msg.includes('does not exist')) {

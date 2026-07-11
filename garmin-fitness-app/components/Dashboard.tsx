@@ -439,7 +439,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Recovery & readiness */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="HRV Readiness">
-              {() => <HRVReadinessCard wellness={sortedWellness} />}
+              {() => <HRVReadinessCard wellness={sortedAllWellness} />}
             </ExpandableCard>
             <ExpandableCard title="Longevity Score">
               {() => <LongevityScore wellness={sortedWellness} activities={allActivities} settings={settings} />}
@@ -476,7 +476,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Sleep & energy */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="Sleep Debt">
-              {(expanded) => <SleepDebtChart wellness={sortedWellness} height={expanded ? 480 : undefined} />}
+              {(expanded) => <SleepDebtChart wellness={sortedAllWellness} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
             <ExpandableCard title="Body Battery">
               {(expanded) => <BodyBatteryChart wellness={sortedWellness} height={expanded ? 480 : undefined} />}

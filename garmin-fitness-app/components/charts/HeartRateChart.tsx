@@ -109,9 +109,11 @@ export default function HeartRateChart({ wellness, activities, height = 300 }: P
     ...actData.map(a => a.date),
   ])).sort();
 
+  // Index lookup map — findIndex inside the map made this O(n²) on multi-year data
+  const sortedIdx = new Map(sorted.map((s, i) => [s.date.slice(0, 10), i]));
   const chartData = allDates.map(date => {
     const w = wellMap.get(date);
-    const rhrIdx = sorted.findIndex(s => s.date.slice(0, 10) === date);
+    const rhrIdx = sortedIdx.get(date) ?? -1;
     return {
       date,
       label:     format(parseISO(date), 'd MMM yy'),

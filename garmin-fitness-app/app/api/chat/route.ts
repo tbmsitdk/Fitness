@@ -6,6 +6,7 @@ import { ChatMessage } from '@/types';
 import type { UserSettings } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 // ── Per-second sample summarisation ─────────────────────────────────────────
 

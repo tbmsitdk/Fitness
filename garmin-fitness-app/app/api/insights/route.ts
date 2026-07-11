@@ -3,6 +3,8 @@ import { kv } from '@vercel/kv';
 import { sql } from '@vercel/postgres';
 import Anthropic from '@anthropic-ai/sdk';
 
+export const dynamic = 'force-dynamic';
+
 const CACHE_KEY = 'ai-insights';
 const CACHE_TTL = 60 * 60 * 6; // 6 hours
 

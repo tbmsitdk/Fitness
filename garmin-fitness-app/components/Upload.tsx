@@ -117,7 +117,6 @@ export default function Upload({ onUploadComplete }: Props) {
         setMessage(`Inserting wellness data… ${insertedWell} / ${totalWell}`);
       }
 
-      setProgress(100);
       setStats({ activities: insertedActs, wellness: insertedWell, source });
 
       // NOTE: per-second HR/power/cadence backfill is intentionally NOT done

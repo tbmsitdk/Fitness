@@ -8,7 +8,9 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Use Haiku for speed (Vercel 60s limit; Sonnet can take 30-60s on large payloads)
+// Opus for coaching quality. Routes that call this must set `export const
+// maxDuration = 60` — Opus can take 30-60s on large payloads and the Vercel
+// default function timeout is shorter.
 const MODEL = 'claude-opus-4-8';
 
 const SYSTEM_PROMPT = `You are an elite personal fitness coach and longevity advisor with expertise in exercise physiology, sports medicine, and preventive health. You analyse real training and health data from Garmin devices and provide evidence-based, highly personalised guidance.

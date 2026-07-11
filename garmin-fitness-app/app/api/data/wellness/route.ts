@@ -31,9 +31,20 @@ export async function GET(req: NextRequest) {
     ]);
     await client.end();
 
+    // Postgres DECIMAL columns arrive as strings — convert so the client gets real numbers
+    const NUMERIC_FIELDS = [
+      'steps', 'resting_hr', 'sleep_hours', 'sleep_score', 'stress_score', 'body_battery',
+      'weight_kg', 'vo2max', 'body_fat_pct', 'muscle_mass_kg', 'bone_mass_kg', 'body_water_pct', 'hrv_rmssd',
+    ] as const;
+    const records = dataResult.rows.map(row => {
+      const out = { ...row };
+      for (const f of NUMERIC_FIELDS) out[f] = row[f] != null ? Number(row[f]) : null;
+      return out;
+    });
+
     return NextResponse.json(
       {
-        records: dataResult.rows,
+        records,
         total: countResult.rows[0].total,
         page,
         pages: Math.ceil(countResult.rows[0].total / limit),

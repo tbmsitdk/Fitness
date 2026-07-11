@@ -55,6 +55,25 @@ function lockedFields(row: WellnessRow): string[] {
   catch { return []; }
 }
 
+// Shared mutation helper — returns true on success, alerts on failure so a
+// failed write can never silently leave the UI out of sync with the DB.
+async function mutate(url: string, init?: RequestInit): Promise<boolean> {
+  try {
+    const res = await fetch(url, init);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return true;
+  } catch (e) {
+    alert(`Request failed — nothing was changed. (${e instanceof Error ? e.message : e})`);
+    return false;
+  }
+}
+
+const jsonBody = (body: unknown): RequestInit => ({
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
 // ── Inline cell editor ───────────────────────────────────────────────────────
 
 function EditableCell({
@@ -72,12 +91,8 @@ function EditableCell({
 
   async function toggleLock() {
     const newLock = !locked;
-    await fetch(`/api/data/wellness/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ field, value, lock: newLock }),
-    });
-    onSaved(field, value, newLock);
+    const ok = await mutate(`/api/data/wellness/${id}`, jsonBody({ field, value, lock: newLock }));
+    if (ok) onSaved(field, value, newLock);
   }
 
   async function save() {
@@ -186,9 +201,9 @@ function WellnessTable() {
   async function deleteRow(id: number) {
     if (!confirm('Delete this entire wellness record?')) return;
     setDeleting(id);
-    await fetch(`/api/data/wellness/${id}`, { method: 'DELETE' });
+    const ok = await mutate(`/api/data/wellness/${id}`, { method: 'DELETE' });
     setDeleting(null);
-    load(page);
+    if (ok) load(page);
   }
 
   const cols: { key: keyof WellnessRow; label: string }[] = [
@@ -277,10 +292,11 @@ function ActivitiesTable() {
   const PER_PAGE = 50;
 
   useEffect(() => {
-    fetch('/api/activities').then(r => r.json()).then((data: ActivityRow[]) => {
-      setRows(data);
-      setLoading(false);
-    });
+    fetch('/api/activities')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then((data: ActivityRow[]) => setRows(Array.isArray(data) ? data : []))
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
   }, []);
 
   async function deleteActivity(id: number, tombstone: boolean) {
@@ -289,12 +305,12 @@ function ActivitiesTable() {
       : 'Delete this activity? It may reappear on the next data upload.';
     if (!confirm(msg)) return;
     setDeleting(id);
-    await fetch(`/api/data/activities/${id}`, {
+    const ok = await mutate(`/api/data/activities/${id}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tombstone }),
     });
-    setRows(prev => prev.filter(r => r.id !== id));
+    if (ok) setRows(prev => prev.filter(r => r.id !== id));
     setDeleting(null);
   }
 
@@ -405,24 +421,24 @@ function AnomalyDetector({ onApplied }: { onApplied: () => void }) {
 
   async function apply(p: OutlierProposal, idx: number) {
     setApplying(prev => new Set(prev).add(idx));
+    let ok = false;
     if (p.type === 'wellness_field' && p.field) {
-      await fetch(`/api/data/wellness/${p.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field: p.field, value: null }),
-      });
+      // lock:true — without it the next Garmin sync would restore the bad value
+      ok = await mutate(`/api/data/wellness/${p.id}`, jsonBody({ field: p.field, value: null, lock: true }));
     } else if (p.type === 'wellness_row') {
-      await fetch(`/api/data/wellness/${p.id}`, { method: 'DELETE' });
+      ok = await mutate(`/api/data/wellness/${p.id}`, { method: 'DELETE' });
     } else if (p.type === 'activity') {
-      await fetch(`/api/data/activities/${p.id}`, {
+      ok = await mutate(`/api/data/activities/${p.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tombstone: true }),
       });
     }
-    setDismissed(prev => new Set(prev).add(idx));
+    if (ok) {
+      setDismissed(prev => new Set(prev).add(idx));
+      onApplied();
+    }
     setApplying(prev => { const s = new Set(prev); s.delete(idx); return s; });
-    onApplied();
   }
 
   const visible = proposals.filter((_, i) => !dismissed.has(i));
