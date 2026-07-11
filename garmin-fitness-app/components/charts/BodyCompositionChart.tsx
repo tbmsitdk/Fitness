@@ -83,6 +83,29 @@ function clean(v: number | null | undefined): number | null {
   return v != null && v > 0 ? v : null;
 }
 
+// Least-squares linear trend across the series (x = day index, non-null points only).
+// Returns the fitted line spanning first→last data point, null outside that range.
+function linearTrend(vals: (number | null)[]): (number | null)[] {
+  const pts = vals
+    .map((v, i) => [i, v] as const)
+    .filter((p): p is readonly [number, number] => p[1] != null);
+  if (pts.length < 3) return vals.map(() => null);
+  const n = pts.length;
+  const sx  = pts.reduce((s, [x]) => s + x, 0);
+  const sy  = pts.reduce((s, [, y]) => s + y, 0);
+  const sxy = pts.reduce((s, [x, y]) => s + x * y, 0);
+  const sxx = pts.reduce((s, [x]) => s + x * x, 0);
+  const denom = n * sxx - sx * sx;
+  if (denom === 0) return vals.map(() => null);
+  const slope = (n * sxy - sx * sy) / denom;
+  const intercept = (sy - slope * sx) / n;
+  const first = pts[0][0];
+  const last  = pts[n - 1][0];
+  return vals.map((_, i) =>
+    i >= first && i <= last ? Math.round((intercept + slope * i) * 100) / 100 : null
+  );
+}
+
 function rollingAvg(vals: (number | null)[], w: number): (number | null)[] {
   return vals.map((_, i) => {
     const slice = vals.slice(Math.max(0, i - w + 1), i + 1).filter((v): v is number => v != null);
@@ -121,14 +144,16 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
   }
 
   const cfg  = METRICS.find(m => m.id === metric)!;
-  const vals = sorted.map(w => clean(w[cfg.key] as number | null));
-  const avg7 = rollingAvg(vals, 7);
+  const vals  = sorted.map(w => clean(w[cfg.key] as number | null));
+  const avg7  = rollingAvg(vals, 7);
+  const trend = linearTrend(vals);
   const bench = getBenchmarks(metric, age, sex);
 
   const data = sorted.map((w, i) => ({
     label: format(parseISO(w.date.slice(0, 10)), sorted.length > 90 ? "MMM ''yy" : 'd MMM'),
     value: vals[i],
     avg7:  avg7[i],
+    trend: trend[i],
   }));
 
   const nonNull = vals.filter((v): v is number => v != null);
@@ -248,7 +273,7 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
               <XAxis dataKey="label" ticks={ticks} tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} />
               <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} width={36} />
               <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)' }}
-                formatter={(v: number) => [`${v}${cfg.unit}`, cfg.label]} />
+                formatter={(v: number, name: string) => [`${v}${cfg.unit}`, name]} />
 
               {/* Benchmark reference lines */}
               {metric === 'fat' && bench && 'good' in bench && (
@@ -284,6 +309,8 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
                 activeDot={{ r: 5 }} connectNulls={false} />
               <Line dataKey="avg7" name="7-day avg" stroke={cfg.color} strokeWidth={2}
                 dot={false} connectNulls />
+              <Line dataKey="trend" name="Trend" stroke="hsl(240 5% 64.9%)" strokeWidth={1.5}
+                strokeDasharray="6 4" dot={false} activeDot={false} connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
         </>
