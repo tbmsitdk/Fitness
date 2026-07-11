@@ -77,6 +77,12 @@ function ratingLabel(metric: Metric, value: number, age: number, sex: 'male' | '
   return { label: '', color: 'text-muted-foreground' };
 }
 
+// Garmin scales report 0.00 when the impedance measurement fails — zero is
+// physically impossible for any body-comp metric, so treat it as missing.
+function clean(v: number | null | undefined): number | null {
+  return v != null && v > 0 ? v : null;
+}
+
 function rollingAvg(vals: (number | null)[], w: number): (number | null)[] {
   return vals.map((_, i) => {
     const slice = vals.slice(Math.max(0, i - w + 1), i + 1).filter((v): v is number => v != null);
@@ -115,7 +121,7 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
   }
 
   const cfg  = METRICS.find(m => m.id === metric)!;
-  const vals = sorted.map(w => w[cfg.key] as number | null);
+  const vals = sorted.map(w => clean(w[cfg.key] as number | null));
   const avg7 = rollingAvg(vals, 7);
   const bench = getBenchmarks(metric, age, sex);
 
@@ -138,7 +144,7 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
     if (!showCorrelation) return [];
     const cutoff = subDays(new Date(), 90);
     return sorted
-      .filter(w => new Date(w.date) >= cutoff && w.body_fat_pct != null && w.resting_hr != null)
+      .filter(w => new Date(w.date) >= cutoff && clean(w.body_fat_pct) != null && w.resting_hr != null)
       .map(w => ({ fat: w.body_fat_pct as number, rhr: w.resting_hr as number }));
   })();
 
@@ -150,7 +156,7 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
       .filter(a => a.activity_type === 'cycling' && a.avg_power && a.avg_power > 0)
       .map(a => {
         const d = a.date.slice(0, 10);
-        const muscle = wellMap.get(d)?.muscle_mass_kg;
+        const muscle = clean(wellMap.get(d)?.muscle_mass_kg);
         return muscle != null ? { muscle, power: a.avg_power as number } : null;
       })
       .filter((x): x is { muscle: number; power: number } => x != null);
@@ -164,7 +170,7 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
       {latestRecord && (
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
           {METRICS.map(m => {
-            const v = latestRecord[m.key] as number | null;
+            const v = clean(latestRecord[m.key] as number | null);
             const r = v != null ? ratingLabel(m.id, v, age, sex) : null;
             return (
               <button
