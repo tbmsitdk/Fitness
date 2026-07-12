@@ -8,10 +8,10 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Opus for coaching quality. Routes that call this must set `export const
-// maxDuration = 60` — Opus can take 30-60s on large payloads and the Vercel
-// default function timeout is shorter.
-const MODEL = 'claude-opus-4-8';
+// Fable 5 for coaching quality. Routes that call this must set `export const
+// maxDuration = 60` — large-model responses can take 30-60s on big payloads
+// and the Vercel default function timeout is shorter.
+const MODEL = 'claude-fable-5';
 
 const SYSTEM_PROMPT = `You are an elite personal fitness coach and longevity advisor with expertise in exercise physiology, sports medicine, and preventive health. You analyse real training and health data from Garmin devices and provide evidence-based, highly personalised guidance.
 
