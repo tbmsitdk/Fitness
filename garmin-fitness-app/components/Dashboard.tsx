@@ -1,11 +1,11 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { Activity, WellnessRecord, FtpEntry } from '@/types';
-import { computeWeeklyVolume, computeTrainingLoadWithForecast, computeEfficiencyFactor, computeHRZoneDistribution, computePersonalBests, computeConsistency, computePeriodSummary, filterCyclingByPower, TrainingLoadForecast, EfficiencyFactorPoint } from '@/lib/training-load';
+import { computeWeeklyVolume, computeTrainingLoadWithForecast, computeEfficiencyFactor, computePersonalBests, computeConsistency, computePeriodSummary, filterCyclingByPower, TrainingLoadForecast, EfficiencyFactorPoint } from '@/lib/training-load';
 import WeeklyVolumeChart from './charts/WeeklyVolumeChart';
 import FitnessTrendChart, { WellnessMetric } from './charts/FitnessTrendChart';
 import TrainingLoadChart from './charts/TrainingLoadChart';
-import HRZoneChart from './charts/HRZoneChart';
+import HRZoneDistribution from './charts/HRZoneDistribution';
 import ConsistencyChart from './charts/ConsistencyChart';
 import PersonalBests from './charts/PersonalBests';
 import StepsChart from './charts/StepsChart';
@@ -47,7 +47,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { UserSettings, getAge, getMaxHR, getThresholdHR, DEFAULT_SETTINGS } from '@/lib/settings';
-import { buildMaxHrLookup } from '@/lib/hr-zones';
 import ExpandableCard from '@/components/ExpandableCard';
 import ActivityDetail from '@/components/ActivityDetail';
 import ActivitiesBrowser from '@/components/ActivitiesBrowser';
@@ -109,10 +108,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
     return all.filter(d => new Date(d.date) >= cutoff);
   }, [allActivities, cutoff, thresholdHR]);
 
-  // Rolling measured max HR (avg of top-3 recorded HRs in the 365 days before each
-  // date) so zone classification matches what your max HR was at the time.
-  const maxHrAt = useMemo(() => buildMaxHrLookup(allActivities, maxHR), [allActivities, maxHR]);
-  const hrZones = useMemo(() => computeHRZoneDistribution(activities, maxHrAt), [activities, maxHrAt]);
   // All-time records — independent of the selected period filter
   const personalBests = useMemo(() => computePersonalBests(allActivities, settings.minCyclingPower), [allActivities, settings.minCyclingPower]);
   const consistency = useMemo(() => computeConsistency(activities), [activities]);
@@ -370,7 +365,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Performance */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="HR Zone Distribution">
-              {(expanded) => <HRZoneChart data={hrZones} height={expanded ? 360 : undefined} />}
+              {(expanded) => <HRZoneDistribution cutoff={cutoff} fallbackMaxHR={maxHR} height={expanded ? 360 : undefined} />}
             </ExpandableCard>
             <ExpandableCard title="Aerobic Efficiency">
               {(expanded) => <EfficiencyFactorChart data={efData} sport="running" height={expanded ? 360 : undefined} />}
@@ -518,7 +513,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               {() => <CardiovascularAge settings={settings} wellness={sortedWellness} activities={activities} />}
             </ExpandableCard>
             <ExpandableCard title="HR During Walks">
-              {(expanded) => <HRZoneChart data={computeHRZoneDistribution(activities.filter(a => a.activity_type === 'walking'), maxHrAt)} height={expanded ? 360 : undefined} />}
+              {(expanded) => <HRZoneDistribution cutoff={cutoff} fallbackMaxHR={maxHR} sport="walking" height={expanded ? 360 : undefined} />}
             </ExpandableCard>
           </div>
 

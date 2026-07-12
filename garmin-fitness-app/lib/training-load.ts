@@ -121,7 +121,7 @@ export function computeWeeklyVolume(activities: Activity[], thresholdHR = 165): 
 }
 
 // Garmin 5-zone HR model using % of max HR
-const HR_ZONES = [
+export const HR_ZONES = [
   { zone: 'Zone 1 (Recovery)', minPct: 0, maxPct: 0.60 },
   { zone: 'Zone 2 (Aerobic)', minPct: 0.60, maxPct: 0.70 },
   { zone: 'Zone 3 (Tempo)', minPct: 0.70, maxPct: 0.80 },
