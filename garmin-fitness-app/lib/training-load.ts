@@ -129,14 +129,20 @@ const HR_ZONES = [
   { zone: 'Zone 5 (VO2max)', minPct: 0.90, maxPct: 1.10 },
 ];
 
-export function computeHRZoneDistribution(activities: Activity[], maxHR: number = 190): HRZoneData[] {
+// maxHR can be a constant or a per-date lookup (rolling measured max HR from
+// lib/hr-zones.ts) so zones reflect what your max HR was when the workout happened.
+export function computeHRZoneDistribution(
+  activities: Activity[],
+  maxHR: number | ((date: string) => number) = 190,
+): HRZoneData[] {
   // We can only estimate zone from avg HR — real zone computation needs HR stream data
   // We approximate by placing the entire session in the zone matching avg HR
   const zoneMins = new Array(5).fill(0);
+  const maxHrFor = typeof maxHR === 'function' ? maxHR : () => maxHR;
 
   for (const a of activities) {
     if (!a.avg_hr || a.duration_seconds === 0) continue;
-    const pct = a.avg_hr / maxHR;
+    const pct = a.avg_hr / maxHrFor(a.date);
     const mins = a.duration_seconds / 60;
     // Distribution assumption: bell around avg HR spreading ±10% across adjacent zones
     for (let i = 0; i < 5; i++) {

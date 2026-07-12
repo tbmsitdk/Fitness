@@ -4,6 +4,7 @@ import { streamChat } from '@/lib/ai';
 import { coerceActivity, coerceWellness } from '@/lib/db';
 import { ChatMessage } from '@/types';
 import type { UserSettings } from '@/lib/settings';
+import { buildMaxHrLookup } from '@/lib/hr-zones';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -123,7 +124,7 @@ function computeSampleSummary(
 
 async function fetchSampleSummaries(
   cutoff: string,
-  maxHR: number | null,
+  maxHrFor: (date: string) => number, // rolling measured max HR; 0 = unknown (zones skipped)
   ftp: number | null,
 ): Promise<ActivitySampleSummary[]> {
   // Find the 8 most-recent activities that actually have samples
@@ -146,14 +147,15 @@ async function fetchSampleSummaries(
         WHERE activity_id = ${act.id}
         ORDER BY elapsed_seconds ASC
       `;
+      const dateStr = (act.date as Date).toISOString().slice(0, 10);
       const summary = computeSampleSummary(
         rows.map(r => ({ e: Number(r.e), hr: r.hr != null ? Number(r.hr) : null, power: r.power != null ? Number(r.power) : null })),
-        maxHR,
+        maxHrFor(dateStr) || null,
         ftp,
       );
       return {
         title: act.title as string,
-        date: (act.date as Date).toISOString().slice(0, 10),
+        date: dateStr,
         type: act.activity_type as string,
         duration_min: Math.round(Number(act.duration_seconds) / 60),
         ...summary,
@@ -176,10 +178,15 @@ export async function POST(request: NextRequest) {
 
     const cutoff = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
 
-    const [actResult, wellResult, ftpResult] = await Promise.all([
+    // HR readings go back 365 days beyond the activity cutoff so the rolling
+    // max-HR window is fully populated for the oldest summarised activity.
+    const hrCutoff = new Date(Date.now() - (90 + 365) * 86400 * 1000).toISOString();
+
+    const [actResult, wellResult, ftpResult, hrResult] = await Promise.all([
       sql`SELECT * FROM activities WHERE date >= ${cutoff} ORDER BY date`,
       sql`SELECT * FROM wellness WHERE date >= ${cutoff} ORDER BY date`,
       sql`SELECT ftp_watts FROM ftp_entries ORDER BY date DESC LIMIT 1`,
+      sql`SELECT date, max_hr FROM activities WHERE max_hr IS NOT NULL AND date >= ${hrCutoff}`,
     ]);
 
     const activities = actResult.rows.map(coerceActivity);
@@ -190,9 +197,15 @@ export async function POST(request: NextRequest) {
 
     // Resolve FTP for IF calculations (same priority as buildFullContext)
     const ftpForCalc = manualFtpWatts ?? settings?.garminFtp ?? null;
-    const maxHR = settings?.maxHR ?? null;
 
-    const sampleSummaries = await fetchSampleSummaries(cutoff, maxHR, ftpForCalc);
+    // Rolling measured max HR per activity date; settings.maxHR as fallback
+    // (0 fallback = unknown → zone breakdown is skipped for that activity)
+    const maxHrFor = buildMaxHrLookup(
+      hrResult.rows.map(r => ({ date: (r.date as Date).toISOString(), max_hr: Number(r.max_hr) })),
+      settings?.maxHR ?? 0,
+    );
+
+    const sampleSummaries = await fetchSampleSummaries(cutoff, maxHrFor, ftpForCalc);
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({

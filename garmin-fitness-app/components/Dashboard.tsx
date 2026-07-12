@@ -47,6 +47,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { UserSettings, getAge, getMaxHR, getThresholdHR, DEFAULT_SETTINGS } from '@/lib/settings';
+import { buildMaxHrLookup } from '@/lib/hr-zones';
 import ExpandableCard from '@/components/ExpandableCard';
 import ActivityDetail from '@/components/ActivityDetail';
 import ActivitiesBrowser from '@/components/ActivitiesBrowser';
@@ -108,7 +109,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
     return all.filter(d => new Date(d.date) >= cutoff);
   }, [allActivities, cutoff, thresholdHR]);
 
-  const hrZones = useMemo(() => computeHRZoneDistribution(activities, maxHR), [activities, maxHR]);
+  // Rolling measured max HR (avg of top-3 recorded HRs in the 365 days before each
+  // date) so zone classification matches what your max HR was at the time.
+  const maxHrAt = useMemo(() => buildMaxHrLookup(allActivities, maxHR), [allActivities, maxHR]);
+  const hrZones = useMemo(() => computeHRZoneDistribution(activities, maxHrAt), [activities, maxHrAt]);
   // All-time records — independent of the selected period filter
   const personalBests = useMemo(() => computePersonalBests(allActivities, settings.minCyclingPower), [allActivities, settings.minCyclingPower]);
   const consistency = useMemo(() => computeConsistency(activities), [activities]);
@@ -514,7 +518,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               {() => <CardiovascularAge settings={settings} wellness={sortedWellness} activities={activities} />}
             </ExpandableCard>
             <ExpandableCard title="HR During Walks">
-              {(expanded) => <HRZoneChart data={computeHRZoneDistribution(activities.filter(a => a.activity_type === 'walking'), maxHR)} height={expanded ? 360 : undefined} />}
+              {(expanded) => <HRZoneChart data={computeHRZoneDistribution(activities.filter(a => a.activity_type === 'walking'), maxHrAt)} height={expanded ? 360 : undefined} />}
             </ExpandableCard>
           </div>
 
