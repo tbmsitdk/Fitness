@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Bike, Footprints, PersonStanding, Moon } from 'lucide-react';
 import { Activity, WellnessRecord } from '@/types';
@@ -50,6 +50,14 @@ const INTENSITY_LABELS: Record<Intensity, string> = {
   quality:  'Quality',
   optimal:  'Optimal',
 };
+
+// A genuine training session that adds fatigue — a run or ride of at least
+// 20 minutes. Walks (any length or pace) and trivially short sessions are NOT
+// training stress, so they never trigger the "rest after 3 straight days" rule.
+function isTrainingSession(a: Activity): boolean {
+  if (a.activity_type === 'walking') return false;
+  return (a.duration_seconds ?? 0) >= 1200;
+}
 
 type Sport = 'cycling' | 'running' | 'walking' | 'rest';
 
@@ -183,29 +191,31 @@ function compute(
     : null;
   const highSleepDebt = sleepDebt !== null && sleepDebt > 4;
 
-  // Check if last 3 days all have activities
+  // Count TRAINING days in the last 3 — casual walks don't count as training
+  // stress, so a run/ride ≥20 min is required. This prevents daily dog-walks
+  // from triggering a false "you've trained 3 days straight, rest" override.
   const today = new Date();
   const last3Days = [1, 2, 3].map(n => {
     const d = new Date(today);
     d.setDate(d.getDate() - n);
     return d.toISOString().split('T')[0];
   });
-  const activeDaysLast3 = activities.filter(a => {
-    const ds = a.date.split('T')[0];
-    return last3Days.some(d => ds.startsWith(d));
-  });
-  const consecutiveDays = new Set(activeDaysLast3.map(a => a.date.split('T')[0])).size;
-  const forceRest = consecutiveDays >= 3;
+  const trainingDaysLast3 = new Set(
+    activities
+      .filter(a => isTrainingSession(a) && last3Days.some(d => a.date.split('T')[0].startsWith(d)))
+      .map(a => a.date.split('T')[0])
+  ).size;
+  const forceRest = trainingDaysLast3 >= 3;
 
   if (forceRest) {
     return {
       intensity: 'rest',
-      text: 'Rest day recommended — you have trained 3 or more consecutive days. Let your body absorb the work.',
+      text: 'Rest day recommended — you have trained 3 or more days in a row. Let your body absorb the work. (Casual walks don’t count as training here.)',
       tsb,
       recovery,
       acwr,
       sleepDebt,
-      reason: `${consecutiveDays} consecutive active days detected. Recovery is part of the training.`,
+      reason: `${trainingDaysLast3} training days (rides/runs ≥20 min) in the last 3 days — walks are excluded. Recovery is part of the training.`,
     };
   }
 
@@ -326,7 +336,6 @@ function compute(
 }
 
 export default function DailySuggestion({ trainingLoad, wellness, activities, allActivities, settings, ftp }: Props) {
-  const [showWhy, setShowWhy] = useState(false);
   const suggestion = useMemo(() => compute(trainingLoad, wellness, activities), [trainingLoad, wellness, activities]);
   const workout = useMemo(
     () => pickWorkout(suggestion.intensity, allActivities, settings, ftp),
@@ -379,18 +388,10 @@ export default function DailySuggestion({ trainingLoad, wellness, activities, al
 
         <p className="text-xs leading-relaxed text-muted-foreground">{suggestion.text}</p>
 
-        <button
-          onClick={() => setShowWhy(v => !v)}
-          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-        >
-          {showWhy ? 'Hide' : 'Why?'}
-        </button>
-
-        {showWhy && (
-          <p className="text-[11px] text-muted-foreground bg-muted/40 rounded p-2 leading-relaxed">
-            {suggestion.reason}
-          </p>
-        )}
+        {/* Always-visible explanation of why today's recommendation was made */}
+        <p className="text-[11px] text-muted-foreground bg-muted/40 rounded p-2 leading-relaxed">
+          <span className="font-medium text-foreground">Why: </span>{suggestion.reason}
+        </p>
       </CardContent>
     </Card>
   );
