@@ -1,49 +1,70 @@
 'use client';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Activity } from '@/types';
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
 
 // Standard 6-zone power model (Andy Coggan)
 const ZONES = [
-  { label: 'Z1 Active Recovery', maxPct: 0.55, color: '#6B7280' },
-  { label: 'Z2 Endurance',       maxPct: 0.75, color: '#3B82F6' },
-  { label: 'Z3 Tempo',           maxPct: 0.90, color: '#22C55E' },
-  { label: 'Z4 Threshold',       maxPct: 1.05, color: '#F59E0B' },
-  { label: 'Z5 VO2max',          maxPct: 1.20, color: '#EF4444' },
-  { label: 'Z6 Anaerobic',       maxPct: Infinity, color: '#8B5CF6' },
+  { label: 'Z1 Active Recovery', color: '#6B7280' },
+  { label: 'Z2 Endurance',       color: '#3B82F6' },
+  { label: 'Z3 Tempo',           color: '#22C55E' },
+  { label: 'Z4 Threshold',       color: '#F59E0B' },
+  { label: 'Z5 VO2max',          color: '#EF4444' },
+  { label: 'Z6 Anaerobic',       color: '#8B5CF6' },
 ];
 
-function getZone(power: number, ftp: number): number {
-  const pct = power / ftp;
-  return ZONES.findIndex(z => pct < z.maxPct);
+interface ZoneResponse {
+  seconds: number[];
+  sampledHours: number;
+  approxHours: number;
 }
 
-export default function PowerZonesChart({ activities, ftp, height = 220 }: { activities: Activity[]; ftp: number; height?: number }) {
-  const data = useMemo(() => {
-    const seconds = new Array(6).fill(0);
+interface Props {
+  ftp: number;
+  cutoff: Date;
+  minCyclingPower?: number | null;
+  height?: number;
+}
 
-    for (const a of activities) {
-      if (a.activity_type !== 'cycling' || !a.avg_power || !a.duration_seconds) continue;
-      // Approximate zone distribution from avg_power and NP
-      // Without lap data we use avg_power to classify the ride's dominant zone
-      // Weight: use duration_seconds as the contribution
-      const z = getZone(a.avg_power, ftp);
-      if (z >= 0) seconds[z] += a.duration_seconds;
-    }
+export default function PowerZonesChart({ ftp, cutoff, minCyclingPower, height = 220 }: Props) {
+  const [resp, setResp] = useState<ZoneResponse | null>(null);
+  const [error, setError] = useState(false);
 
-    const total = seconds.reduce((s, v) => s + v, 0) || 1;
-    return ZONES.map((z, i) => ({
-      zone: z.label.split(' ')[0],       // "Z1", "Z2" etc.
-      label: z.label,
-      minutes: Math.round(seconds[i] / 60),
-      percentage: Math.round((seconds[i] / total) * 100),
-      color: z.color,
-    }));
-  }, [activities, ftp]);
+  useEffect(() => {
+    let cancelled = false;
+    setResp(null);
+    setError(false);
+    const params = new URLSearchParams({
+      ftp: String(ftp),
+      cutoff: cutoff.toISOString(),
+      minPower: String(minCyclingPower ?? 0),
+    });
+    fetch(`/api/power-zones?${params}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then((data: ZoneResponse) => { if (!cancelled) setResp(data); })
+      .catch(() => { if (!cancelled) setError(true); });
+    return () => { cancelled = true; };
+  }, [ftp, cutoff, minCyclingPower]);
 
-  const totalHours = (data.reduce((s, d) => s + d.minutes, 0) / 60).toFixed(1);
+  if (error) {
+    return <div className="h-32 flex items-center justify-center text-xs text-muted-foreground">Could not load zone distribution</div>;
+  }
+  if (!resp) {
+    return <div className="h-32 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>;
+  }
+
+  const total = resp.seconds.reduce((s, v) => s + v, 0) || 1;
+  const data = ZONES.map((z, i) => ({
+    zone: z.label.split(' ')[0],
+    label: z.label,
+    minutes: Math.round(resp.seconds[i] / 60),
+    percentage: Math.round((resp.seconds[i] / total) * 100),
+    color: z.color,
+  }));
+
+  const totalHours = (total / 3600).toFixed(1);
 
   return (
     <div>
@@ -65,7 +86,9 @@ export default function PowerZonesChart({ activities, ftp, height = 220 }: { act
         </BarChart>
       </ResponsiveContainer>
       <p className="text-[10px] text-muted-foreground/60 mt-1 italic">
-        Based on est. FTP {ftp}W (Coggan 6-zone model). Total {totalHours}h classified cycling in period.
+        Based on est. FTP {ftp}W (Coggan 6-zone model). {totalHours}h classified —
+        {' '}{resp.sampledHours}h from per-second power data
+        {resp.approxHours > 0 && `, ${resp.approxHours}h approximated from ride averages`}.
       </p>
     </div>
   );

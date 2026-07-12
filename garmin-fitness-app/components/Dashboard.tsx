@@ -412,7 +412,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           </ExpandableCard>
           {latestFtp && (
             <ExpandableCard title="Zone Distribution">
-              {(expanded) => <PowerZonesChart activities={powerActivities} ftp={latestFtp} height={expanded ? 480 : undefined} />}
+              {(expanded) => <PowerZonesChart ftp={latestFtp} cutoff={cutoff} minCyclingPower={settings.minCyclingPower} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           )}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
