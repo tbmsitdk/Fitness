@@ -410,6 +410,9 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               {(expanded) => <PowerZonesChart ftp={latestFtp} cutoff={cutoff} minCyclingPower={settings.minCyclingPower} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           )}
+          <ExpandableCard title="HR Zone Distribution (Cycling)">
+            {(expanded) => <HRZoneDistribution cutoff={cutoff} fallbackMaxHR={maxHR} sport="cycling" height={expanded ? 360 : undefined} />}
+          </ExpandableCard>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="Aerobic Efficiency">
               {(expanded) => <EfficiencyFactorChart data={efData} sport="cycling" height={expanded ? 480 : undefined} />}
