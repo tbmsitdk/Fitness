@@ -1,13 +1,18 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Bike, Footprints, PersonStanding, Moon } from 'lucide-react';
 import { Activity, WellnessRecord } from '@/types';
 import { TrainingLoadForecast } from '@/lib/training-load';
+import { UserSettings, getMaxHR } from '@/lib/settings';
 
 interface Props {
   trainingLoad: TrainingLoadForecast[];
   wellness: WellnessRecord[];
   activities: Activity[];
+  allActivities: Activity[];
+  settings: UserSettings;
+  ftp: number | null;
 }
 
 type Intensity = 'rest' | 'easy' | 'moderate' | 'quality' | 'optimal';
@@ -45,6 +50,111 @@ const INTENSITY_LABELS: Record<Intensity, string> = {
   quality:  'Quality',
   optimal:  'Optimal',
 };
+
+type Sport = 'cycling' | 'running' | 'walking' | 'rest';
+
+interface Workout {
+  sport: Sport;
+  title: string;        // e.g. "Sweet-spot intervals"
+  prescription: string; // concrete session with target numbers
+}
+
+const SPORT_ICON: Record<Sport, React.ComponentType<{ className?: string }>> = {
+  cycling: Bike,
+  running: PersonStanding,
+  walking: Footprints,
+  rest: Moon,
+};
+
+// HR ranges from the 5-zone %-of-max model (Z1<60, Z2 60-70, Z3 70-80, Z4 80-90, Z5>90)
+function hrRange(maxHR: number, loPct: number, hiPct: number): string {
+  return `${Math.round(maxHR * loPct)}–${Math.round(maxHR * hiPct)} bpm`;
+}
+function wattRange(ftp: number, loPct: number, hiPct: number): string {
+  return `${Math.round(ftp * loPct)}–${Math.round(ftp * hiPct)} W`;
+}
+
+// Choose the best session for today: intensity sets the structure, sport is
+// picked for balance (favour the athlete's main sport, but swap to their other
+// sport for variety on easy/moderate days if they trained the main one yesterday).
+function pickWorkout(
+  intensity: Intensity,
+  activities: Activity[],
+  settings: UserSettings,
+  ftp: number | null,
+): Workout {
+  if (intensity === 'rest') {
+    return {
+      sport: 'rest',
+      title: 'Recovery',
+      prescription: 'Full rest, or a gentle 20–30 min walk if you feel restless. No structured effort — recovery is the training today.',
+    };
+  }
+
+  const maxHR = getMaxHR(settings);
+  const now = Date.now();
+
+  // Sport mix over the last 30 days (session counts)
+  const recent = activities.filter(a => now - new Date(a.date).getTime() < 30 * 86400000);
+  const count = (s: string) => recent.filter(a => a.activity_type === s).length;
+  const rides = count('cycling');
+  const runs = count('running');
+  const primary: 'cycling' | 'running' = rides >= runs ? 'cycling' : 'running';
+  const secondary: 'cycling' | 'running' = primary === 'cycling' ? 'running' : 'cycling';
+  const secondaryViable = (secondary === 'cycling' ? rides : runs) >= 2;
+
+  // What sport was trained yesterday (for variety)
+  const yesterday = new Date(now - 86400000).toISOString().split('T')[0];
+  const trainedYesterday = new Set(
+    activities.filter(a => a.date.split('T')[0] === yesterday).map(a => a.activity_type)
+  );
+
+  // On easy/moderate days, swap to the other sport if the main one was done yesterday.
+  // On quality/optimal days, specificity matters — stick with the primary sport.
+  let sport: 'cycling' | 'running' = primary;
+  if ((intensity === 'easy' || intensity === 'moderate') && trainedYesterday.has(primary) && secondaryViable) {
+    sport = secondary;
+  }
+
+  const hasFtp = sport === 'cycling' && ftp && ftp > 0;
+
+  // Session library, keyed by intensity × sport
+  if (sport === 'cycling') {
+    switch (intensity) {
+      case 'easy':
+        return { sport, title: 'Zone 2 endurance',
+          prescription: `60–90 min steady endurance ride. Keep HR ${hrRange(maxHR, 0.60, 0.70)}${hasFtp ? ` / ${wattRange(ftp!, 0.56, 0.75)}` : ''} — conversational the whole way.` };
+      case 'moderate':
+        return { sport, title: 'Sweet-spot',
+          prescription: `Warm up 15 min, then 2×15 min at ${hasFtp ? wattRange(ftp!, 0.88, 0.93) : 'sweet-spot (comfortably hard, HR ' + hrRange(maxHR, 0.80, 0.87) + ')'} with 5 min easy between. Cool down 10 min.` };
+      case 'quality':
+        return { sport, title: 'Threshold intervals',
+          prescription: `Warm up 15 min, then 3×10 min at ${hasFtp ? wattRange(ftp!, 0.95, 1.05) : 'threshold (HR ' + hrRange(maxHR, 0.85, 0.92) + ')'} with 5 min easy between. Cool down 10 min.` };
+      case 'optimal':
+        return { sport, title: 'VO₂max intervals',
+          prescription: `Your peak day. Warm up 20 min, then 5×4 min at ${hasFtp ? wattRange(ftp!, 1.10, 1.20) : 'max sustainable (HR >' + Math.round(maxHR * 0.90) + ' bpm)'} with 4 min easy between. Cool down 10 min.` };
+    }
+  } else {
+    // running
+    switch (intensity) {
+      case 'easy':
+        return { sport, title: 'Easy aerobic run',
+          prescription: `40–50 min at an easy, conversational pace. Keep HR ${hrRange(maxHR, 0.60, 0.70)} — if you can't talk, slow down.` };
+      case 'moderate':
+        return { sport, title: 'Tempo run',
+          prescription: `Warm up 10 min easy, then 25–30 min at comfortably-hard tempo (HR ${hrRange(maxHR, 0.80, 0.88)}). Cool down 10 min.` };
+      case 'quality':
+        return { sport, title: 'Threshold intervals',
+          prescription: `Warm up 10 min, then 5×3 min hard (HR ${hrRange(maxHR, 0.85, 0.92)}) with 2 min easy jog between. Cool down 10 min.` };
+      case 'optimal':
+        return { sport, title: 'VO₂max intervals',
+          prescription: `Your peak day. Warm up 15 min, then 6×3 min at ~5K race effort (HR >${Math.round(maxHR * 0.90)} bpm) with 2 min jog between. Cool down 10 min.` };
+    }
+  }
+
+  // Fallback (shouldn't reach)
+  return { sport, title: 'Session', prescription: 'Get a session in that matches how you feel today.' };
+}
 
 function compute(
   trainingLoad: TrainingLoadForecast[],
@@ -215,9 +325,14 @@ function compute(
   };
 }
 
-export default function DailySuggestion({ trainingLoad, wellness, activities }: Props) {
+export default function DailySuggestion({ trainingLoad, wellness, activities, allActivities, settings, ftp }: Props) {
   const [showWhy, setShowWhy] = useState(false);
   const suggestion = useMemo(() => compute(trainingLoad, wellness, activities), [trainingLoad, wellness, activities]);
+  const workout = useMemo(
+    () => pickWorkout(suggestion.intensity, allActivities, settings, ftp),
+    [suggestion.intensity, allActivities, settings, ftp]
+  );
+  const SportIcon = SPORT_ICON[workout.sport];
 
   return (
     <Card className={`border-l-4 ${BORDER_COLORS[suggestion.intensity]}`}>
@@ -247,11 +362,22 @@ export default function DailySuggestion({ trainingLoad, wellness, activities }: 
             </span>
           )}
           <span className="text-[10px] font-medium tracking-widest uppercase text-muted-foreground ml-auto">
-            Today&apos;s Suggestion
+            Today&apos;s Training
           </span>
         </div>
 
-        <p className="text-sm leading-relaxed">{suggestion.text}</p>
+        {/* Concrete session prescription — the headline recommendation */}
+        <div className="flex items-start gap-3 rounded-md bg-muted/40 p-3">
+          <SportIcon className="w-5 h-5 mt-0.5 shrink-0 text-foreground" />
+          <div className="space-y-0.5">
+            <p className="text-sm font-semibold capitalize">
+              {workout.sport === 'rest' ? 'Rest day' : `${workout.sport} · ${workout.title}`}
+            </p>
+            <p className="text-[13px] leading-relaxed text-muted-foreground">{workout.prescription}</p>
+          </div>
+        </div>
+
+        <p className="text-xs leading-relaxed text-muted-foreground">{suggestion.text}</p>
 
         <button
           onClick={() => setShowWhy(v => !v)}

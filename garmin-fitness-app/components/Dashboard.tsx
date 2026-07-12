@@ -251,7 +251,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Today's status */}
           <ReadinessScore wellness={sortedAllWellness} />
           <WeeklyReport />
-          <DailySuggestion trainingLoad={trainingLoad} wellness={sortedWellness} activities={activities} />
+          <DailySuggestion trainingLoad={trainingLoad} wellness={sortedWellness} activities={activities} allActivities={allActivities} settings={settings} ftp={latestFtp} />
 
           {/* Volume overview */}
           <ExpandableCard
