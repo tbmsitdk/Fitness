@@ -151,6 +151,7 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
 
   const data = sorted.map((w, i) => ({
     label: format(parseISO(w.date.slice(0, 10)), sorted.length > 90 ? "MMM ''yy" : 'd MMM'),
+    fullDate: format(parseISO(w.date.slice(0, 10)), 'EEE d MMM yyyy'),
     value: vals[i],
     avg7:  avg7[i],
     trend: trend[i],
@@ -273,7 +274,9 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
               <XAxis dataKey="label" ticks={ticks} tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} />
               <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} width={36} />
               <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)' }}
-                formatter={(v: number, name: string) => [`${v}${cfg.unit}`, name]} />
+                formatter={(v: number, name: string) => [`${v}${cfg.unit}`, name]}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                labelFormatter={(label, payload: any) => payload?.[0]?.payload?.fullDate ?? label} />
 
               {/* Benchmark reference lines */}
               {metric === 'fat' && bench && 'good' in bench && (
@@ -303,7 +306,7 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
                 </>
               )}
 
-              <Area dataKey="value" fill="url(#bcGrad)" stroke="none" connectNulls />
+              <Area dataKey="value" fill="url(#bcGrad)" stroke="none" connectNulls tooltipType="none" />
               <Line dataKey="value" name={cfg.label} stroke={cfg.color} strokeWidth={0}
                 dot={{ r: 3, fill: cfg.color, fillOpacity: 0.6, strokeWidth: 0 }}
                 activeDot={{ r: 5 }} connectNulls={false} />
