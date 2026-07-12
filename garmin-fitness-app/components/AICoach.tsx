@@ -143,7 +143,7 @@ export default function AICoach({ activities, wellness, settings }: Props) {
             <div className="flex items-center gap-2">
               <Bot className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm font-medium">AI Fitness Coach</span>
-              <Badge variant="outline">claude-sonnet-4-5</Badge>
+              <Badge variant="outline">claude-fable-5</Badge>
             </div>
             {summary && (
               <Button variant="ghost" size="sm" onClick={() => fetchSummary(true)} disabled={loading}>

@@ -257,7 +257,12 @@ Be specific. Cite exact numbers. Give actionable targets not vague advice.`,
     }],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  // Find the text block — reasoning models (Fable) emit a thinking block first,
+  // so content[0] is not necessarily the text.
+  const textBlock = response.content.find(
+    (b): b is Anthropic.Messages.TextBlock => b.type === 'text'
+  );
+  const text = textBlock?.text ?? '';
 
   try {
     const jsonMatch = text.match(/\{[\s\S]*\}/);
