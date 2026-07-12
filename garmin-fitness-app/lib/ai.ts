@@ -223,67 +223,65 @@ export async function generateWeeklySummary(
 ): Promise<AISummary> {
   const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts);
 
+  // Forced tool call guarantees schema-valid JSON — no fence-stripping or
+  // regex extraction, which broke when the model wrapped output in ```json.
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 3000,
     system: SYSTEM_PROMPT,
+    tools: [{
+      name: 'coaching_report',
+      description: 'Record the structured coaching report',
+      input_schema: {
+        type: 'object',
+        properties: {
+          summary: {
+            type: 'string',
+            description: '3-4 paragraph narrative: current fitness status, training load sustainability, health status, and overall trajectory',
+          },
+          recommendations: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Six items prefixed TRAINING/HEALTH: this week, next 4 weeks, sport-specific, sleep, body composition, recovery — each with specific target numbers',
+          },
+          injury_risks: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Specific risk flags with the metric values that triggered them; empty if none',
+          },
+          longevity_insights: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'VO2max percentile for age/sex, muscle mass & strength training, sleep/recovery as longevity levers',
+          },
+        },
+        required: ['summary', 'recommendations', 'injury_risks', 'longevity_insights'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'coaching_report' },
     messages: [{
       role: 'user',
-      content: `Analyse my complete fitness and health data below and produce a comprehensive coaching report.
+      content: `Analyse my complete fitness and health data below and produce a comprehensive coaching report via the coaching_report tool.
 
 Data:
 ${JSON.stringify(context, null, 2)}
-
-Return ONLY valid JSON matching this structure:
-{
-  "summary": "3-4 paragraph narrative: current fitness status, training load sustainability, health status, and overall trajectory",
-  "recommendations": [
-    "TRAINING - This week: [specific action with target numbers]",
-    "TRAINING - Next 4 weeks: [periodisation or progression plan]",
-    "TRAINING - Sport-specific: [running OR cycling specific tip based on data]",
-    "HEALTH - Sleep: [specific sleep improvement based on debt/score data]",
-    "HEALTH - Body composition: [specific recommendation based on fat/muscle data]",
-    "HEALTH - Recovery: [based on HRV/body battery/stress data]"
-  ],
-  "injury_risks": ["specific risk flags with the metric values that triggered them, or empty array"],
-  "longevity_insights": [
-    "VO2max insight with percentile context for their age/sex",
-    "Muscle mass and strength training insight",
-    "Sleep and recovery as longevity levers insight"
-  ]
-}
 
 Be specific. Cite exact numbers. Give actionable targets not vague advice.`,
     }],
   });
 
-  // Find the text block — reasoning models (Fable) emit a thinking block first,
-  // so content[0] is not necessarily the text.
-  const textBlock = response.content.find(
-    (b): b is Anthropic.Messages.TextBlock => b.type === 'text'
+  const toolBlock = response.content.find(
+    (b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use'
   );
-  const text = textBlock?.text ?? '';
-
-  try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        summary:            parsed.summary            || text,
-        recommendations:    parsed.recommendations    || [],
-        injury_risks:       parsed.injury_risks       || [],
-        longevity_insights: parsed.longevity_insights || [],
-        generated_at:       new Date().toISOString(),
-      };
-    }
-  } catch { /* fall through */ }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parsed = (toolBlock?.input ?? {}) as any;
 
   return {
-    summary: text,
-    recommendations: [],
-    injury_risks: [],
-    longevity_insights: [],
-    generated_at: new Date().toISOString(),
+    summary:            typeof parsed.summary === 'string' ? parsed.summary : '',
+    recommendations:    Array.isArray(parsed.recommendations)    ? parsed.recommendations    : [],
+    injury_risks:       Array.isArray(parsed.injury_risks)       ? parsed.injury_risks       : [],
+    longevity_insights: Array.isArray(parsed.longevity_insights) ? parsed.longevity_insights : [],
+    generated_at:       new Date().toISOString(),
   };
 }
 
