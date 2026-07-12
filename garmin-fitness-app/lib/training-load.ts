@@ -10,7 +10,7 @@ export function filterCyclingByPower(activities: Activity[], minCyclingPower: nu
 }
 
 // Estimate TSS when not provided by Garmin
-function estimateTSS(activity: Activity, thresholdHR = 165): number {
+export function estimateTSS(activity: Activity, thresholdHR = 165): number {
   if (activity.tss != null && activity.tss > 0) return activity.tss;
   const durationHours = activity.duration_seconds / 3600;
   if (durationHours === 0) return 0;

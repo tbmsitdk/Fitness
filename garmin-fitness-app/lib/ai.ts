@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Activity, WellnessRecord, AISummary } from '@/types';
-import { compute90DaySummary, computeTrainingLoad } from '@/lib/training-load';
-import { getAge } from '@/lib/settings';
+import { compute90DaySummary, computeTrainingLoad, estimateTSS } from '@/lib/training-load';
+import { getAge, getThresholdHR, getMaxHR } from '@/lib/settings';
 import type { UserSettings } from '@/lib/settings';
 
 const client = new Anthropic({
@@ -57,22 +57,29 @@ export function buildFullContext(
   const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
   const nonNull = <T>(arr: (T | null)[]): T[] => arr.filter((v): v is T => v != null);
 
+  // Resolve threshold HR so HR-only activities (walks/runs with no power) get a
+  // real TSS estimate instead of 0. Falls back to 85% of max HR when unset.
+  const thresholdHR = userSettings
+    ? getThresholdHR(userSettings as UserSettings)
+    : 165;
+
   // Training load
-  const tl = computeTrainingLoad(activities);
+  const tl = computeTrainingLoad(activities, thresholdHR);
   const latestTL = tl[tl.length - 1];
   const acwr = latestTL && latestTL.ctl > 0 ? latestTL.atl / latestTL.ctl : null;
 
   // 90-day summary
   const summary90 = compute90DaySummary(activities);
 
-  // Weekly TSS last 4 weeks
+  // Weekly TSS last 4 weeks — use estimated TSS (same basis as CTL/ATL) so this
+  // never reads 0 just because Garmin didn't attach a TSS to HR-only sessions.
   const weeklyTSS: number[] = [];
   for (let w = 0; w < 4; w++) {
     const start = now - (w + 1) * 7 * 86400000;
     const end   = now - w * 7 * 86400000;
     const tss = activities
       .filter(a => { const t = new Date(a.date).getTime(); return t >= start && t < end; })
-      .reduce((s, a) => s + (a.tss ?? 0), 0);
+      .reduce((s, a) => s + estimateTSS(a, thresholdHR), 0);
     weeklyTSS.unshift(Math.round(tss));
   }
 
@@ -148,8 +155,9 @@ export function buildFullContext(
       age,
       sex:          userSettings?.sex ?? null,
       height_cm:    userSettings?.heightCm ?? null,
-      max_hr:       userSettings?.maxHR ?? null,
-      threshold_hr: userSettings?.thresholdHR ?? null,
+      max_hr:       userSettings ? getMaxHR(userSettings as UserSettings) : null,
+      threshold_hr: thresholdHR,
+      threshold_hr_source: userSettings?.thresholdHR ? 'user-set' : 'estimated (85% of max HR)',
       steps_goal:   userSettings?.dailyStepsGoal ?? 10000,
       weight_kg:    latestWeight,
     },
@@ -164,6 +172,7 @@ export function buildFullContext(
       acwr:                    acwr ? Math.round(acwr * 100) / 100 : null,
       acwr_risk:               !acwr ? 'unknown' : acwr < 0.8 ? 'undertraining' : acwr <= 1.3 ? 'optimal' : acwr <= 1.5 ? 'elevated' : 'high',
       avg_run_pace_min_km:     avgRunPaceMinKm ? Math.round(avgRunPaceMinKm * 10) / 10 : null,
+      note: 'TSS/CTL/ATL estimated from HR + duration where Garmin did not supply a TSS value (most walks/runs). Treat weekly_tss as approximate load, not device-reported.',
     },
     body_composition: {
       weight_kg:      latestBC?.weight_kg ?? latestWeight,

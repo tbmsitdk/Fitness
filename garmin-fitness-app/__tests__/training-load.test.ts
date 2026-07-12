@@ -5,6 +5,7 @@ import {
   computeWeeklyVolume,
   computeTrainingLoad,
   computeConsistency,
+  estimateTSS,
 } from '@/lib/training-load';
 import type { Activity } from '@/types';
 
@@ -122,6 +123,31 @@ describe('computePersonalBests', () => {
 
   it('returns empty array for empty input', () => {
     expect(computePersonalBests([])).toEqual([]);
+  });
+});
+
+// ── estimateTSS ───────────────────────────────────────────────────────────────
+
+describe('estimateTSS', () => {
+  it('uses the device TSS when present and positive', () => {
+    expect(estimateTSS(act({ activity_type: 'cycling', tss: 85 }))).toBe(85);
+  });
+
+  it('estimates from HR + duration when TSS is missing', () => {
+    // 1h at threshold HR → IF ~0.9 → ~72 TSS (non-zero, the bug we fixed)
+    const tss = estimateTSS(act({ activity_type: 'walking', tss: null, avg_hr: 145, duration_seconds: 3600 }), 145);
+    expect(tss).toBeGreaterThan(0);
+  });
+
+  it('returns 0 for a zero-duration activity', () => {
+    expect(estimateTSS(act({ activity_type: 'walking', tss: null, duration_seconds: 0 }))).toBe(0);
+  });
+
+  it('scales with duration', () => {
+    const base = { activity_type: 'running' as const, tss: null, avg_hr: 150, duration_seconds: 1800 };
+    const oneHour = estimateTSS(act({ ...base, duration_seconds: 3600 }), 165);
+    const halfHour = estimateTSS(act(base), 165);
+    expect(oneHour).toBeCloseTo(halfHour * 2, 1);
   });
 });
 
