@@ -119,8 +119,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
   const powerActivities = useMemo(() => filterCyclingByPower(activities, settings.minCyclingPower), [activities, settings.minCyclingPower]);
   const powerAllActivities = useMemo(() => filterCyclingByPower(allActivities, settings.minCyclingPower), [allActivities, settings.minCyclingPower]);
 
-  // Efficiency Factor: use full history (not period-filtered) so the trend shows all-time progression
-  const efData = useMemo((): EfficiencyFactorPoint[] => computeEfficiencyFactor(powerAllActivities), [powerAllActivities]);
+  // Efficiency Factor: full history AND unfiltered by the recovery-power cutoff.
+  // EF = watts per heartbeat, so low-intensity Zone 2 rides are the MOST relevant
+  // data points — applying the min-cycling-power filter here wrongly drops them.
+  const efData = useMemo((): EfficiencyFactorPoint[] => computeEfficiencyFactor(allActivities), [allActivities]);
 
   // YoY: same period one year ago
   const prevActivities = useMemo(() => {
