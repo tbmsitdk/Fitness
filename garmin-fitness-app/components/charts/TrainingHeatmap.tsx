@@ -1,6 +1,7 @@
 'use client';
 import { useMemo, useState, useRef } from 'react';
 import { Activity } from '@/types';
+import { estimateTSS, isTrainingSession } from '@/lib/training-load';
 import { format, parseISO, isLeapYear, getDay, startOfYear, addDays } from 'date-fns';
 
 const CELL = 13;   // px per cell
@@ -16,14 +17,6 @@ const TSS_COLORS = [
 
 function tssColor(tss: number) {
   return TSS_COLORS.find(b => tss >= b.min && tss < b.max)?.color ?? TSS_COLORS[0].color;
-}
-
-function estimateTSS(a: Activity): number {
-  if (a.tss != null && a.tss > 0) return a.tss;
-  const h = a.duration_seconds / 3600;
-  const hr = a.avg_hr ?? 140;
-  const f = hr / 165;
-  return h * f * f * 100;
 }
 
 function formatDuration(secs: number): string {
@@ -54,10 +47,12 @@ export default function TrainingHeatmap({ activities }: Props) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; date: string; data: DayData } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Build date → DayData map
+  // Build date → DayData map. This is the TRAINING heatmap, so casual walks
+  // (and sub-20-min sessions) are excluded — a day of only dog-walks stays grey.
   const dayMap = useMemo(() => {
     const map = new Map<string, DayData>();
     for (const a of activities) {
+      if (!isTrainingSession(a)) continue;
       const key = new Date(a.date).toISOString().split('T')[0];
       const ex = map.get(key) ?? { tss: 0, acts: [] };
       ex.tss += estimateTSS(a);
@@ -244,7 +239,7 @@ export default function TrainingHeatmap({ activities }: Props) {
           <div key={i} style={{ width: CELL, height: CELL, borderRadius: 2, backgroundColor: b.color }} />
         ))}
         <span>More</span>
-        <span className="ml-2">· colour = training stress (TSS)</span>
+        <span className="ml-2">· colour = training stress (TSS) · walks excluded</span>
       </div>
     </div>
   );

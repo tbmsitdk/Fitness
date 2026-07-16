@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Bike, Footprints, PersonStanding, Moon } from 'lucide-react';
 import { Activity, WellnessRecord } from '@/types';
-import { TrainingLoadForecast } from '@/lib/training-load';
+import { TrainingLoadForecast, isTrainingSession } from '@/lib/training-load';
 import { UserSettings, getMaxHR } from '@/lib/settings';
 
 interface Props {
@@ -50,14 +50,6 @@ const INTENSITY_LABELS: Record<Intensity, string> = {
   quality:  'Quality',
   optimal:  'Optimal',
 };
-
-// A genuine training session that adds fatigue — a run or ride of at least
-// 20 minutes. Walks (any length or pace) and trivially short sessions are NOT
-// training stress, so they never trigger the "rest after 3 straight days" rule.
-function isTrainingSession(a: Activity): boolean {
-  if (a.activity_type === 'walking') return false;
-  return (a.duration_seconds ?? 0) >= 1200;
-}
 
 type Sport = 'cycling' | 'running' | 'walking' | 'rest';
 

@@ -9,6 +9,15 @@ export function filterCyclingByPower(activities: Activity[], minCyclingPower: nu
   return activities.filter(a => a.activity_type !== 'cycling' || (a.avg_power ?? 0) >= minCyclingPower);
 }
 
+// A genuine training session that adds fatigue — a non-walking activity of at
+// least 20 minutes. Casual walks (any length or pace) and trivially short
+// sessions are recovery/movement, not training stress. Shared by the training
+// heatmap and the daily suggestion so "training" means the same thing everywhere.
+export function isTrainingSession(a: Activity): boolean {
+  if (a.activity_type === 'walking') return false;
+  return (a.duration_seconds ?? 0) >= 1200;
+}
+
 // Estimate TSS when not provided by Garmin
 export function estimateTSS(activity: Activity, thresholdHR = 165): number {
   if (activity.tss != null && activity.tss > 0) return activity.tss;
