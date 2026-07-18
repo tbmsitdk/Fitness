@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Activity, WellnessRecord, AISummary } from '@/types';
 import { compute90DaySummary, computeTrainingLoad, estimateTSS } from '@/lib/training-load';
 import { getAge, getThresholdHR, getMaxHR } from '@/lib/settings';
+import { vo2maxRating } from '@/lib/vo2max';
 import type { UserSettings } from '@/lib/settings';
 
 const client = new Anthropic({
@@ -215,7 +216,10 @@ export function buildFullContext(
     longevity: {
       vo2max:              latestVo2,
       vo2max_context:      latestVo2 && age
-        ? `${latestVo2 >= 45 ? 'Good' : latestVo2 >= 35 ? 'Average' : 'Below average'} for age ${age}`
+        ? (() => {
+            const r = vo2maxRating(latestVo2, age, (userSettings?.sex ?? 'male'));
+            return `${r.category} for a ${age}-year-old ${userSettings?.sex ?? 'male'} (≈${r.percentile}th percentile, age/sex-adjusted ACSM norms)`;
+          })()
         : null,
       resting_hr_30d_avg:  avgRHR30 ? Math.round(avgRHR30) : null,
       wkg_category:        wkgCategory,

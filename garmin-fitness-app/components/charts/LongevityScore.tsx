@@ -2,6 +2,7 @@
 import { useMemo } from 'react';
 import { WellnessRecord, Activity } from '@/types';
 import { UserSettings, getAge } from '@/lib/settings';
+import { vo2maxRating } from '@/lib/vo2max';
 
 interface Props {
   wellness: WellnessRecord[];
@@ -29,24 +30,9 @@ function trend(values: number[]): number {
   return slope;
 }
 
-function vo2maxScore(vo2max: number, age: number, sex: 'male' | 'female'): { score: number; category: string } {
-  const male = sex === 'male';
-  let thresholds: [number, number, number, number][];
-  if (male) {
-    if (age < 50) thresholds = [[34, 38, 43, 48]];  // 40-49
-    else if (age < 60) thresholds = [[31, 35, 40, 45]];
-    else thresholds = [[28, 32, 36, 41]];
-  } else {
-    if (age < 50) thresholds = [[27, 31, 36, 41]];
-    else thresholds = [[25, 28, 32, 36]];
-  }
-  const [fair, good, excellent, superior] = thresholds[0];
-  if (vo2max >= superior) return { score: 100, category: 'Superior' };
-  if (vo2max >= excellent) return { score: 80, category: 'Excellent' };
-  if (vo2max >= good) return { score: 60, category: 'Good' };
-  if (vo2max >= fair) return { score: 40, category: 'Fair' };
-  return { score: 20, category: 'Poor' };
-}
+// Shared age/sex-adjusted rating — same source the AI coach uses (lib/vo2max.ts)
+const vo2maxScore = (vo2max: number, age: number, sex: 'male' | 'female') =>
+  vo2maxRating(vo2max, age, sex);
 
 function computeComponents(
   wellness: WellnessRecord[],
