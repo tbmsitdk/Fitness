@@ -57,13 +57,20 @@ export async function GET(req: NextRequest) {
     const seconds = [s.z1, s.z2, s.z3, s.z4, s.z5, s.z6].map((c: number) => c * 10);
     const sampledSeconds = seconds.reduce((a, b) => a + b, 0);
 
+    // Rides with no samples (older activities the sync never backfilled) can only
+    // be classified by their single avg-power value, but a ride's power is never
+    // actually flat — dumping 100% of its duration into one zone bucket produces
+    // an unrealistic single-bar chart. Spread it across neighbouring zones
+    // (same heuristic already used for the avg-HR fallback in computeHRZoneDistribution).
     let approxSeconds = 0;
     for (const row of fallbackResult.rows) {
       const pct = Number(row.avg_power) / ftp;
       let zone = BOUNDS.findIndex(b => pct < b);
       if (zone === -1) zone = 5;
       const dur = Number(row.duration_seconds);
-      seconds[zone] += dur;
+      seconds[zone] += dur * 0.70;
+      if (zone > 0) seconds[zone - 1] += dur * 0.15;
+      if (zone < 5) seconds[zone + 1] += dur * 0.15;
       approxSeconds += dur;
     }
 
