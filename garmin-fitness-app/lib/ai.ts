@@ -110,9 +110,12 @@ export function buildFullContext(
   const latestWeight = [...sorted].reverse().find(w => w.weight_kg != null)?.weight_kg ?? null;
   const wkg = latestFTP && latestWeight ? Math.round((latestFTP / latestWeight) * 100) / 100 : null;
 
-  // FTP trend — compare best historical p20 estimate vs current Garmin FTP
-  const ftpTrend = garminFtp && p20BestFTP
-    ? garminFtp - p20BestFTP   // positive = improved vs p20 estimate
+  // FTP vs p20 estimate — compare the RESOLVED FTP (manual log wins) against the
+  // best activity-derived p20 estimate. Previously this used the raw Garmin
+  // profile FTP, which can be stale (111W vs a verified 211W) and produced a
+  // nonsensical negative delta that confused the coach's narrative.
+  const ftpTrend = latestFTP && p20BestFTP
+    ? latestFTP - p20BestFTP   // positive = verified FTP above the p20 projection
     : cyclingWithFTP.length >= 2
       ? Math.max(...cyclingWithFTP.map(a => a.ftp as number)) - cyclingWithFTP[0].ftp!
       : null;
@@ -204,8 +207,8 @@ export function buildFullContext(
       best_p20_ftp:        p20BestFTP,
       wkg,
       coggan_category:     wkgCategory,
-      ftp_vs_p20_estimate: ftpTrend !== null ? `${ftpTrend >= 0 ? '+' : ''}${ftpTrend}W` : null,
-      note: 'Zone 2 rides deliberately use low power — FTP represents CAPACITY not recent ride intensity',
+      current_ftp_vs_best_recent_p20_estimate: ftpTrend !== null ? `${ftpTrend >= 0 ? '+' : ''}${ftpTrend}W` : null,
+      note: 'Zone 2 rides deliberately use low power — FTP represents CAPACITY not recent ride intensity. current_ftp_vs_best_recent_p20_estimate = current_ftp_watts minus best_p20_ftp; do not subtract garmin_ftp from anything, it may be a stale device-profile value unrelated to current_ftp_watts.',
     },
     recovery: {
       todays_recovery_score:  recovery7,
