@@ -56,3 +56,65 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'DB error' }, { status: 500 });
   }
 }
+
+// POST: create or update a wellness record for a given date, entered manually.
+// Only the fields provided are touched — existing values for other fields on
+// that date are left alone. Every field the caller sets is locked, same as an
+// inline edit, so a later Garmin sync can't silently overwrite a manual entry.
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json() as { date: string; fields: Record<string, unknown> };
+    const date = body.date;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return NextResponse.json({ error: 'Valid date (YYYY-MM-DD) required' }, { status: 400 });
+    }
+
+    // Whitelist to prevent SQL injection via field names
+    const ALLOWED_FIELDS = new Set([
+      'steps', 'resting_hr', 'hrv_rmssd', 'sleep_hours', 'sleep_score',
+      'stress_score', 'body_battery', 'weight_kg', 'vo2max', 'fitness_age',
+      'body_fat_pct', 'muscle_mass_kg', 'bone_mass_kg', 'body_water_pct',
+      'visceral_fat', 'metabolic_age',
+    ]);
+
+    const entries = Object.entries(body.fields ?? {}).filter(
+      (e): e is [string, number] =>
+        ALLOWED_FIELDS.has(e[0]) && e[1] != null && isFinite(Number(e[1]))
+    );
+    if (entries.length === 0) {
+      return NextResponse.json({ error: 'At least one valid field value is required' }, { status: 400 });
+    }
+
+    const client = createClient();
+    await client.connect();
+    try {
+      // Ensure a row exists for this date without clobbering an existing one
+      await client.query(`INSERT INTO wellness (date) VALUES ($1) ON CONFLICT (date) DO NOTHING`, [date]);
+
+      const setClauses = entries.map(([field], i) => `${field} = $${i + 1}`);
+      const values: (string | number)[] = entries.map(([, v]) => Number(v));
+      values.push(date);
+      await client.query(
+        `UPDATE wellness SET ${setClauses.join(', ')} WHERE date = $${entries.length + 1}`,
+        values
+      );
+
+      // Lock every field just entered — remove-then-append keeps the array duplicate-free
+      const fieldNames = entries.map(([f]) => f);
+      await client.query(
+        `UPDATE wellness SET locked_fields = (
+           (COALESCE(locked_fields,'[]')::jsonb - $1::text[]) || to_jsonb($1::text[])
+         )::text WHERE date = $2`,
+        [fieldNames, date]
+      );
+
+      const { rows } = await client.query(`SELECT id FROM wellness WHERE date = $1`, [date]);
+      return NextResponse.json({ ok: true, id: rows[0]?.id ?? null });
+    } finally {
+      await client.end();
+    }
+  } catch (e) {
+    console.error('POST /api/data/wellness:', e);
+    return NextResponse.json({ error: 'DB error' }, { status: 500 });
+  }
+}

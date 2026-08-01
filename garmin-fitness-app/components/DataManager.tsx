@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Trash2, Lock, LockOpen, Pencil, Check, X, AlertTriangle, Loader2, ShieldCheck } from 'lucide-react';
+import { Trash2, Lock, LockOpen, Pencil, Check, X, AlertTriangle, Loader2, ShieldCheck, Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import type { OutlierProposal } from '@/app/api/data/outliers/route';
 
@@ -161,6 +161,127 @@ function EditableCell({
   );
 }
 
+// ── Add manual wellness entry ───────────────────────────────────────────────
+
+const MANUAL_FIELDS: { key: string; label: string; step: string }[] = [
+  { key: 'weight_kg',    label: 'Weight (kg)',  step: '0.1' },
+  { key: 'steps',        label: 'Steps',        step: '1'   },
+  { key: 'resting_hr',   label: 'RHR',          step: '1'   },
+  { key: 'sleep_hours',  label: 'Sleep h',      step: '0.1' },
+  { key: 'sleep_score',  label: 'Sleep score',  step: '1'   },
+  { key: 'body_battery', label: 'Battery',      step: '1'   },
+  { key: 'stress_score', label: 'Stress',       step: '1'   },
+  { key: 'body_fat_pct', label: 'Body fat %',   step: '0.1' },
+  { key: 'hrv_rmssd',    label: 'HRV',          step: '0.1' },
+];
+
+function AddWellnessEntry({ onAdded }: { onAdded: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function reset() {
+    setValues({});
+    setError(null);
+  }
+
+  async function save() {
+    const fields: Record<string, number> = {};
+    for (const f of MANUAL_FIELDS) {
+      const raw = values[f.key];
+      if (raw !== undefined && raw.trim() !== '') {
+        const n = Number(raw);
+        if (isFinite(n)) fields[f.key] = n;
+      }
+    }
+    if (Object.keys(fields).length === 0) {
+      setError('Enter at least one value.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/data/wellness', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, fields }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      reset();
+      setOpen(false);
+      onAdded();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="gap-1.5">
+        <Plus className="w-3.5 h-3.5" />
+        Add manual entry
+      </Button>
+    );
+  }
+
+  return (
+    <Card className="border-border bg-secondary/20">
+      <CardContent className="pt-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-medium">New wellness entry</p>
+          <button onClick={() => { setOpen(false); reset(); }} className="text-muted-foreground hover:text-foreground">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] text-muted-foreground block">Date</label>
+            <input
+              type="date"
+              value={date}
+              max={new Date().toISOString().split('T')[0]}
+              onChange={e => setDate(e.target.value)}
+              className="rounded border border-border bg-secondary px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          {MANUAL_FIELDS.map(f => (
+            <div key={f.key} className="space-y-1">
+              <label className="text-[10px] text-muted-foreground block">{f.label}</label>
+              <input
+                type="number"
+                step={f.step}
+                value={values[f.key] ?? ''}
+                onChange={e => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                placeholder="—"
+                className="w-20 rounded border border-border bg-secondary px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Fields you fill in are locked automatically, so a Garmin sync won't overwrite them. If a record already
+          exists for this date, only the fields you enter here are changed.
+        </p>
+        {error && <p className="text-[11px] text-red-400">{error}</p>}
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={save} disabled={saving}>
+            {saving ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
+            Save entry
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setOpen(false); reset(); }}>Cancel</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Wellness table ────────────────────────────────────────────────────────────
 
 function WellnessTable() {
@@ -220,8 +341,9 @@ function WellnessTable() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-xs text-muted-foreground">{total.toLocaleString()} wellness records · Click any cell to edit · <Lock className="inline w-2.5 h-2.5 text-amber-400" /> = survives re-upload</p>
+        <AddWellnessEntry onAdded={() => { setPage(1); load(1); }} />
       </div>
       <div className="overflow-x-auto rounded-md border border-border">
         <table className="w-full text-xs">
