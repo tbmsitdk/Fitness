@@ -20,8 +20,10 @@ export async function GET(req: NextRequest) {
     const [dataResult, countResult] = await Promise.all([
       client.query(`
         SELECT id, date::text, steps, resting_hr, sleep_hours, sleep_score,
-               stress_score, body_battery, weight_kg, vo2max, body_fat_pct,
-               muscle_mass_kg, bone_mass_kg, body_water_pct, hrv_rmssd,
+               stress_score, body_battery, weight_kg, vo2max, fitness_age, body_fat_pct,
+               muscle_mass_kg, bone_mass_kg, body_water_pct, visceral_fat, metabolic_age,
+               hrv_rmssd, flights_climbed, respiratory_rate, walking_asymmetry_pct,
+               walking_speed, walking_double_support_pct, oxygen_saturation, mindful_minutes,
                COALESCE(locked_fields, '[]') as locked_fields
         FROM wellness
         ORDER BY date DESC
@@ -34,7 +36,10 @@ export async function GET(req: NextRequest) {
     // Postgres DECIMAL columns arrive as strings — convert so the client gets real numbers
     const NUMERIC_FIELDS = [
       'steps', 'resting_hr', 'sleep_hours', 'sleep_score', 'stress_score', 'body_battery',
-      'weight_kg', 'vo2max', 'body_fat_pct', 'muscle_mass_kg', 'bone_mass_kg', 'body_water_pct', 'hrv_rmssd',
+      'weight_kg', 'vo2max', 'fitness_age', 'body_fat_pct', 'muscle_mass_kg', 'bone_mass_kg',
+      'body_water_pct', 'visceral_fat', 'metabolic_age', 'hrv_rmssd', 'flights_climbed',
+      'respiratory_rate', 'walking_asymmetry_pct', 'walking_speed', 'walking_double_support_pct',
+      'oxygen_saturation', 'mindful_minutes',
     ] as const;
     const records = dataResult.rows.map(row => {
       const out = { ...row };
@@ -69,12 +74,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Valid date (YYYY-MM-DD) required' }, { status: 400 });
     }
 
-    // Whitelist to prevent SQL injection via field names
+    // Whitelist to prevent SQL injection via field names — every numeric wellness column
     const ALLOWED_FIELDS = new Set([
       'steps', 'resting_hr', 'hrv_rmssd', 'sleep_hours', 'sleep_score',
       'stress_score', 'body_battery', 'weight_kg', 'vo2max', 'fitness_age',
       'body_fat_pct', 'muscle_mass_kg', 'bone_mass_kg', 'body_water_pct',
-      'visceral_fat', 'metabolic_age',
+      'visceral_fat', 'metabolic_age', 'flights_climbed', 'respiratory_rate',
+      'walking_asymmetry_pct', 'walking_speed', 'walking_double_support_pct',
+      'oxygen_saturation', 'mindful_minutes',
     ]);
 
     const entries = Object.entries(body.fields ?? {}).filter(

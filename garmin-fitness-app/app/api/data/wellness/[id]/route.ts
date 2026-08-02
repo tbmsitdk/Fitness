@@ -13,12 +13,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       lock?: boolean; // true = protect on re-upload, false = remove protection, undefined = no change
     };
 
-    // Whitelist editable fields to prevent SQL injection
+    // Whitelist editable fields to prevent SQL injection — every numeric wellness column
     const EDITABLE_FIELDS = new Set([
       'steps', 'resting_hr', 'hrv_rmssd', 'sleep_hours', 'sleep_score',
       'stress_score', 'body_battery', 'weight_kg', 'vo2max', 'fitness_age',
       'body_fat_pct', 'muscle_mass_kg', 'bone_mass_kg', 'body_water_pct',
-      'visceral_fat', 'metabolic_age',
+      'visceral_fat', 'metabolic_age', 'flights_climbed', 'respiratory_rate',
+      'walking_asymmetry_pct', 'walking_speed', 'walking_double_support_pct',
+      'oxygen_saturation', 'mindful_minutes',
     ]);
     if (!EDITABLE_FIELDS.has(field)) {
       return NextResponse.json({ error: 'Field not editable' }, { status: 400 });

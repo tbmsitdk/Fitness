@@ -22,6 +22,20 @@ interface WellnessRow {
   stress_score: number | null;
   body_fat_pct: number | null;
   hrv_rmssd: number | null;
+  vo2max: number | null;
+  fitness_age: number | null;
+  muscle_mass_kg: number | null;
+  bone_mass_kg: number | null;
+  body_water_pct: number | null;
+  visceral_fat: number | null;
+  metabolic_age: number | null;
+  flights_climbed: number | null;
+  respiratory_rate: number | null;
+  walking_asymmetry_pct: number | null;
+  walking_speed: number | null;
+  walking_double_support_pct: number | null;
+  oxygen_saturation: number | null;
+  mindful_minutes: number | null;
   locked_fields: string; // JSON array
 }
 
@@ -73,6 +87,12 @@ const jsonBody = (body: unknown): RequestInit => ({
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
 });
+
+// Fields displayed with no decimal place in the table
+const INTEGER_FIELDS = new Set([
+  'steps', 'body_battery', 'fitness_age', 'visceral_fat', 'metabolic_age',
+  'flights_climbed', 'mindful_minutes',
+]);
 
 // ── Inline cell editor ───────────────────────────────────────────────────────
 
@@ -147,7 +167,7 @@ function EditableCell({
         className={cn('text-xs font-mono cursor-pointer', value == null && 'text-muted-foreground/40')}
         onClick={startEdit}
       >
-        {value != null ? Number(value).toFixed(field === 'steps' || field.endsWith('_hr') || field.endsWith('_score') || field === 'body_battery' ? 0 : 1) : '—'}
+        {value != null ? Number(value).toFixed(INTEGER_FIELDS.has(field) || field.endsWith('_hr') || field.endsWith('_score') ? 0 : 1) : '—'}
       </span>
       <button
         onClick={toggleLock}
@@ -163,17 +183,47 @@ function EditableCell({
 
 // ── Add manual wellness entry ───────────────────────────────────────────────
 
-const MANUAL_FIELDS: { key: string; label: string; step: string }[] = [
-  { key: 'weight_kg',    label: 'Weight (kg)',  step: '0.1' },
-  { key: 'steps',        label: 'Steps',        step: '1'   },
-  { key: 'resting_hr',   label: 'RHR',          step: '1'   },
-  { key: 'sleep_hours',  label: 'Sleep h',      step: '0.1' },
-  { key: 'sleep_score',  label: 'Sleep score',  step: '1'   },
-  { key: 'body_battery', label: 'Battery',      step: '1'   },
-  { key: 'stress_score', label: 'Stress',       step: '1'   },
-  { key: 'body_fat_pct', label: 'Body fat %',   step: '0.1' },
-  { key: 'hrv_rmssd',    label: 'HRV',          step: '0.1' },
+const MANUAL_FIELD_GROUPS: { group: string; fields: { key: string; label: string; step: string }[] }[] = [
+  {
+    group: 'Activity & recovery',
+    fields: [
+      { key: 'steps',        label: 'Steps',        step: '1'   },
+      { key: 'resting_hr',   label: 'RHR',          step: '1'   },
+      { key: 'hrv_rmssd',    label: 'HRV',          step: '0.1' },
+      { key: 'sleep_hours',  label: 'Sleep h',      step: '0.1' },
+      { key: 'sleep_score',  label: 'Sleep score',  step: '1'   },
+      { key: 'body_battery', label: 'Battery',      step: '1'   },
+      { key: 'stress_score', label: 'Stress',       step: '1'   },
+      { key: 'vo2max',       label: 'VO2max',       step: '0.1' },
+      { key: 'fitness_age',  label: 'Fitness age',  step: '1'   },
+    ],
+  },
+  {
+    group: 'Body composition (smart scale)',
+    fields: [
+      { key: 'weight_kg',      label: 'Weight (kg)',    step: '0.1' },
+      { key: 'body_fat_pct',   label: 'Body fat %',     step: '0.1' },
+      { key: 'muscle_mass_kg', label: 'Muscle mass (kg)', step: '0.1' },
+      { key: 'bone_mass_kg',   label: 'Bone mass (kg)', step: '0.01' },
+      { key: 'body_water_pct', label: 'Body water %',   step: '0.1' },
+      { key: 'visceral_fat',   label: 'Visceral fat',   step: '1'   },
+      { key: 'metabolic_age',  label: 'Metabolic age',  step: '1'   },
+    ],
+  },
+  {
+    group: 'Apple Health mobility',
+    fields: [
+      { key: 'flights_climbed',              label: 'Floors climbed',    step: '1'   },
+      { key: 'respiratory_rate',             label: 'Breathing rate',    step: '0.1' },
+      { key: 'walking_asymmetry_pct',        label: 'Walk asymmetry %',  step: '0.1' },
+      { key: 'walking_speed',                label: 'Walk speed (km/h)', step: '0.01' },
+      { key: 'walking_double_support_pct',   label: 'Double support %',  step: '0.1' },
+      { key: 'oxygen_saturation',            label: 'SpO2 %',            step: '0.1' },
+      { key: 'mindful_minutes',              label: 'Mindful minutes',   step: '1'   },
+    ],
+  },
 ];
+const MANUAL_FIELDS = MANUAL_FIELD_GROUPS.flatMap(g => g.fields);
 
 function AddWellnessEntry({ onAdded }: { onAdded: () => void }) {
   const [open, setOpen] = useState(false);
@@ -240,31 +290,36 @@ function AddWellnessEntry({ onAdded }: { onAdded: () => void }) {
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <label className="text-[10px] text-muted-foreground block">Date</label>
-            <input
-              type="date"
-              value={date}
-              max={new Date().toISOString().split('T')[0]}
-              onChange={e => setDate(e.target.value)}
-              className="rounded border border-border bg-secondary px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-          {MANUAL_FIELDS.map(f => (
-            <div key={f.key} className="space-y-1">
-              <label className="text-[10px] text-muted-foreground block">{f.label}</label>
-              <input
-                type="number"
-                step={f.step}
-                value={values[f.key] ?? ''}
-                onChange={e => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
-                placeholder="—"
-                className="w-20 rounded border border-border bg-secondary px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-          ))}
+        <div className="space-y-1">
+          <label className="text-[10px] text-muted-foreground block">Date</label>
+          <input
+            type="date"
+            value={date}
+            max={new Date().toISOString().split('T')[0]}
+            onChange={e => setDate(e.target.value)}
+            className="rounded border border-border bg-secondary px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+          />
         </div>
+        {MANUAL_FIELD_GROUPS.map(g => (
+          <div key={g.group} className="space-y-1.5">
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{g.group}</p>
+            <div className="flex flex-wrap gap-3">
+              {g.fields.map(f => (
+                <div key={f.key} className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground block">{f.label}</label>
+                  <input
+                    type="number"
+                    step={f.step}
+                    value={values[f.key] ?? ''}
+                    onChange={e => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                    placeholder="—"
+                    className="w-24 rounded border border-border bg-secondary px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
         <p className="text-[10px] text-muted-foreground">
           Fields you fill in are locked automatically, so a Garmin sync won't overwrite them. If a record already
           exists for this date, only the fields you enter here are changed.
@@ -337,6 +392,20 @@ function WellnessTable() {
     { key: 'stress_score', label: 'Stress' },
     { key: 'body_fat_pct', label: 'Body fat %' },
     { key: 'hrv_rmssd', label: 'HRV' },
+    { key: 'vo2max', label: 'VO2max' },
+    { key: 'fitness_age', label: 'Fitness age' },
+    { key: 'muscle_mass_kg', label: 'Muscle mass (kg)' },
+    { key: 'bone_mass_kg', label: 'Bone mass (kg)' },
+    { key: 'body_water_pct', label: 'Body water %' },
+    { key: 'visceral_fat', label: 'Visceral fat' },
+    { key: 'metabolic_age', label: 'Metabolic age' },
+    { key: 'flights_climbed', label: 'Floors climbed' },
+    { key: 'respiratory_rate', label: 'Breathing rate' },
+    { key: 'walking_asymmetry_pct', label: 'Walk asymmetry %' },
+    { key: 'walking_speed', label: 'Walk speed (km/h)' },
+    { key: 'walking_double_support_pct', label: 'Double support %' },
+    { key: 'oxygen_saturation', label: 'SpO2 %' },
+    { key: 'mindful_minutes', label: 'Mindful minutes' },
   ];
 
   return (
