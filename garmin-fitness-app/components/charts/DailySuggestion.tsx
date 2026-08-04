@@ -5,6 +5,7 @@ import { Bike, Footprints, PersonStanding, Moon } from 'lucide-react';
 import { Activity, WellnessRecord } from '@/types';
 import { TrainingLoadForecast, isTrainingSession } from '@/lib/training-load';
 import { UserSettings, getMaxHR } from '@/lib/settings';
+import { computeReadiness } from '@/lib/readiness';
 
 interface Props {
   trainingLoad: TrainingLoadForecast[];
@@ -168,10 +169,14 @@ function compute(
   const acwr = latest && latest.ctl > 0 ? Math.round((latest.atl / latest.ctl) * 100) / 100 : null;
   const highInjuryRisk = acwr !== null && acwr > 1.5;
 
-  // Recovery score from most recent stress_score
+  // Recovery score — same composite (HRV + RHR + Sleep + Battery/stress) used
+  // by the Readiness Score card, so the two widgets can never disagree about
+  // today's recovery. wellness here must be the full, unfiltered history —
+  // computeReadiness needs a real 30-day baseline window to score against.
+  const sortedAsc = [...wellness].sort((a, b) => a.date.localeCompare(b.date));
   const recentWell = [...wellness].sort((a, b) => b.date.localeCompare(a.date));
-  const latestWell = recentWell[0];
-  const recovery = latestWell?.stress_score != null ? 100 - latestWell.stress_score : null;
+  const readiness = computeReadiness(sortedAsc);
+  const recovery = readiness?.overall ?? null;
 
   // Sleep debt — recent 7-day average vs 30-day baseline
   const now = Date.now();
