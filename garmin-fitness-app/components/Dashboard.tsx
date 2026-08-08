@@ -405,9 +405,9 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             </ExpandableCard>
           </div>
           <ExpandableCard title="Power Zones">
-            {/* Weekly power trend is a general overview, not an FTP-sensitive stat — recovery
-                rides must count here or entire weeks silently vanish from the chart. */}
-            {(expanded) => <PowerChart activities={activities} weightKg={weightKg} ftp={latestFtp} height={expanded ? 480 : undefined} />}
+            {/* Recovery rides (below settings.minCyclingPower) intentionally excluded —
+                this is a power statistic, per the original min-cycling-power spec. */}
+            {(expanded) => <PowerChart activities={powerActivities} weightKg={weightKg} ftp={latestFtp} height={expanded ? 480 : undefined} />}
           </ExpandableCard>
           {latestFtp && (
             <ExpandableCard title="Zone Distribution">
