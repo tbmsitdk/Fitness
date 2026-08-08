@@ -151,32 +151,38 @@ export function computeVariabilityIndex(samples: ActivitySample[]): VariabilityR
 }
 
 export interface WorkAboveFtpResult {
-  kj: number;              // excess kJ = integral of (power - FTP) while power > FTP
+  avgWattsAboveFtp: number; // avg excess power (W) during samples above FTP
+  peakWattsAboveFtp: number; // highest single-sample excess power (W)
   secondsAboveFtp: number;
   pctTimeAboveFtp: number;
 }
 
-// How much "extra", supra-threshold work was done beyond what FTP alone
+// How hard, in watts, was the supra-threshold work beyond what FTP alone
 // sustains — a proxy for anaerobic-reserve depletion during the ride.
 export function computeWorkAboveFtp(samples: ActivitySample[], ftp: number | null | undefined): WorkAboveFtpResult | null {
   if (!ftp || ftp <= 0) return null;
   const valid = samples.filter(s => s.power != null);
   if (valid.length === 0) return null;
 
-  let excessJoules = 0;
+  let excessWattsSum = 0;
+  let peakExcess = 0;
   let secondsAbove = 0;
   for (const s of valid) {
     const p = s.power as number;
     if (p > ftp) {
-      excessJoules += (p - ftp) * SAMPLE_INTERVAL;
+      const excess = p - ftp;
+      excessWattsSum += excess;
+      peakExcess = Math.max(peakExcess, excess);
       secondsAbove += SAMPLE_INTERVAL;
     }
   }
-  if (secondsAbove === 0) return { kj: 0, secondsAboveFtp: 0, pctTimeAboveFtp: 0 };
+  if (secondsAbove === 0) return { avgWattsAboveFtp: 0, peakWattsAboveFtp: 0, secondsAboveFtp: 0, pctTimeAboveFtp: 0 };
 
   const totalSeconds = valid.length * SAMPLE_INTERVAL;
+  const samplesAbove = secondsAbove / SAMPLE_INTERVAL;
   return {
-    kj: Math.round(excessJoules / 100) / 10, // 1 decimal kJ
+    avgWattsAboveFtp: Math.round(excessWattsSum / samplesAbove),
+    peakWattsAboveFtp: Math.round(peakExcess),
     secondsAboveFtp: secondsAbove,
     pctTimeAboveFtp: Math.round((secondsAbove / totalSeconds) * 100),
   };

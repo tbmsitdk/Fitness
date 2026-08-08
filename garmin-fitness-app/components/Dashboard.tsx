@@ -405,15 +405,17 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             </ExpandableCard>
           </div>
           <ExpandableCard title="Power Zones">
-            {(expanded) => <PowerChart activities={powerActivities} weightKg={weightKg} ftp={latestFtp} height={expanded ? 480 : undefined} />}
+            {/* Weekly power trend is a general overview, not an FTP-sensitive stat — recovery
+                rides must count here or entire weeks silently vanish from the chart. */}
+            {(expanded) => <PowerChart activities={activities} weightKg={weightKg} ftp={latestFtp} height={expanded ? 480 : undefined} />}
           </ExpandableCard>
           {latestFtp && (
             <ExpandableCard title="Zone Distribution">
-              {(expanded) => <PowerZonesChart ftp={latestFtp} cutoff={cutoff} minCyclingPower={settings.minCyclingPower} height={expanded ? 480 : undefined} />}
+              {(expanded) => <PowerZonesChart ftp={latestFtp} cutoff={cutoff} minCyclingPower={settings.minCyclingPower} height={expanded ? 400 : undefined} />}
             </ExpandableCard>
           )}
           <ExpandableCard title="HR Zone Distribution (Cycling)">
-            {(expanded) => <HRZoneDistribution cutoff={cutoff} fallbackMaxHR={maxHR} sport="cycling" height={expanded ? 360 : undefined} />}
+            {(expanded) => <HRZoneDistribution cutoff={cutoff} fallbackMaxHR={maxHR} sport="cycling" height={expanded ? 400 : undefined} />}
           </ExpandableCard>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="Aerobic Efficiency">
@@ -515,7 +517,8 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           </ExpandableCard>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="Cardiovascular Age">
-              {() => <CardiovascularAge settings={settings} wellness={sortedWellness} activities={activities} />}
+              {/* Computes its own latest-reading + rolling windows — needs unfiltered history */}
+              {() => <CardiovascularAge settings={settings} wellness={sortedAllWellness} activities={allActivities} />}
             </ExpandableCard>
             <ExpandableCard title="HR During Walks">
               {(expanded) => <HRZoneDistribution cutoff={cutoff} fallbackMaxHR={maxHR} sport="walking" height={expanded ? 360 : undefined} />}

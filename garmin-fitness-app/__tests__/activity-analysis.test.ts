@@ -46,15 +46,16 @@ describe('computeWorkAboveFtp', () => {
   it('computes zero when the ride never exceeds FTP', () => {
     const s = samples(10, () => 150, () => 140);
     const result = computeWorkAboveFtp(s, 200);
-    expect(result).toEqual({ kj: 0, secondsAboveFtp: 0, pctTimeAboveFtp: 0 });
+    expect(result).toEqual({ avgWattsAboveFtp: 0, peakWattsAboveFtp: 0, secondsAboveFtp: 0, pctTimeAboveFtp: 0 });
   });
 
-  it('computes excess kJ only for samples above FTP', () => {
-    // 5 samples at 300W (100W excess over FTP 200) for 10s each = 5000 J excess = 5.0 kJ
+  it('computes avg/peak excess watts only for samples above FTP', () => {
+    // 5 samples at 300W (100W excess over FTP 200), 5 samples at 100W (below FTP)
     const s = samples(10, i => (i < 5 ? 300 : 100), () => 140);
     const result = computeWorkAboveFtp(s, 200);
     expect(result).not.toBeNull();
-    expect(result!.kj).toBeCloseTo(5.0, 1);
+    expect(result!.avgWattsAboveFtp).toBe(100);
+    expect(result!.peakWattsAboveFtp).toBe(100);
     expect(result!.secondsAboveFtp).toBe(50);
     expect(result!.pctTimeAboveFtp).toBe(50);
   });

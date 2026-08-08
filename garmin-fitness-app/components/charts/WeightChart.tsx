@@ -85,6 +85,10 @@ export default function WeightChart({ wellness, heightCm, height = 240 }: Props)
     : null;
   const latestBMI = showBMI ? bmi(latest.weight_kg as number, heightCm!) : null;
 
+  // Max/min for the currently selected period — wellness prop is already period-filtered
+  const maxEntry = withWeight.reduce((m, w) => (w.weight_kg! > m.weight_kg!) ? w : m);
+  const minEntry = withWeight.reduce((m, w) => (w.weight_kg! < m.weight_kg!) ? w : m);
+
   const tickInterval = Math.max(1, Math.floor(display.length / 10));
 
   return (
@@ -110,6 +114,16 @@ export default function WeightChart({ wellness, heightCm, height = 240 }: Props)
             <span className="text-[10px] text-muted-foreground ml-1">({bmiCategory(latestBMI)})</span>
           </div>
         )}
+        <div>
+          <span className="text-muted-foreground text-[11px]">Max (period)  </span>
+          <span className="font-bold font-mono text-sky-400">{maxEntry.weight_kg} kg</span>
+          <span className="text-[10px] text-muted-foreground ml-1">{format(parseISO(maxEntry.date), dateFmt)}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground text-[11px]">Min (period)  </span>
+          <span className="font-bold font-mono text-cyan-400">{minEntry.weight_kg} kg</span>
+          <span className="text-[10px] text-muted-foreground ml-1">{format(parseISO(minEntry.date), dateFmt)}</span>
+        </div>
       </div>
 
       <ResponsiveContainer width="100%" height={height}>
@@ -154,6 +168,12 @@ export default function WeightChart({ wellness, heightCm, height = 240 }: Props)
             <ReferenceLine y={overMax} stroke="#EF4444" strokeDasharray="4 3" strokeWidth={1}
               label={{ value: `BMI 30 (${overMax} kg)`, position: 'insideTopLeft', fontSize: 9, fill: '#EF4444' }} />
           )}
+
+          {/* Max/min for the selected period */}
+          <ReferenceLine y={maxEntry.weight_kg as number} stroke="#38BDF8" strokeDasharray="2 4" strokeWidth={1}
+            label={{ value: `Max ${maxEntry.weight_kg} kg`, position: 'insideTopRight', fontSize: 9, fill: '#38BDF8' }} />
+          <ReferenceLine y={minEntry.weight_kg as number} stroke="#22D3EE" strokeDasharray="2 4" strokeWidth={1}
+            label={{ value: `Min ${minEntry.weight_kg} kg`, position: 'insideBottomRight', fontSize: 9, fill: '#22D3EE' }} />
 
           <Line
             type="monotone"

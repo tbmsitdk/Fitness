@@ -162,11 +162,11 @@ export default function ActivityDetail({ activity, onClose, ftp }: Props) {
             {workAboveFtp && (
               <div className="p-4 rounded-lg border border-border bg-card space-y-1">
                 <p className="text-xs font-semibold">Work Above FTP</p>
-                <p className="text-2xl font-mono font-bold text-orange-400">{workAboveFtp.kj} kJ</p>
+                <p className="text-2xl font-mono font-bold text-orange-400">+{workAboveFtp.avgWattsAboveFtp} W avg</p>
                 <p className="text-[11px] text-muted-foreground">
-                  {fmtDuration(workAboveFtp.secondsAboveFtp)} above FTP ({workAboveFtp.pctTimeAboveFtp}% of ride)
+                  Peak +{workAboveFtp.peakWattsAboveFtp} W · {fmtDuration(workAboveFtp.secondsAboveFtp)} above FTP ({workAboveFtp.pctTimeAboveFtp}% of ride)
                 </p>
-                <p className="text-[10px] text-muted-foreground/60 italic">Excess work beyond FTP — proxy for anaerobic-reserve depletion</p>
+                <p className="text-[10px] text-muted-foreground/60 italic">Excess power beyond FTP — proxy for anaerobic-reserve depletion</p>
               </div>
             )}
             {cardiacLag && (

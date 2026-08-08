@@ -1,5 +1,5 @@
 'use client';
-import { ComposedChart, Scatter, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { ComposedChart, Scatter, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from 'recharts';
 import { Activity } from '@/types';
 import { useMemo } from 'react';
 import { parseISO, format } from 'date-fns';
@@ -20,10 +20,11 @@ function linearTrend(values: number[]): (number | null)[] {
   return values.map((_, i) => Math.round(slope * i + intercept));
 }
 
-// Optimal cadence references
+// Optimal cadence references — cycling gets a shaded ideal-range band,
+// running gets a single "at least this fast" threshold line.
 const CADENCE_REF = {
   running: { value: 170, label: 'Target ≥170 spm', color: '#3B82F6' },
-  cycling: { value: 90,  label: 'Target 85–95 rpm', color: '#22C55E' },
+  cycling: { low: 85, high: 95, label: 'Ideal 85–95 rpm', color: '#22C55E' },
 };
 
 export default function CadenceChart({ activities, sport, height = 200 }: { activities: Activity[]; sport: 'running' | 'cycling'; height?: number }) {
@@ -62,8 +63,13 @@ export default function CadenceChart({ activities, sport, height = 200 }: { acti
           <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} domain={[(dataMin: number) => Math.floor(dataMin * 0.98), (dataMax: number) => Math.ceil(dataMax * 1.02)]} tickFormatter={v => `${v}`} tickCount={5} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }}
             formatter={(v: number, n: string) => n === 'Trend' ? [`${v} ${unit}`, 'Trend'] : [`${v} ${unit}`, 'Cadence']} />
-          <ReferenceLine y={ref.value} stroke="hsl(45 93% 58%)" strokeDasharray="5 3" strokeWidth={1.5}
-            label={{ value: ref.label, position: 'insideTopRight', fontSize: 9, fill: 'hsl(45 93% 58%)' }} />
+          {'value' in ref ? (
+            <ReferenceLine y={ref.value} stroke="hsl(45 93% 58%)" strokeDasharray="5 3" strokeWidth={1.5}
+              label={{ value: ref.label, position: 'insideTopRight', fontSize: 9, fill: 'hsl(45 93% 58%)' }} />
+          ) : (
+            <ReferenceArea y1={ref.low} y2={ref.high} fill="#22C55E" fillOpacity={0.12} stroke="#22C55E" strokeOpacity={0.4} strokeDasharray="4 3"
+              label={{ value: ref.label, position: 'insideTopRight', fontSize: 9, fill: '#22C55E' }} />
+          )}
           <Scatter dataKey="cadence" fill={ref.color} opacity={0.7} />
           <Line dataKey="Trend" stroke="hsl(0 0% 55%)" strokeWidth={1.5} dot={false} strokeDasharray="5 3" legendType="none" />
         </ComposedChart>
