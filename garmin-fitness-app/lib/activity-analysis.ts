@@ -107,3 +107,128 @@ export function computeDecoupling(samples: ActivitySample[], minDurationSeconds 
     interpretation,
   };
 }
+
+// Normalized Power: 30s rolling average of power, raised to the 4th power,
+// meaned, then 4th-rooted — weights surges more heavily than a plain average,
+// approximating the physiological cost of a variable effort.
+export function computeNormalizedPower(samples: ActivitySample[]): number | null {
+  const power = samples.map(s => s.power).filter((v): v is number => v != null && v > 0);
+  const W = Math.max(1, Math.round(30 / SAMPLE_INTERVAL)); // 30s window
+  if (power.length < W) return null;
+
+  const rolling: number[] = [];
+  for (let i = W - 1; i < power.length; i++) {
+    let sum = 0;
+    for (let j = i - W + 1; j <= i; j++) sum += power[j];
+    rolling.push(sum / W);
+  }
+  const meanFourth = rolling.reduce((a, v) => a + Math.pow(v, 4), 0) / rolling.length;
+  return Math.round(Math.pow(meanFourth, 0.25));
+}
+
+export interface VariabilityResult {
+  vi: number;
+  avgPower: number;
+  normalizedPower: number;
+  interpretation: 'steady' | 'variable' | 'highly variable';
+}
+
+// Variability Index = NP / avg power. ~1.0 = steady-state; higher = surgy/interval
+// effort (power varies a lot around the average, even if the average is the same).
+export function computeVariabilityIndex(samples: ActivitySample[]): VariabilityResult | null {
+  const power = samples.map(s => s.power).filter((v): v is number => v != null && v > 0);
+  if (power.length < 3) return null;
+  const np = computeNormalizedPower(samples);
+  if (np == null) return null;
+  const avgPower = Math.round(power.reduce((a, b) => a + b, 0) / power.length);
+  if (avgPower === 0) return null;
+
+  const vi = Math.round((np / avgPower) * 100) / 100;
+  const interpretation: VariabilityResult['interpretation'] =
+    vi < 1.05 ? 'steady' : vi < 1.15 ? 'variable' : 'highly variable';
+
+  return { vi, avgPower, normalizedPower: np, interpretation };
+}
+
+export interface WorkAboveFtpResult {
+  kj: number;              // excess kJ = integral of (power - FTP) while power > FTP
+  secondsAboveFtp: number;
+  pctTimeAboveFtp: number;
+}
+
+// How much "extra", supra-threshold work was done beyond what FTP alone
+// sustains — a proxy for anaerobic-reserve depletion during the ride.
+export function computeWorkAboveFtp(samples: ActivitySample[], ftp: number | null | undefined): WorkAboveFtpResult | null {
+  if (!ftp || ftp <= 0) return null;
+  const valid = samples.filter(s => s.power != null);
+  if (valid.length === 0) return null;
+
+  let excessJoules = 0;
+  let secondsAbove = 0;
+  for (const s of valid) {
+    const p = s.power as number;
+    if (p > ftp) {
+      excessJoules += (p - ftp) * SAMPLE_INTERVAL;
+      secondsAbove += SAMPLE_INTERVAL;
+    }
+  }
+  if (secondsAbove === 0) return { kj: 0, secondsAboveFtp: 0, pctTimeAboveFtp: 0 };
+
+  const totalSeconds = valid.length * SAMPLE_INTERVAL;
+  return {
+    kj: Math.round(excessJoules / 100) / 10, // 1 decimal kJ
+    secondsAboveFtp: secondsAbove,
+    pctTimeAboveFtp: Math.round((secondsAbove / totalSeconds) * 100),
+  };
+}
+
+export interface CardiacLagResult {
+  lagSeconds: number;
+  correlation: number; // Pearson r at the best-fit lag
+  confidence: 'high' | 'moderate' | 'low';
+}
+
+function pearson(xs: number[], ys: number[]): number | null {
+  const n = xs.length;
+  if (n < 5) return null;
+  const meanX = xs.reduce((a, b) => a + b, 0) / n;
+  const meanY = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0, denX = 0, denY = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - meanX, dy = ys[i] - meanY;
+    num += dx * dy; denX += dx * dx; denY += dy * dy;
+  }
+  if (denX === 0 || denY === 0) return null;
+  return num / Math.sqrt(denX * denY);
+}
+
+// How many seconds does HR lag behind power? Slides HR forward against power
+// by 0..maxLagSeconds and picks the lag with the strongest correlation — most
+// informative for interval/surge-heavy workouts where power repeatedly steps
+// up and down (a steady ride has too little power variance to fit a lag to).
+export function computeCardiacLag(samples: ActivitySample[], maxLagSeconds = 90): CardiacLagResult | null {
+  const valid = samples.filter(s => s.power != null && s.hr != null);
+  if (valid.length < 30) return null;
+  const power = valid.map(s => s.power as number);
+  const hr = valid.map(s => s.hr as number);
+
+  const maxLagSamples = Math.floor(maxLagSeconds / SAMPLE_INTERVAL);
+  let bestLag = 0;
+  let bestR = -Infinity;
+  for (let lag = 0; lag <= maxLagSamples; lag++) {
+    const n = power.length - lag;
+    if (n < 20) break;
+    const r = pearson(power.slice(0, n), hr.slice(lag, lag + n));
+    if (r != null && r > bestR) { bestR = r; bestLag = lag; }
+  }
+  if (bestR === -Infinity) return null;
+
+  const confidence: CardiacLagResult['confidence'] =
+    bestR > 0.5 ? 'high' : bestR > 0.3 ? 'moderate' : 'low';
+
+  return {
+    lagSeconds: bestLag * SAMPLE_INTERVAL,
+    correlation: Math.round(bestR * 100) / 100,
+    confidence,
+  };
+}

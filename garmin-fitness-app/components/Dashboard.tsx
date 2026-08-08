@@ -278,7 +278,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
         </div>
       )}
 
-      <ActivityDetail activity={selectedActivity} onClose={() => setSelectedActivity(null)} />
+      <ActivityDetail activity={selectedActivity} onClose={() => setSelectedActivity(null)} ftp={latestFtp} />
       <ActivitiesBrowser
         activities={allActivities}
         open={browserOpen}
