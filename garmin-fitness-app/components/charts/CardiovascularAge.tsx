@@ -1,8 +1,14 @@
 'use client';
 import { useMemo } from 'react';
+import {
+  ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
+import { format, parseISO } from 'date-fns';
 import { Activity, WellnessRecord } from '@/types';
 import { UserSettings, getAge } from '@/lib/settings';
-import { computeCardioAge } from '@/lib/cardio-age';
+import { computeCardioAge, computeCardioAgeHistory } from '@/lib/cardio-age';
+
+const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
 
 interface Props {
   settings: UserSettings;
@@ -59,6 +65,20 @@ export default function CardiovascularAge({ settings, wellness, activities }: Pr
     return { chrono, result };
   }, [settings, wellness, activities]);
 
+  const history = useMemo(
+    () => computeCardioAgeHistory(wellness, activities, settings),
+    [wellness, activities, settings]
+  );
+
+  const spanYears = new Set(history.map(p => p.date.slice(0, 4))).size > 1;
+  const dateFmt = spanYears ? "MMM ''yy" : 'MMM d';
+  const chartData = history.map(p => ({
+    label: format(parseISO(p.date), dateFmt),
+    cardioAge: p.cardioAge,
+    chronoAge: p.chronoAge,
+  }));
+  const tickInterval = Math.max(1, Math.floor(chartData.length / 10));
+
   const delta = result.cardioAge - chrono;
   const deltaColor = delta < 0 ? '#22C55E' : delta > 5 ? '#EF4444' : '#F59E0B';
   const deltaText = delta < 0 ? `${Math.abs(delta)} yrs younger` : delta > 0 ? `${delta} yrs older` : 'same as chrono age';
@@ -99,6 +119,27 @@ export default function CardiovascularAge({ settings, wellness, activities }: Pr
         norms shown elsewhere in the app; HRV is scored against an approximate age-expected baseline and varies
         widely between individuals, so it's given a lighter weight.
       </p>
+
+      {chartData.length >= 2 && (
+        <div className="pt-2 border-t border-border/60">
+          <p className="text-xs font-semibold mb-2">Cardiovascular Age Over Time</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} interval={tickInterval} />
+              <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} tickFormatter={v => `${v}y`} domain={['auto', 'auto']} tickCount={5} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }}
+                formatter={(v: number, n: string) => [`${v} yrs`, n === 'cardioAge' ? 'Cardio Age' : 'Chrono Age']} />
+              <Line type="monotone" dataKey="chronoAge" name="chronoAge" stroke="hsl(240 5% 50%)" strokeWidth={1.5} strokeDasharray="5 3" dot={false} />
+              <Line type="monotone" dataKey="cardioAge" name="cardioAge" stroke="#22C55E" strokeWidth={2} dot={false} />
+            </ComposedChart>
+          </ResponsiveContainer>
+          <p className="text-[10px] text-muted-foreground/60 mt-1 italic">
+            Green = cardiovascular age reconstructed weekly from historical biomarkers (forward-filled between
+            readings). Grey dashed = chronological age at each point in time. Below the grey line = biologically younger.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

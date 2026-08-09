@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { computeCardioAge, rhrScore, bodyFatScore, hrvScore, activeMinutesScore } from '@/lib/cardio-age';
+import { computeCardioAge, computeCardioAgeHistory, rhrScore, bodyFatScore, hrvScore, activeMinutesScore } from '@/lib/cardio-age';
+import type { WellnessRecord, Activity } from '@/types';
+import type { UserSettings } from '@/lib/settings';
+import { DEFAULT_SETTINGS } from '@/lib/settings';
 
 describe('rhrScore', () => {
   it('scores lower RHR higher', () => {
@@ -86,5 +89,82 @@ describe('computeCardioAge', () => {
     const vo2Factor = result.factors.find(f => f.key === 'vo2')!;
     const expected = Math.round((vo2Factor.score * 25 + activityFactor.score * 15) / 40);
     expect(result.composite).toBe(expected);
+  });
+});
+
+// ── computeCardioAgeHistory ──────────────────────────────────────────────────
+
+function wellnessDay(dateStr: string, overrides: Partial<WellnessRecord> = {}): WellnessRecord {
+  return {
+    id: 0, date: dateStr,
+    steps: null, resting_hr: null, hrv_rmssd: null, sleep_hours: null, sleep_score: null,
+    body_fat_pct: null, muscle_mass_kg: null, bone_mass_kg: null, body_water_pct: null,
+    visceral_fat: null, metabolic_age: null, stress_score: null, body_battery: null,
+    weight_kg: null, vo2max: null, fitness_age: null, flights_climbed: null,
+    respiratory_rate: null, walking_asymmetry_pct: null, walking_speed: null,
+    walking_double_support_pct: null, oxygen_saturation: null, mindful_minutes: null,
+    ...overrides,
+  };
+}
+
+function activityDay(dateStr: string, durationSeconds = 3600): Activity {
+  return {
+    id: 0, garmin_id: dateStr, activity_type: 'cycling', date: dateStr, title: '',
+    distance_km: 20, duration_seconds: durationSeconds, calories: 500,
+    avg_hr: 130, max_hr: 160, training_effect: null, avg_cadence: null,
+    avg_speed_kmh: null, tss: null, avg_power: null, max_power: null,
+    elevation_gain: null, normalized_power: null, ftp: null,
+  };
+}
+
+const settings: UserSettings = { ...DEFAULT_SETTINGS, sex: 'male', birthDate: '1969-01-01' };
+
+describe('computeCardioAgeHistory', () => {
+  it('returns an empty array with no data at all', () => {
+    expect(computeCardioAgeHistory([], [], settings)).toEqual([]);
+  });
+
+  it('produces no points when only activity data exists (no biomarkers)', () => {
+    const activities = [activityDay('2024-01-05'), activityDay('2024-01-12')];
+    expect(computeCardioAgeHistory([], activities, settings)).toEqual([]);
+  });
+
+  it('produces points once biomarker data exists, forward-filling between readings', () => {
+    const wellness = [
+      wellnessDay('2024-01-01', { resting_hr: 50, vo2max: 45 }),
+      wellnessDay('2024-02-01', { resting_hr: 48, vo2max: 46 }),
+    ];
+    const history = computeCardioAgeHistory(wellness, [], settings);
+    expect(history.length).toBeGreaterThan(0);
+    // every point should carry a chronoAge and cardioAge
+    for (const p of history) {
+      expect(p.chronoAge).toBeGreaterThan(0);
+      expect(p.cardioAge).toBeGreaterThan(0);
+    }
+  });
+
+  it('drops a forward-filled reading once it exceeds its lookback window', () => {
+    // A single VO2max reading, then sample far enough past it (>120d lookback) that
+    // it should no longer count — history should stop extending biomarker coverage
+    // indefinitely from one stale reading.
+    const wellness = [wellnessDay('2024-01-01', { vo2max: 45 })];
+    const history = computeCardioAgeHistory(wellness, [], settings, 30);
+    const early = history.find(p => p.date === '2024-01-01');
+    const late = history.find(p => new Date(p.date).getTime() - new Date('2024-01-01').getTime() > 130 * 86400000);
+    expect(early).toBeDefined();
+    expect(late).toBeUndefined(); // no longer generated once the only biomarker goes stale
+  });
+
+  it('reconstructs age-at-the-time using birthDate rather than todays age for every point', () => {
+    const wellness = [
+      wellnessDay('2020-01-01', { resting_hr: 50 }),
+      wellnessDay('2020-06-01', { resting_hr: 50 }),
+    ];
+    const history = computeCardioAgeHistory(wellness, [], settings, 60);
+    // birthDate 1969-01-01 => age 51 on 2020-01-01, age increases as dates progress
+    const first = history[0];
+    const last = history[history.length - 1];
+    expect(first.chronoAge).toBe(51);
+    expect(last.chronoAge).toBeGreaterThanOrEqual(first.chronoAge);
   });
 });

@@ -24,16 +24,22 @@ export const DEFAULT_SETTINGS: UserSettings = {
   minCyclingPower: null,
 };
 
-export function getAge(s: UserSettings): number {
+// Age as of a specific date rather than today — used to build historical
+// time series (e.g. cardiovascular age over time) where each past point
+// should use the age the person actually was on that date.
+export function getAgeAsOf(s: UserSettings, asOf: Date): number {
   if (s.birthDate) {
     const birth = new Date(s.birthDate);
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    let age = asOf.getFullYear() - birth.getFullYear();
+    const m = asOf.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && asOf.getDate() < birth.getDate())) age--;
     return Math.max(10, Math.min(110, age));
   }
-  return Math.max(20, Math.min(100, new Date().getFullYear() - s.birthYear));
+  return Math.max(20, Math.min(100, asOf.getFullYear() - s.birthYear));
+}
+
+export function getAge(s: UserSettings): number {
+  return getAgeAsOf(s, new Date());
 }
 
 export function getMaxHR(s: UserSettings): number {
