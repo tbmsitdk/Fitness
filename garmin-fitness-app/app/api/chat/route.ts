@@ -5,6 +5,7 @@ import { coerceActivity, coerceWellness } from '@/lib/db';
 import { ChatMessage } from '@/types';
 import type { UserSettings } from '@/lib/settings';
 import { buildMaxHrLookup } from '@/lib/hr-zones';
+import { coerceExerciseLog } from '@/lib/exercises';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -182,12 +183,16 @@ export async function POST(request: NextRequest) {
     // max-HR window is fully populated for the oldest summarised activity.
     const hrCutoff = new Date(Date.now() - (90 + 365) * 86400 * 1000).toISOString();
 
-    const [actResult, wellResult, ftpResult, hrResult] = await Promise.all([
+    const [actResult, wellResult, ftpResult, hrResult, exerciseResult] = await Promise.all([
       sql`SELECT * FROM activities WHERE date >= ${cutoff} ORDER BY date`,
       sql`SELECT * FROM wellness WHERE date >= ${cutoff} ORDER BY date`,
       sql`SELECT ftp_watts FROM ftp_entries ORDER BY date DESC LIMIT 1`,
       sql`SELECT date, max_hr FROM activities WHERE max_hr IS NOT NULL AND date >= ${hrCutoff}`,
+      sql`SELECT id, date::text, exercise_key, sets, reps, duration_seconds, load_kg,
+                 vital_capacity_l, inspiratory_strength, expiratory_strength, notes
+          FROM exercise_logs WHERE date >= ${cutoff.slice(0, 10)} ORDER BY date`,
     ]);
+    const exerciseLogs = exerciseResult.rows.map(coerceExerciseLog);
 
     const activities = actResult.rows.map(coerceActivity);
     const wellness   = wellResult.rows.map(coerceWellness);
@@ -218,6 +223,7 @@ export async function POST(request: NextRequest) {
             settings,
             manualFtpWatts,
             sampleSummaries,
+            exerciseLogs,
           )) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: chunk })}\n\n`));
           }

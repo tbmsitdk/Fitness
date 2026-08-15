@@ -32,10 +32,13 @@ interface DayData {
 
 interface Props {
   activities: Activity[];
+  /** Estimated TSS from manually-logged routine days, keyed YYYY-MM-DD.
+   *  Merged in so logged strength/mobility work shows up as training too. */
+  extraTssByDate?: Map<string, number>;
   height?: number;
 }
 
-export default function TrainingHeatmap({ activities }: Props) {
+export default function TrainingHeatmap({ activities, extraTssByDate }: Props) {
   // Build year list from data
   const years = useMemo(() => {
     const ys = new Set(activities.map(a => new Date(a.date).getFullYear()));
@@ -64,8 +67,16 @@ export default function TrainingHeatmap({ activities }: Props) {
       });
       map.set(key, ex);
     }
+    // Merge in manually-logged routine days
+    for (const [date, tss] of extraTssByDate ?? []) {
+      if (tss <= 0) continue;
+      const ex = map.get(date) ?? { tss: 0, acts: [] };
+      ex.tss += tss;
+      ex.acts.push({ type: 'routine', title: 'Strength & mobility routine', distance_km: 0, duration_seconds: 0 });
+      map.set(date, ex);
+    }
     return map;
-  }, [activities]);
+  }, [activities, extraTssByDate]);
 
   // Build grid for selected year
   const { cells, monthLabels, totalTSS, activeDays } = useMemo(() => {

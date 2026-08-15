@@ -106,9 +106,30 @@ export async function initializeDatabase() {
     )
   `;
 
+  // Manually-logged mobility / strength / respiratory routine. One row per
+  // (date, exercise) — re-saving the same day upserts rather than duplicating.
+  await sql`
+    CREATE TABLE IF NOT EXISTS exercise_logs (
+      id SERIAL PRIMARY KEY,
+      date DATE NOT NULL,
+      exercise_key VARCHAR(50) NOT NULL,
+      sets INTEGER,
+      reps INTEGER,
+      duration_seconds INTEGER,
+      load_kg DECIMAL(6,2),
+      vital_capacity_l DECIMAL(5,2),
+      inspiratory_strength DECIMAL(6,2),
+      expiratory_strength DECIMAL(6,2),
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (date, exercise_key)
+    )
+  `;
+
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_type ON activities(activity_type)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_wellness_date ON wellness(date)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_exercise_logs_date ON exercise_logs(date)`;
 
   // ── Short-lived MFA code drop-box used by the Garmin token regen flow.
   // The GitHub Actions workflow initiates a Garmin login (which triggers an

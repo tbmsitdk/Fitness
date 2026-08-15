@@ -14,6 +14,9 @@ interface Props {
   allActivities: Activity[];
   settings: UserSettings;
   ftp: number | null;
+  /** Dates (YYYY-MM-DD) with a logged strength/mobility routine — these count
+   *  as training days for the consecutive-days rest rule. */
+  exerciseDays?: Set<string>;
 }
 
 type Intensity = 'rest' | 'easy' | 'moderate' | 'quality' | 'optimal';
@@ -161,6 +164,7 @@ function compute(
   trainingLoad: TrainingLoadForecast[],
   wellness: WellnessRecord[],
   activities: Activity[],
+  exerciseDays?: Set<string>,
 ): Suggestion {
   // Get latest non-projected TSB / ACWR (acute:chronic workload ratio = ATL/CTL)
   const historicalLoad = trainingLoad.filter(d => !d.projected);
@@ -197,11 +201,16 @@ function compute(
     d.setDate(d.getDate() - n);
     return d.toISOString().split('T')[0];
   });
-  const trainingDaysLast3 = new Set(
+  const trainingDayDates = new Set(
     activities
       .filter(a => isTrainingSession(a) && last3Days.some(d => a.date.split('T')[0].startsWith(d)))
       .map(a => a.date.split('T')[0])
-  ).size;
+  );
+  // A logged strength/mobility routine counts as a training day too
+  for (const d of last3Days) {
+    if (exerciseDays?.has(d)) trainingDayDates.add(d);
+  }
+  const trainingDaysLast3 = trainingDayDates.size;
   const forceRest = trainingDaysLast3 >= 3;
 
   if (forceRest) {
@@ -212,7 +221,7 @@ function compute(
       recovery,
       acwr,
       sleepDebt,
-      reason: `${trainingDaysLast3} training days (rides/runs ≥20 min) in the last 3 days — walks are excluded. Recovery is part of the training.`,
+      reason: `${trainingDaysLast3} training days in the last 3 days (rides/runs ≥20 min, or a logged strength/mobility routine) — casual walks are excluded. Recovery is part of the training.`,
     };
   }
 
@@ -332,8 +341,11 @@ function compute(
   };
 }
 
-export default function DailySuggestion({ trainingLoad, wellness, activities, allActivities, settings, ftp }: Props) {
-  const suggestion = useMemo(() => compute(trainingLoad, wellness, activities), [trainingLoad, wellness, activities]);
+export default function DailySuggestion({ trainingLoad, wellness, activities, allActivities, settings, ftp, exerciseDays }: Props) {
+  const suggestion = useMemo(
+    () => compute(trainingLoad, wellness, activities, exerciseDays),
+    [trainingLoad, wellness, activities, exerciseDays]
+  );
   const workout = useMemo(
     () => pickWorkout(suggestion.intensity, allActivities, settings, ftp),
     [suggestion.intensity, allActivities, settings, ftp]

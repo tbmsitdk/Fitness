@@ -3,6 +3,9 @@ import { Activity, WellnessRecord, AISummary } from '@/types';
 import { compute90DaySummary, computeTrainingLoad, estimateTSS } from '@/lib/training-load';
 import { getAge, getThresholdHR, getMaxHR } from '@/lib/settings';
 import { vo2maxRating } from '@/lib/vo2max';
+import {
+  EXERCISES, CATEGORY_LABEL, primaryValue, primaryUnit, type ExerciseLog,
+} from '@/lib/exercises';
 import type { UserSettings } from '@/lib/settings';
 
 const client = new Anthropic({
@@ -35,6 +38,7 @@ Guidelines:
 interface FullContext {
   user_profile: Record<string, unknown>;
   training: Record<string, unknown>;
+  strength_and_mobility: Record<string, unknown>;
   body_composition: Record<string, unknown>;
   wellness: Record<string, unknown>;
   cycling_performance: Record<string, unknown>;
@@ -42,11 +46,50 @@ interface FullContext {
   longevity: Record<string, unknown>;
 }
 
+// Summarises the manually-logged routine for the coach. Without this the coach
+// only sees Garmin activities and wrongly concludes there is no resistance work.
+function summariseExerciseLogs(logs: ExerciseLog[] | undefined) {
+  if (!logs || logs.length === 0) {
+    return { logged: false, note: 'No manually-logged strength/mobility routine in this period.' };
+  }
+  const now = Date.now();
+  const last28 = logs.filter(l => now - new Date(l.date).getTime() < 28 * 86400000);
+  const days = new Set(last28.map(l => l.date.slice(0, 10)));
+
+  const byExercise: Record<string, unknown> = {};
+  for (const def of EXERCISES) {
+    const entries = last28
+      .filter(l => l.exercise_key === def.key)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    if (entries.length === 0) continue;
+    const values = entries.map(primaryValue).filter((v): v is number => v != null);
+    if (values.length === 0) continue;
+    byExercise[def.key] = {
+      label: def.label,
+      category: CATEGORY_LABEL[def.category],
+      sessions_28d: entries.length,
+      unit: primaryUnit(def.key),
+      latest: values[values.length - 1],
+      best: Math.max(...values),
+      first: values[0],
+    };
+  }
+
+  return {
+    logged: true,
+    days_logged_28d: days.size,
+    sessions_per_week: Math.round((days.size / 4) * 10) / 10,
+    exercises: byExercise,
+    note: 'Manually-logged mobility/strength/respiratory routine. These are real resistance and mobility sessions that do NOT appear as Garmin activities — do not report the user as doing zero strength training if this section has data. Grip strength (kg) and dead hang (seconds) are longevity-relevant markers worth tracking for progression.',
+  };
+}
+
 export function buildFullContext(
   activities: Activity[],
   wellness: WellnessRecord[],
   userSettings?: Partial<UserSettings>,
   manualFtpWatts?: number | null,
+  exerciseLogs?: ExerciseLog[],
 ): FullContext {
   const sorted = [...wellness].sort((a, b) => a.date.localeCompare(b.date));
   const now = Date.now();
@@ -176,8 +219,9 @@ export function buildFullContext(
       acwr:                    acwr ? Math.round(acwr * 100) / 100 : null,
       acwr_risk:               !acwr ? 'unknown' : acwr < 0.8 ? 'undertraining' : acwr <= 1.3 ? 'optimal' : acwr <= 1.5 ? 'elevated' : 'high',
       avg_run_pace_min_km:     avgRunPaceMinKm ? Math.round(avgRunPaceMinKm * 10) / 10 : null,
-      note: 'TSS/CTL/ATL estimated from HR + duration where Garmin did not supply a TSS value (most walks/runs). Treat weekly_tss as approximate load, not device-reported.',
+      note: 'TSS/CTL/ATL estimated from HR + duration where Garmin did not supply a TSS value (most walks/runs). Treat weekly_tss as approximate load, not device-reported. Manually-logged strength/mobility work is NOT included in these figures — see strength_and_mobility.',
     },
+    strength_and_mobility: summariseExerciseLogs(exerciseLogs),
     body_composition: {
       weight_kg:      latestBC?.weight_kg ?? latestWeight,
       body_fat_pct:   latestBC?.body_fat_pct ?? null,
@@ -236,8 +280,9 @@ export async function generateWeeklySummary(
   wellness: WellnessRecord[],
   userSettings?: Partial<UserSettings>,
   manualFtpWatts?: number | null,
+  exerciseLogs?: ExerciseLog[],
 ): Promise<AISummary> {
-  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts);
+  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs);
 
   // Forced tool call guarantees schema-valid JSON — no fence-stripping or
   // regex extraction, which broke when the model wrapped output in ```json.
@@ -310,8 +355,9 @@ export async function* streamChat(
   // Per-second HR/power summaries computed from activity_samples (NP, best efforts, HR zones, decoupling)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sampleSummaries?: any[],
+  exerciseLogs?: ExerciseLog[],
 ): AsyncGenerator<string> {
-  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts);
+  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs);
 
   const samplesSection = sampleSummaries && sampleSummaries.length > 0
     ? `\n\n## Per-Second HR & Power Analysis (Last ${sampleSummaries.length} Activities)

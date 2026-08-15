@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { Trash2, Lock, LockOpen, Pencil, Check, X, AlertTriangle, Loader2, ShieldCheck, Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import type { OutlierProposal } from '@/app/api/data/outliers/route';
+import ExerciseLog from '@/components/ExerciseLog';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -713,7 +714,7 @@ function AnomalyDetector({ onApplied }: { onApplied: () => void }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type SubTab = 'wellness' | 'activities' | 'anomalies';
+type SubTab = 'wellness' | 'activities' | 'exercises' | 'anomalies';
 
 export default function DataManager() {
   const [subTab, setSubTab] = useState<SubTab>('wellness');
@@ -722,6 +723,7 @@ export default function DataManager() {
   const tabs: { id: SubTab; label: string }[] = [
     { id: 'wellness', label: 'Wellness' },
     { id: 'activities', label: 'Activities' },
+    { id: 'exercises', label: 'Exercise Log' },
     { id: 'anomalies', label: 'Anomaly Detector' },
   ];
 
@@ -756,6 +758,7 @@ export default function DataManager() {
         <CardContent className="pt-4">
           {subTab === 'wellness' && <WellnessTable key={refreshKey} />}
           {subTab === 'activities' && <ActivitiesTable key={refreshKey} />}
+          {subTab === 'exercises' && <ExerciseLog key={refreshKey} />}
           {subTab === 'anomalies' && <AnomalyDetector onApplied={() => setRefreshKey(k => k + 1)} />}
         </CardContent>
       </Card>

@@ -1,6 +1,7 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Activity, WellnessRecord, FtpEntry } from '@/types';
+import { estimateExerciseTss, type ExerciseLog as ExerciseLogRow } from '@/lib/exercises';
 import { computeWeeklyVolume, computeTrainingLoadWithForecast, computeEfficiencyFactor, computePersonalBests, computeConsistency, computePeriodSummary, filterCyclingByPower, TrainingLoadForecast, EfficiencyFactorPoint } from '@/lib/training-load';
 import WeeklyVolumeChart from './charts/WeeklyVolumeChart';
 import FitnessTrendChart, { WellnessMetric } from './charts/FitnessTrendChart';
@@ -25,6 +26,7 @@ import RacePredictor from './charts/RacePredictor';
 import TrainingMonotony from './charts/TrainingMonotony';
 import OptimalTrainingDays from './charts/OptimalTrainingDays';
 import CardiovascularAge from './charts/CardiovascularAge';
+import ExerciseProgress from './charts/ExerciseProgress';
 import SleepDebtChart from './charts/SleepDebtChart';
 import BodyBatteryChart from './charts/BodyBatteryChart';
 import BodyCompositionChart from './charts/BodyCompositionChart';
@@ -95,6 +97,33 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
   const [showYoY, setShowYoY] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
+
+  // Manually-logged routine — counts as training per the user's setting, so it
+  // feeds the rest-day rule and the training heatmap alongside device activities.
+  const [exerciseLogs, setExerciseLogs] = useState<ExerciseLogRow[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/exercises?days=3650', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => { if (!cancelled) setExerciseLogs(Array.isArray(d.logs) ? d.logs : []); })
+      .catch(() => { if (!cancelled) setExerciseLogs([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // date -> estimated TSS for that day's logged routine
+  const exerciseTssByDate = useMemo(() => {
+    const byDate = new Map<string, ExerciseLogRow[]>();
+    for (const log of exerciseLogs) {
+      const d = log.date.slice(0, 10);
+      byDate.set(d, [...(byDate.get(d) ?? []), log]);
+    }
+    return new Map(Array.from(byDate, ([d, logs]) => [d, estimateExerciseTss(logs)]));
+  }, [exerciseLogs]);
+
+  const exerciseDays = useMemo(
+    () => new Set(exerciseLogs.map(l => l.date.slice(0, 10))),
+    [exerciseLogs]
+  );
 
   const age        = getAge(settings);
   const maxHR      = getMaxHR(settings);
@@ -253,7 +282,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Today's status */}
           <ReadinessScore wellness={sortedAllWellness} />
           <WeeklyReport />
-          <DailySuggestion trainingLoad={trainingLoad} wellness={sortedAllWellness} activities={allActivities} allActivities={allActivities} settings={settings} ftp={latestFtp} />
+          <DailySuggestion trainingLoad={trainingLoad} wellness={sortedAllWellness} activities={allActivities} allActivities={allActivities} settings={settings} ftp={latestFtp} exerciseDays={exerciseDays} />
 
           {/* Volume overview */}
           <ExpandableCard
@@ -289,6 +318,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       {/* ── TRAINING ─────────────────────────────────────────────────────── */}
       {subTab === 'training' && (
         <div className="space-y-4">
+          {/* Manually-logged mobility / strength / respiratory routine */}
+          <ExpandableCard title="Strength & Mobility Routine">
+            {(expanded) => <ExerciseProgress cutoff={cutoff} height={expanded ? 520 : undefined} />}
+          </ExpandableCard>
+
           {/* Load management */}
           <ExpandableCard title="Training Load & Forecast">
             {(expanded) => (
@@ -314,7 +348,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             {() => <InjuryRiskScore activities={allActivities} trainingLoad={trainingLoad} wellness={sortedWellness} />}
           </ExpandableCard>
           <ExpandableCard title="Training Heatmap">
-            {() => <TrainingHeatmap activities={allActivities} />}
+            {() => <TrainingHeatmap activities={allActivities} extraTssByDate={exerciseTssByDate} />}
           </ExpandableCard>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="Monthly Consistency">
