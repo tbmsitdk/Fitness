@@ -25,24 +25,31 @@ describe('exercise catalog', () => {
     expect(grouped).toHaveLength(EXERCISES.length);
   });
 
-  it('gives every rep-based exercise a secondsPerRep so duration can be estimated', () => {
+  it('times everything in seconds except grip strength (kg) and Airofit', () => {
     for (const e of EXERCISES) {
-      if (e.primaryMetric === 'reps') expect(e.secondsPerRep, e.key).toBeGreaterThan(0);
+      if (e.key === 'grip_strength_press') expect(e.primaryMetric).toBe('load');
+      else if (e.key === 'airofit')        expect(e.primaryMetric).toBe('airofit');
+      else                                  expect(e.primaryMetric, e.key).toBe('duration');
     }
+  });
+
+  it('gives grip strength a secondsPerRep so its work time can still be estimated', () => {
+    expect(EXERCISE_BY_KEY.grip_strength_press.secondsPerRep).toBeGreaterThan(0);
   });
 });
 
 describe('primaryValue', () => {
-  it('multiplies reps by sets', () => {
-    expect(primaryValue(log({ exercise_key: 'squats', reps: 10, sets: 3 }))).toBe(30);
+  it('multiplies hold-time by sets', () => {
+    expect(primaryValue(log({ exercise_key: 'squats', duration_seconds: 30, sets: 3 }))).toBe(90);
   });
 
   it('treats a missing set count as a single set', () => {
-    expect(primaryValue(log({ exercise_key: 'squats', reps: 12 }))).toBe(12);
+    expect(primaryValue(log({ exercise_key: 'squats', duration_seconds: 45 }))).toBe(45);
   });
 
-  it('multiplies hold-time by sets for duration exercises', () => {
+  it('multiplies hold-time by sets for every timed exercise', () => {
     expect(primaryValue(log({ exercise_key: 'dead_hang', duration_seconds: 30, sets: 2 }))).toBe(60);
+    expect(primaryValue(log({ exercise_key: 'marches', duration_seconds: 60, sets: 2 }))).toBe(120);
   });
 
   it('never multiplies a grip-strength reading by sets — it is a peak value', () => {
@@ -60,8 +67,9 @@ describe('primaryValue', () => {
 
 describe('primaryUnit', () => {
   it('maps each metric type to its unit', () => {
-    expect(primaryUnit('squats')).toBe('reps');
+    expect(primaryUnit('squats')).toBe('s');
     expect(primaryUnit('dead_hang')).toBe('s');
+    expect(primaryUnit('trunk_twists')).toBe('s');
     expect(primaryUnit('grip_strength_press')).toBe('kg');
     expect(primaryUnit('airofit')).toBe('min');
   });
@@ -72,9 +80,9 @@ describe('estimatedSeconds', () => {
     expect(estimatedSeconds(log({ exercise_key: 'dead_hang', duration_seconds: 45, sets: 2 }))).toBe(90);
   });
 
-  it('estimates from reps x secondsPerRep when no timer was recorded', () => {
-    // squats: 3s per rep
-    expect(estimatedSeconds(log({ exercise_key: 'squats', reps: 20 }))).toBe(60);
+  it('estimates grip work from reps x secondsPerRep when no timer was recorded', () => {
+    // grip_strength_press: 3s per squeeze
+    expect(estimatedSeconds(log({ exercise_key: 'grip_strength_press', reps: 20 }))).toBe(60);
   });
 
   it('returns 0 when neither duration nor reps exist', () => {
@@ -95,16 +103,23 @@ describe('estimateExerciseTss', () => {
 
   it('stays conservative — a full 30-minute routine is a modest TSS', () => {
     const tss = estimateExerciseTss([
-      log({ exercise_key: 'squats', reps: 60 }),
+      log({ exercise_key: 'squats', duration_seconds: 180 }),
       log({ exercise_key: 'dead_hang', duration_seconds: 120 }),
-      log({ exercise_key: 'trunk_twists', reps: 100 }),
+      log({ exercise_key: 'trunk_twists', duration_seconds: 200 }),
+      log({ exercise_key: 'marches', duration_seconds: 300 }),
     ]);
     expect(tss).toBeGreaterThan(0);
     expect(tss).toBeLessThan(30);
   });
 
+  it('counts each set of a timed hold', () => {
+    const single = estimateExerciseTss([log({ exercise_key: 'squats', duration_seconds: 60 })]);
+    const triple = estimateExerciseTss([log({ exercise_key: 'squats', duration_seconds: 60, sets: 3 })]);
+    expect(triple).toBeCloseTo(single * 3, 5);
+  });
+
   it('ignores unknown exercise keys rather than throwing', () => {
-    expect(estimateExerciseTss([log({ exercise_key: 'not_a_real_exercise', reps: 10 })])).toBe(0);
+    expect(estimateExerciseTss([log({ exercise_key: 'not_a_real_exercise', duration_seconds: 60 })])).toBe(0);
   });
 });
 

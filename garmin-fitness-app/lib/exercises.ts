@@ -47,32 +47,34 @@ export const CATEGORY_INTENSITY: Record<ExerciseCategory, number> = {
   respiratory: 0.30,
 };
 
+// Everything is timed in seconds except the grip dynamometer (kg + reps) and
+// Airofit. Sets default to 1 in the UI and when absent in the data.
 export const EXERCISES: ExerciseDef[] = [
   // ── Strength & Endurance ──────────────────────────────────────────────────
-  { key: 'squats',              label: 'Squats',                     category: 'strength', primaryMetric: 'reps',     secondsPerRep: 3 },
-  { key: 'ballet_squats',       label: 'Ballet squats',              category: 'strength', primaryMetric: 'reps',     secondsPerRep: 3 },
+  { key: 'squats',              label: 'Squats',                     category: 'strength', primaryMetric: 'duration' },
+  { key: 'ballet_squats',       label: 'Ballet squats',              category: 'strength', primaryMetric: 'duration' },
   { key: 'horseback_stands',    label: 'Horseback stands',           category: 'strength', primaryMetric: 'duration', hint: 'Isometric hold' },
   { key: 'doorway_press',       label: 'Doorway press',              category: 'strength', primaryMetric: 'duration', hint: 'Isometric hold' },
   { key: 'dead_hang',           label: 'Dead hang',                  category: 'strength', primaryMetric: 'duration', hint: 'Grip + shoulder decompression' },
-  { key: 'grip_strength_press', label: 'Grip strength press',        category: 'strength', primaryMetric: 'load',     hint: 'Dynamometer reading (kg)' },
+  { key: 'grip_strength_press', label: 'Grip strength press',        category: 'strength', primaryMetric: 'load',     secondsPerRep: 3, hint: 'Dynamometer resistance (kg) + reps' },
 
   // ── Spine & Trunk Mobility ────────────────────────────────────────────────
   { key: 'foam_roller_thoracic', label: 'Foam roller thoracic ext.', category: 'spine', primaryMetric: 'duration' },
-  { key: 'body_waves',           label: 'Body waves',                category: 'spine', primaryMetric: 'reps', secondsPerRep: 3 },
-  { key: 'trunk_twists',         label: 'Trunk twists',              category: 'spine', primaryMetric: 'reps', secondsPerRep: 2 },
-  { key: 'twist_the_waist',      label: 'Twist the waist',           category: 'spine', primaryMetric: 'reps', secondsPerRep: 2 },
-  { key: 'golf_swings',          label: 'Golf swings',               category: 'spine', primaryMetric: 'reps', secondsPerRep: 2 },
+  { key: 'body_waves',           label: 'Body waves',                category: 'spine', primaryMetric: 'duration' },
+  { key: 'trunk_twists',         label: 'Trunk twists',              category: 'spine', primaryMetric: 'duration' },
+  { key: 'twist_the_waist',      label: 'Twist the waist',           category: 'spine', primaryMetric: 'duration' },
+  { key: 'golf_swings',          label: 'Golf swings',               category: 'spine', primaryMetric: 'duration' },
 
   // ── Shoulder & Arm Mobility ───────────────────────────────────────────────
-  { key: 'forward_arm_circles',  label: 'Forward arm circles',       category: 'shoulder', primaryMetric: 'reps', secondsPerRep: 2 },
-  { key: 'backward_arm_swings',  label: 'Backward arm swings',       category: 'shoulder', primaryMetric: 'reps', secondsPerRep: 2 },
-  { key: 'arm_swings',           label: 'Arm swings',                category: 'shoulder', primaryMetric: 'reps', secondsPerRep: 2 },
-  { key: 'dead_arms',            label: 'Dead arms',                 category: 'shoulder', primaryMetric: 'reps', secondsPerRep: 2 },
-  { key: 'tiptoe_arm_swings',    label: 'Tiptoe arm swings',         category: 'shoulder', primaryMetric: 'reps', secondsPerRep: 2 },
+  { key: 'forward_arm_circles',  label: 'Forward arm circles',       category: 'shoulder', primaryMetric: 'duration' },
+  { key: 'backward_arm_swings',  label: 'Backward arm swings',       category: 'shoulder', primaryMetric: 'duration' },
+  { key: 'arm_swings',           label: 'Arm swings',                category: 'shoulder', primaryMetric: 'duration' },
+  { key: 'dead_arms',            label: 'Dead arms',                 category: 'shoulder', primaryMetric: 'duration' },
+  { key: 'tiptoe_arm_swings',    label: 'Tiptoe arm swings',         category: 'shoulder', primaryMetric: 'duration' },
 
   // ── Circulation & Activation ──────────────────────────────────────────────
-  { key: 'lymphatic_hops',       label: 'Lymphatic hops',            category: 'circulation', primaryMetric: 'reps', secondsPerRep: 1 },
-  { key: 'marches',              label: 'Marches',                   category: 'circulation', primaryMetric: 'reps', secondsPerRep: 1 },
+  { key: 'lymphatic_hops',       label: 'Lymphatic hops',            category: 'circulation', primaryMetric: 'duration' },
+  { key: 'marches',              label: 'Marches',                   category: 'circulation', primaryMetric: 'duration' },
 
   // ── Respiratory ───────────────────────────────────────────────────────────
   { key: 'airofit',              label: 'Airofit',                   category: 'respiratory', primaryMetric: 'airofit', hint: 'Breathing trainer session' },

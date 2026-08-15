@@ -121,7 +121,7 @@ export default function ExerciseLog() {
   }
 
   const loggedToday = Object.values(draft).filter(f =>
-    Object.entries(f).some(([k, v]) => k !== 'notes' && v !== '')
+    Object.entries(f).some(([k, v]) => k !== 'notes' && k !== 'sets' && v !== '')
   ).length;
 
   // Dates that already have entries — quick jump list
@@ -176,7 +176,7 @@ export default function ExerciseLog() {
                 {group.exercises.map(def => {
                   const vals = draft[def.key] ?? {};
                   const pField = primaryField(def);
-                  const filled = Object.entries(vals).some(([k, v]) => k !== 'notes' && v !== '');
+                  const filled = Object.entries(vals).some(([k, v]) => k !== 'notes' && k !== 'sets' && v !== '');
                   return (
                     <div key={def.key} className={cn('flex items-center gap-2 px-3 py-2 flex-wrap', filled && 'bg-secondary/30')}>
                       <div className="min-w-[190px] flex-1">
@@ -184,11 +184,11 @@ export default function ExerciseLog() {
                         {def.hint && <p className="text-[10px] text-muted-foreground">{def.hint}</p>}
                       </div>
 
-                      {/* Sets — not meaningful for a single dynamometer reading */}
+                      {/* Sets — defaults to 1; not meaningful for a dynamometer reading */}
                       {def.primaryMetric !== 'load' && def.primaryMetric !== 'airofit' && (
                         <input
-                          type="number" min="0" step="1" placeholder="sets"
-                          value={vals.sets ?? ''}
+                          type="number" min="0" step="1" placeholder="sets" title="Sets"
+                          value={vals.sets ?? '1'}
                           onChange={e => setField(def.key, 'sets', e.target.value)}
                           className="w-16 rounded border border-border bg-secondary px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
                         />
@@ -197,10 +197,21 @@ export default function ExerciseLog() {
                       <input
                         type="number" min="0" step={def.primaryMetric === 'load' ? '0.1' : '1'}
                         placeholder={primaryPlaceholder(def)}
+                        title={def.primaryMetric === 'load' ? 'Resistance (kg)' : def.primaryMetric === 'airofit' ? 'Session seconds' : 'Seconds'}
                         value={vals[pField] ?? ''}
                         onChange={e => setField(def.key, pField, e.target.value)}
                         className="w-20 rounded border border-border bg-secondary px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
                       />
+
+                      {/* Grip strength also records how many squeezes at that resistance */}
+                      {def.primaryMetric === 'load' && (
+                        <input
+                          type="number" min="0" step="1" placeholder="reps" title="Reps"
+                          value={vals.reps ?? ''}
+                          onChange={e => setField(def.key, 'reps', e.target.value)}
+                          className="w-20 rounded border border-border bg-secondary px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      )}
 
                       {/* Airofit's own device readings */}
                       {def.primaryMetric === 'airofit' && (
@@ -236,8 +247,9 @@ export default function ExerciseLog() {
       )}
 
       <p className="text-[10px] text-muted-foreground/60 italic">
-        Leave an exercise blank to skip it — clearing a previously-saved value removes it from that day.
-        Sets multiply reps/hold-time for the totals; grip strength records your peak dynamometer reading.
+        Everything is logged in seconds except grip strength (resistance in kg + reps) and Airofit.
+        Sets default to 1 and multiply the hold-time for totals. Leave an exercise blank to skip it —
+        clearing a previously-saved value removes it from that day.
       </p>
 
       {/* Recently logged days */}

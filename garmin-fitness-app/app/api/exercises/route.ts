@@ -88,8 +88,12 @@ export async function POST(req: NextRequest) {
         ? entry.notes.trim()
         : null;
 
+      // "sets" alone is not a log — the form pre-fills it with 1, so an entry
+      // carrying only a set count means the exercise wasn't actually done.
+      const meaningful = fields.filter(f => f !== 'sets');
+
       // Nothing logged for this exercise — clear any existing row for the day
-      if (fields.length === 0 && notes == null) {
+      if (meaningful.length === 0 && notes == null) {
         const del = await client.query(
           `DELETE FROM exercise_logs WHERE date = $1 AND exercise_key = $2`,
           [date, entry.exercise_key]

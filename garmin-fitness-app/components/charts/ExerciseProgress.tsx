@@ -159,7 +159,7 @@ export default function ExerciseProgress({ cutoff, height = 240 }: Props) {
       </div>
 
       <p className="text-[10px] text-muted-foreground/60 italic">
-        Reps and hold-times are multiplied by sets. Grip strength shows your peak dynamometer reading,
+        Hold-times are in seconds, multiplied by sets. Grip strength shows your peak resistance (kg),
         Airofit shows session minutes.
       </p>
     </div>
