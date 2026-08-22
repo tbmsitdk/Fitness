@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { Loader2, Check, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import {
-  exercisesByCategory, CATEGORY_COLOR, EXERCISE_BY_KEY,
+  exercisesByCategory, CATEGORY_COLOR, EXERCISE_BY_KEY, defaultDraft,
   type ExerciseLog as ExerciseLogRow, type ExerciseDef,
 } from '@/lib/exercises';
 
@@ -59,9 +59,17 @@ export default function ExerciseLog() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Rebuild the draft whenever the selected date (or the loaded data) changes
+  // Rebuild the draft whenever the selected date (or the loaded data) changes.
+  // A day with nothing saved yet is pre-filled with the prescribed routine so
+  // the common case is "glance, adjust what differed, Save". A day that already
+  // has entries shows exactly what was saved — pre-filling there would silently
+  // add exercises you never did when you edited an existing log.
   useEffect(() => {
     const forDate = allLogs.filter(l => l.date.slice(0, 10) === date);
+    if (forDate.length === 0) {
+      setDraft(defaultDraft());
+      return;
+    }
     const next: DraftValues = {};
     for (const log of forDate) {
       const fields: Record<string, string> = {};
@@ -148,6 +156,10 @@ export default function ExerciseLog() {
         </div>
         <div className="ml-auto flex items-center gap-2">
           {savedAt && <span className="text-[11px] text-green-400 flex items-center gap-1"><Check className="w-3 h-3" />Saved</span>}
+          <Button size="sm" variant="ghost" onClick={() => { setDraft(defaultDraft()); setSavedAt(null); }}
+            disabled={saving || loading} title="Reset every field to the prescribed routine">
+            Fill defaults
+          </Button>
           <Button size="sm" onClick={save} disabled={saving || loading}>
             {saving ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
             Save log

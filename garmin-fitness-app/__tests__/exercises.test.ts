@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   EXERCISES, EXERCISE_BY_KEY, exercisesByCategory, primaryValue, primaryUnit,
-  estimatedSeconds, estimateExerciseTss, coerceExerciseLog, type ExerciseLog,
+  estimatedSeconds, estimateExerciseTss, coerceExerciseLog, defaultDraft,
+  currentStreak, totalSeconds, CATEGORY_COLOR, CATEGORY_ORDER, type ExerciseLog,
 } from '@/lib/exercises';
 
 function log(overrides: Partial<ExerciseLog> & { exercise_key: string }): ExerciseLog {
@@ -148,5 +149,80 @@ describe('coerceExerciseLog', () => {
 describe('catalog integrity', () => {
   it('EXERCISE_BY_KEY resolves every catalog entry', () => {
     for (const e of EXERCISES) expect(EXERCISE_BY_KEY[e.key]).toBe(e);
+  });
+});
+
+describe('defaultDraft', () => {
+  it('pre-fills the prescribed routine', () => {
+    const d = defaultDraft();
+    expect(d.squats).toEqual({ sets: '1', duration_seconds: '30' });
+    expect(d.doorway_press).toEqual({ sets: '1', duration_seconds: '120' });
+    expect(d.dead_hang).toEqual({ sets: '2', duration_seconds: '10' });
+    expect(d.foam_roller_thoracic).toEqual({ sets: '1', duration_seconds: '180' });
+  });
+
+  it('gives grip strength kg + reps and no sets', () => {
+    expect(defaultDraft().grip_strength_press).toEqual({ load_kg: '5', reps: '100' });
+  });
+
+  it('omits Airofit so it is only logged when actually used', () => {
+    expect(defaultDraft().airofit).toBeUndefined();
+  });
+
+  it('produces values the save path treats as real entries, not blanks', () => {
+    // Every default must carry something other than "sets", or the API would
+    // discard it as an untouched row.
+    for (const [key, fields] of Object.entries(defaultDraft())) {
+      const meaningful = Object.keys(fields).filter(f => f !== 'sets');
+      expect(meaningful.length, key).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('currentStreak', () => {
+  it('counts consecutive days ending today', () => {
+    expect(currentStreak(['2026-08-20', '2026-08-21', '2026-08-22'], '2026-08-22')).toBe(3);
+  });
+
+  it('still counts when today is not logged yet but yesterday was', () => {
+    expect(currentStreak(['2026-08-20', '2026-08-21'], '2026-08-22')).toBe(2);
+  });
+
+  it('is broken once the last log is older than yesterday', () => {
+    expect(currentStreak(['2026-08-18', '2026-08-19'], '2026-08-22')).toBe(0);
+  });
+
+  it('ignores gaps before the current run', () => {
+    expect(currentStreak(['2026-08-01', '2026-08-21', '2026-08-22'], '2026-08-22')).toBe(2);
+  });
+
+  it('is 0 with no logs', () => {
+    expect(currentStreak([], '2026-08-22')).toBe(0);
+  });
+
+  it('de-duplicates multiple entries on the same day', () => {
+    expect(currentStreak(['2026-08-22', '2026-08-22', '2026-08-21'], '2026-08-22')).toBe(2);
+  });
+});
+
+describe('totalSeconds', () => {
+  it('sums estimated work across entries', () => {
+    expect(totalSeconds([
+      log({ exercise_key: 'squats', duration_seconds: 30, sets: 2 }),
+      log({ exercise_key: 'dead_hang', duration_seconds: 10 }),
+    ])).toBe(70);
+  });
+});
+
+describe('category palette', () => {
+  it('assigns a distinct validated colour to every category', () => {
+    const colors = CATEGORY_ORDER.map(c => CATEGORY_COLOR[c]);
+    expect(new Set(colors).size).toBe(CATEGORY_ORDER.length);
+  });
+
+  it('no longer uses the purple/blue pair that failed CVD validation', () => {
+    const colors = Object.values(CATEGORY_COLOR).map(c => c.toLowerCase());
+    expect(colors).not.toContain('#a78bfa');
+    expect(colors).not.toContain('#3b82f6');
   });
 });
