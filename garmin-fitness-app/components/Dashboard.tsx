@@ -53,6 +53,7 @@ import ExpandableCard from '@/components/ExpandableCard';
 import ActivityDetail from '@/components/ActivityDetail';
 import ActivitiesBrowser from '@/components/ActivitiesBrowser';
 import { subDays, parseISO, format } from 'date-fns';
+import { useDataVersion } from '@/lib/data-refresh';
 
 interface Props {
   activities: Activity[];
@@ -101,14 +102,15 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
   // Manually-logged routine — counts as training per the user's setting, so it
   // feeds the rest-day rule and the training heatmap alongside device activities.
   const [exerciseLogs, setExerciseLogs] = useState<ExerciseLogRow[]>([]);
+  const dataVersion = useDataVersion();
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/exercises?days=3650', { cache: 'no-store' })
+    fetch(`/api/exercises?days=3650&t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then(d => { if (!cancelled) setExerciseLogs(Array.isArray(d.logs) ? d.logs : []); })
       .catch(() => { if (!cancelled) setExerciseLogs([]); });
     return () => { cancelled = true; };
-  }, []);
+  }, [dataVersion]);
 
   // date -> estimated TSS for that day's logged routine
   const exerciseTssByDate = useMemo(() => {

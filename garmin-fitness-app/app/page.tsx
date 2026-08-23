@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Upload from '@/components/Upload';
 import Dashboard from '@/components/Dashboard';
 import AICoach from '@/components/AICoach';
@@ -13,6 +13,7 @@ import { Activity as ActivityIcon, BarChart3, Sparkles, Upload as UploadIcon, Se
 import { cn } from '@/lib/utils';
 import { subDays, startOfYear, parseISO } from 'date-fns';
 import { UserSettings, loadSettings, DEFAULT_SETTINGS } from '@/lib/settings';
+import { DataRefreshProvider } from '@/lib/data-refresh';
 
 type Tab = 'upload' | 'dashboard' | 'ai-coach' | 'data' | 'settings';
 
@@ -44,6 +45,9 @@ export default function Home() {
   const [period, setPeriod] = useState<PeriodLabel>('1Y');
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [ftpEntries, setFtpEntries] = useState<FtpEntry[]>([]);
+  // Bumped after every successful write anywhere in the app; components that
+  // fetch their own data key their useEffect off it and re-fetch.
+  const [dataVersion, setDataVersion] = useState(0);
 
   useEffect(() => {
     // Load settings: DB is source of truth, localStorage is the fast cache
@@ -61,30 +65,47 @@ export default function Home() {
       setSettings(loadSettings());
     }
     initSettings();
-    loadData();
-  }, []);
+    loadData({ switchTab: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function loadData() {
+  // no-store + cache-busting param: Vercel's edge has served stale JSON here
+  // before, which would silently defeat the whole refresh mechanism.
+  const loadData = useCallback(async ({ switchTab = false }: { switchTab?: boolean } = {}) => {
+    const t = Date.now();
+    const noStore: RequestInit = { cache: 'no-store' };
     try {
       const [actRes, wellRes, ftpRes] = await Promise.all([
-        fetch('/api/activities'),
-        fetch('/api/wellness'),
-        fetch('/api/ftp'),
+        fetch(`/api/activities?t=${t}`, noStore),
+        fetch(`/api/wellness?t=${t}`, noStore),
+        fetch(`/api/ftp?t=${t}`, noStore),
       ]);
       if (actRes.ok && wellRes.ok) {
         const acts: Activity[] = await actRes.json();
         const well: WellnessRecord[] = await wellRes.json();
         setAllActivities(acts);
         setAllWellness(well);
-        if (acts.length > 0) { setHasData(true); setActiveTab('dashboard'); }
+        if (acts.length > 0) {
+          setHasData(true);
+          // Only auto-navigate on the initial load — a background refresh
+          // triggered by an edit must not yank the user off the Data tab.
+          if (switchTab) setActiveTab('dashboard');
+        }
       }
       if (ftpRes.ok) setFtpEntries(await ftpRes.json());
     } catch { /* DB not yet provisioned */ }
     finally { setLoading(false); }
-  }
+  }, []);
+
+  // Single refresh entry point for the whole tree.
+  const refreshData = useCallback(async () => {
+    await loadData();
+    setDataVersion(v => v + 1);
+  }, [loadData]);
+
+  const refreshCtx = useMemo(() => ({ dataVersion, refreshData }), [dataVersion, refreshData]);
 
   async function onUploadComplete() {
-    await loadData();
+    await refreshData();
     setActiveTab('dashboard');
   }
 
@@ -121,6 +142,7 @@ export default function Home() {
   ];
 
   return (
+    <DataRefreshProvider value={refreshCtx}>
     <div className="min-h-screen flex flex-col">
       {/* Header */}
       <header className="border-b border-border/60 bg-background/95 backdrop-blur sticky top-0 z-20">
@@ -216,5 +238,6 @@ export default function Home() {
         )}
       </main>
     </div>
+    </DataRefreshProvider>
   );
 }

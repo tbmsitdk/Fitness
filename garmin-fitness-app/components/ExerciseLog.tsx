@@ -8,6 +8,7 @@ import {
   exercisesByCategory, CATEGORY_COLOR, EXERCISE_BY_KEY, defaultDraft,
   type ExerciseLog as ExerciseLogRow, type ExerciseDef,
 } from '@/lib/exercises';
+import { useDataRefresh } from '@/lib/data-refresh';
 
 const today = () => new Date().toISOString().split('T')[0];
 
@@ -40,6 +41,7 @@ export default function ExerciseLog() {
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [allLogs, setAllLogs] = useState<ExerciseLogRow[]>([]);
+  const { dataVersion, refreshData } = useDataRefresh();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,7 +59,8 @@ export default function ExerciseLog() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Re-loads on mount and whenever anything in the app writes data.
+  useEffect(() => { load(); }, [load, dataVersion]);
 
   // Rebuild the draft whenever the selected date (or the loaded data) changes.
   // A day with nothing saved yet is pre-filled with the prescribed routine so
@@ -105,7 +108,9 @@ export default function ExerciseLog() {
         throw new Error(body.error || `HTTP ${res.status}`);
       }
       setSavedAt(Date.now());
-      await load();
+      // Bumps dataVersion, which re-runs load() here and re-fetches the
+      // exercise-driven charts on the Dashboard.
+      await refreshData();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -120,7 +125,7 @@ export default function ExerciseLog() {
       const res = await fetch(`/api/exercises?date=${date}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setDraft({});
-      await load();
+      await refreshData();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed');
     } finally {

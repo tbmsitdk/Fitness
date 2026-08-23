@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
+import { useDataVersion } from '@/lib/data-refresh';
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
@@ -62,6 +63,7 @@ export default function ExerciseProgress({ cutoff, height = 240 }: Props) {
   const [logs, setLogs] = useState<ExerciseLog[] | null>(null);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const dataVersion = useDataVersion();
 
   useEffect(() => {
     let cancelled = false;
@@ -70,7 +72,7 @@ export default function ExerciseProgress({ cutoff, height = 240 }: Props) {
       .then(data => { if (!cancelled) setLogs(Array.isArray(data.logs) ? data.logs : []); })
       .catch(() => { if (!cancelled) { setError(true); setLogs([]); } });
     return () => { cancelled = true; };
-  }, []);
+  }, [dataVersion]);
 
   const inPeriod = useMemo(
     () => (logs ?? []).filter(l => new Date(l.date) >= cutoff),

@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useDataVersion } from '@/lib/data-refresh';
 import { Loader2 } from 'lucide-react';
 import HRZoneChart from './HRZoneChart';
 import { HRZoneData } from '@/types';
@@ -22,6 +23,7 @@ interface Props {
 export default function HRZoneDistribution({ cutoff, fallbackMaxHR, sport, height }: Props) {
   const [resp, setResp] = useState<ZoneResponse | null>(null);
   const [error, setError] = useState(false);
+  const dataVersion = useDataVersion();
 
   useEffect(() => {
     let cancelled = false;
@@ -37,7 +39,7 @@ export default function HRZoneDistribution({ cutoff, fallbackMaxHR, sport, heigh
       .then((data: ZoneResponse) => { if (!cancelled) setResp(data); })
       .catch(() => { if (!cancelled) setError(true); });
     return () => { cancelled = true; };
-  }, [cutoff, fallbackMaxHR, sport]);
+  }, [cutoff, fallbackMaxHR, sport, dataVersion]);
 
   if (error) {
     return <div className="h-32 flex items-center justify-center text-xs text-muted-foreground">Could not load HR zone distribution</div>;

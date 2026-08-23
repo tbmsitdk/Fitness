@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useDataVersion } from '@/lib/data-refresh';
 import { cn } from '@/lib/utils';
 
 interface InsightCard {
@@ -28,19 +29,24 @@ export default function InsightCards() {
   const [insights, setInsights] = useState<InsightCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const dataVersion = useDataVersion();
 
   useEffect(() => {
-    fetch('/api/insights')
+    let cancelled = false;
+    fetch(`/api/insights?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(data => {
+        if (cancelled) return;
         setInsights(data.insights ?? []);
         setLoading(false);
       })
       .catch(e => {
+        if (cancelled) return;
         setError(String(e));
         setLoading(false);
       });
-  }, []);
+    return () => { cancelled = true; };
+  }, [dataVersion]);
 
   if (loading) {
     return (

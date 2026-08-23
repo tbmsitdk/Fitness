@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useDataVersion } from '@/lib/data-refresh';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,12 +37,13 @@ export default function WeeklyReportCard() {
   const [report, setReport] = useState<WeeklyReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const dataVersion = useDataVersion();
 
   async function fetchReport(force = false) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/weekly-report${force ? '?force=1' : ''}`);
+      const res = await fetch(`/api/weekly-report?t=${Date.now()}${force ? '&force=1' : ''}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as { report: WeeklyReport; error?: string };
       if (data.error) throw new Error(data.error);
@@ -53,7 +55,8 @@ export default function WeeklyReportCard() {
     }
   }
 
-  useEffect(() => { fetchReport(); }, []);
+  // Re-reads the (server-cached) report after any data change.
+  useEffect(() => { fetchReport(); }, [dataVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <Skeleton />;
 

@@ -8,6 +8,7 @@ import { Trash2, Lock, LockOpen, Pencil, Check, X, AlertTriangle, Loader2, Shiel
 import { format, parseISO } from 'date-fns';
 import type { OutlierProposal } from '@/app/api/data/outliers/route';
 import ExerciseLog from '@/components/ExerciseLog';
+import { useDataRefresh, useRefreshAfter } from '@/lib/data-refresh';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,12 @@ async function mutate(url: string, init?: RequestInit): Promise<boolean> {
   }
 }
 
+// Same helper, but a successful write also refreshes the app-wide data so the
+// Dashboard reflects the change immediately. A failed write refreshes nothing.
+function useMutate() {
+  return useRefreshAfter(mutate);
+}
+
 const jsonBody = (body: unknown): RequestInit => ({
   method: 'PATCH',
   headers: { 'Content-Type': 'application/json' },
@@ -107,12 +114,14 @@ function EditableCell({
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(false);
+  const doMutate = useMutate();
+  const { refreshData } = useDataRefresh();
 
   function startEdit() { setDraft(value != null ? String(value) : ''); setEditing(true); setError(false); }
 
   async function toggleLock() {
     const newLock = !locked;
-    const ok = await mutate(`/api/data/wellness/${id}`, jsonBody({ field, value, lock: newLock }));
+    const ok = await doMutate(`/api/data/wellness/${id}`, jsonBody({ field, value, lock: newLock }));
     if (ok) onSaved(field, value, newLock);
   }
 
@@ -128,7 +137,10 @@ function EditableCell({
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setEditing(false);
+      // Optimistic in-place update first (no flicker, no revert), then let the
+      // rest of the app pick the change up.
       onSaved(field, parsed, true);
+      await refreshData();
     } catch {
       setError(true);
     } finally {
@@ -232,6 +244,7 @@ function AddWellnessEntry({ onAdded }: { onAdded: () => void }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { refreshData } = useDataRefresh();
 
   function reset() {
     setValues({});
@@ -266,6 +279,7 @@ function AddWellnessEntry({ onAdded }: { onAdded: () => void }) {
       reset();
       setOpen(false);
       onAdded();
+      await refreshData();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -347,6 +361,7 @@ function WellnessTable() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const doMutate = useMutate();
 
   const load = useCallback(async (p = page) => {
     setLoading(true);
@@ -378,7 +393,7 @@ function WellnessTable() {
   async function deleteRow(id: number) {
     if (!confirm('Delete this entire wellness record?')) return;
     setDeleting(id);
-    const ok = await mutate(`/api/data/wellness/${id}`, { method: 'DELETE' });
+    const ok = await doMutate(`/api/data/wellness/${id}`, { method: 'DELETE' });
     setDeleting(null);
     if (ok) load(page);
   }
@@ -482,14 +497,18 @@ function ActivitiesTable() {
   const [deleting, setDeleting] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const PER_PAGE = 50;
+  const doMutate = useMutate();
+  const { dataVersion } = useDataRefresh();
 
   useEffect(() => {
-    fetch('/api/activities')
+    let cancelled = false;
+    fetch(`/api/activities?t=${Date.now()}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then((data: ActivityRow[]) => setRows(Array.isArray(data) ? data : []))
-      .catch(() => setRows([]))
-      .finally(() => setLoading(false));
-  }, []);
+      .then((data: ActivityRow[]) => { if (!cancelled) setRows(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setRows([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [dataVersion]);
 
   async function deleteActivity(id: number, tombstone: boolean) {
     const msg = tombstone
@@ -497,7 +516,7 @@ function ActivitiesTable() {
       : 'Delete this activity? It may reappear on the next data upload.';
     if (!confirm(msg)) return;
     setDeleting(id);
-    const ok = await mutate(`/api/data/activities/${id}`, {
+    const ok = await doMutate(`/api/data/activities/${id}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tombstone }),
@@ -598,6 +617,7 @@ function AnomalyDetector({ onApplied }: { onApplied: () => void }) {
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
   const [applying, setApplying] = useState<Set<number>>(new Set());
   const [done, setDone] = useState(false);
+  const doMutate = useMutate();
 
   async function detect() {
     setLoading(true);
@@ -616,11 +636,11 @@ function AnomalyDetector({ onApplied }: { onApplied: () => void }) {
     let ok = false;
     if (p.type === 'wellness_field' && p.field) {
       // lock:true — without it the next Garmin sync would restore the bad value
-      ok = await mutate(`/api/data/wellness/${p.id}`, jsonBody({ field: p.field, value: null, lock: true }));
+      ok = await doMutate(`/api/data/wellness/${p.id}`, jsonBody({ field: p.field, value: null, lock: true }));
     } else if (p.type === 'wellness_row') {
-      ok = await mutate(`/api/data/wellness/${p.id}`, { method: 'DELETE' });
+      ok = await doMutate(`/api/data/wellness/${p.id}`, { method: 'DELETE' });
     } else if (p.type === 'activity') {
-      ok = await mutate(`/api/data/activities/${p.id}`, {
+      ok = await doMutate(`/api/data/activities/${p.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tombstone: true }),

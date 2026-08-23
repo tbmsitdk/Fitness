@@ -1,6 +1,7 @@
 'use client';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useEffect, useState } from 'react';
+import { useDataVersion } from '@/lib/data-refresh';
 import { Loader2 } from 'lucide-react';
 
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
@@ -37,6 +38,7 @@ interface Props {
 export default function PowerZonesChart({ ftp, cutoff, minCyclingPower, height = 140 }: Props) {
   const [resp, setResp] = useState<ZoneResponse | null>(null);
   const [error, setError] = useState(false);
+  const dataVersion = useDataVersion();
 
   useEffect(() => {
     let cancelled = false;
@@ -52,7 +54,7 @@ export default function PowerZonesChart({ ftp, cutoff, minCyclingPower, height =
       .then((data: ZoneResponse) => { if (!cancelled) setResp(data); })
       .catch(() => { if (!cancelled) setError(true); });
     return () => { cancelled = true; };
-  }, [ftp, cutoff, minCyclingPower]);
+  }, [ftp, cutoff, minCyclingPower, dataVersion]);
 
   if (error) {
     return <div className="h-[180px] flex items-center justify-center text-xs text-muted-foreground">Could not load zone distribution</div>;
