@@ -458,20 +458,24 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
       const values: unknown[] = [];
       const rows: string[] = [];
 
-      // Garmin smart scales report 0.00 for body composition when the impedance
-      // reading fails (too-brief weigh-in, wrong user profile). Zero is physically
-      // impossible for these fields — store null so charts and stats skip the day.
-      const pos = (v: number | null | undefined): number | null =>
-        v != null && v > 0 ? v : null;
-
+      // ── Body composition is entered manually, never imported ────────────
+      // The Garmin scale is shared with another person, and the sync script
+      // falls back to the static profile weight when a day has no reading —
+      // which stamped the same weight onto every day. These columns are now
+      // owned entirely by manual entry (Data → Wellness) and imports pass NULL,
+      // so COALESCE in the upsert below preserves whatever you entered.
+      // To re-enable Garmin import, pass r.<field> in values.push() again —
+      // and re-add a guard dropping 0.00 readings, which is what a Garmin scale
+      // writes when the impedance measurement fails.
       batch.forEach((r, j) => {
         const b = j * 24;
         rows.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16},$${b+17},$${b+18},$${b+19},$${b+20},$${b+21},$${b+22},$${b+23},$${b+24})`);
         values.push(
           r.date, r.steps, r.resting_hr, r.hrv_rmssd, r.sleep_hours, r.sleep_score,
-          r.stress_score, r.body_battery, pos(r.weight_kg), r.vo2max ?? null, r.fitness_age ?? null,
-          pos(r.body_fat_pct), pos(r.muscle_mass_kg), pos(r.bone_mass_kg),
-          pos(r.body_water_pct), r.visceral_fat ?? null, r.metabolic_age ?? null,
+          // Body composition is USER-OWNED — never imported. See MANUAL_ONLY note above.
+          r.stress_score, r.body_battery, null, r.vo2max ?? null, r.fitness_age ?? null,
+          null, null, null,
+          null, null, null,
           r.flights_climbed ?? null, r.respiratory_rate ?? null, r.walking_asymmetry_pct ?? null,
           r.walking_speed ?? null, r.walking_double_support_pct ?? null,
           r.oxygen_saturation ?? null, r.mindful_minutes ?? null,

@@ -27,6 +27,7 @@ import TrainingMonotony from './charts/TrainingMonotony';
 import OptimalTrainingDays from './charts/OptimalTrainingDays';
 import CardiovascularAge from './charts/CardiovascularAge';
 import ExerciseProgress from './charts/ExerciseProgress';
+import AirofitProgress from './charts/AirofitProgress';
 import SleepDebtChart from './charts/SleepDebtChart';
 import BodyBatteryChart from './charts/BodyBatteryChart';
 import BodyCompositionChart from './charts/BodyCompositionChart';
@@ -323,6 +324,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Manually-logged mobility / strength / respiratory routine */}
           <ExpandableCard title="Strength & Mobility Routine">
             {(expanded) => <ExerciseProgress cutoff={cutoff} height={expanded ? 520 : undefined} />}
+          </ExpandableCard>
+
+          {/* Respiratory capacity — device readings, not session time */}
+          <ExpandableCard title="Airofit · Respiratory Capacity">
+            {(expanded) => <AirofitProgress cutoff={cutoff} height={expanded ? 460 : undefined} />}
           </ExpandableCard>
 
           {/* Load management */}
