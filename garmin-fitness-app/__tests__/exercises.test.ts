@@ -152,8 +152,11 @@ describe('catalog integrity', () => {
   });
 });
 
+// defaultDraft is no longer applied automatically — a fresh day starts empty so
+// every logged number is one the user actually entered. It now backs the
+// explicit "Fill defaults" button, so it must still describe the routine.
 describe('defaultDraft', () => {
-  it('pre-fills the prescribed routine', () => {
+  it('describes the prescribed routine', () => {
     const d = defaultDraft();
     expect(d.squats).toEqual({ sets: '1', duration_seconds: '30' });
     expect(d.doorway_press).toEqual({ sets: '1', duration_seconds: '120' });

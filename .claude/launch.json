@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "fitness",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "garmin-fitness-app", "run", "dev"],
+      "port": 3000
+    },
+    {
       "name": "home-hub-frontend",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "home-hub/frontend", "run", "dev"],

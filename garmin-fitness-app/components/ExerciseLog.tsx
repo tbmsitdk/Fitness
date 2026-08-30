@@ -63,14 +63,15 @@ export default function ExerciseLog() {
   useEffect(() => { load(); }, [load, dataVersion]);
 
   // Rebuild the draft whenever the selected date (or the loaded data) changes.
-  // A day with nothing saved yet is pre-filled with the prescribed routine so
-  // the common case is "glance, adjust what differed, Save". A day that already
-  // has entries shows exactly what was saved — pre-filling there would silently
-  // add exercises you never did when you edited an existing log.
+  // A day with nothing saved yet starts EMPTY — every number in the log should
+  // be one you actually entered, never one the form assumed. The prescribed
+  // routine still shows as placeholder text, and "Fill defaults" applies it in
+  // one click when the day did go to plan. A day that already has entries shows
+  // exactly what was saved.
   useEffect(() => {
     const forDate = allLogs.filter(l => l.date.slice(0, 10) === date);
     if (forDate.length === 0) {
-      setDraft(defaultDraft());
+      setDraft({});
       return;
     }
     const next: DraftValues = {};
@@ -162,7 +163,7 @@ export default function ExerciseLog() {
         <div className="ml-auto flex items-center gap-2">
           {savedAt && <span className="text-[11px] text-green-400 flex items-center gap-1"><Check className="w-3 h-3" />Saved</span>}
           <Button size="sm" variant="ghost" onClick={() => { setDraft(defaultDraft()); setSavedAt(null); }}
-            disabled={saving || loading} title="Reset every field to the prescribed routine">
+            disabled={saving || loading} title="Fill every field with the prescribed routine, then adjust what differed">
             Fill defaults
           </Button>
           <Button size="sm" onClick={save} disabled={saving || loading}>
