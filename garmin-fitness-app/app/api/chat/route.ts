@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
       sql`SELECT id, date::text, exercise_key, sets, reps, duration_seconds, load_kg,
                  vital_capacity_l, inspiratory_strength, expiratory_strength, notes
           FROM exercise_logs WHERE date >= ${cutoff.slice(0, 10)} ORDER BY date`,
-      sql`SELECT id, date::text, alcohol_units, candy_portions, sugary_drinks,
+      sql`SELECT id, date::text, alcohol_units, candy_portions, savoury_snacks, sugary_drinks,
                  to_char(last_food_time, 'HH24:MI') AS last_food_time,
                  caffeine_after_14, meal_quality, notes
           FROM nutrition_logs WHERE date >= ${cutoff.slice(0, 10)} ORDER BY date`,

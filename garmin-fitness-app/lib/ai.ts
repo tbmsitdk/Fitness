@@ -91,6 +91,7 @@ function summariseNutrition(
   const present = (arr: (number | null)[]): number[] => arr.filter((v): v is number => v != null);
   const alcohol = present(logs.map(l => l.alcohol_units));
   const candy = present(logs.map(l => l.candy_portions));
+  const savoury = present(logs.map(l => l.savoury_snacks));
   const ranked = rankEffects(logs, metricsByDate, STANDARD_EXPOSURES).slice(0, 8);
 
   return {
@@ -106,6 +107,11 @@ function summariseNutrition(
       days_recorded: candy.length,
       days_with_candy: candy.filter(v => v > 0).length,
       avg_portions_per_recorded_day: candy.length ? Math.round((candy.reduce((s, v) => s + v, 0) / candy.length) * 10) / 10 : null,
+    },
+    savoury_snacks: {
+      days_recorded: savoury.length,
+      days_with_snacks: savoury.filter(v => v > 0).length,
+      avg_portions_per_recorded_day: savoury.length ? Math.round((savoury.reduce((s, v) => s + v, 0) / savoury.length) * 10) / 10 : null,
     },
     measured_effects: ranked.map(e => ({
       habit: e.exposureLabel,

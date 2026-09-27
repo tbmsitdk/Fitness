@@ -135,6 +135,7 @@ export async function initializeDatabase() {
       date DATE UNIQUE NOT NULL,
       alcohol_units DECIMAL(4,1),
       candy_portions DECIMAL(4,1),
+      savoury_snacks DECIMAL(4,1),
       sugary_drinks DECIMAL(4,1),
       last_food_time TIME,
       caffeine_after_14 BOOLEAN,
@@ -144,6 +145,9 @@ export async function initializeDatabase() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `;
+  // Additive — the table may already exist from an earlier deploy, in which case
+  // CREATE TABLE IF NOT EXISTS above is a no-op and would not add this column.
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS savoury_snacks DECIMAL(4,1)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_nutrition_date ON nutrition_logs(date)`;
 
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date)`;

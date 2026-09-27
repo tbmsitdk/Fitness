@@ -4,7 +4,7 @@ import { Check, Loader2, Info, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDataVersion, useRefreshAfter } from '@/lib/data-refresh';
 import {
-  NUTRITION_FIELDS, MEAL_QUALITY_LEVELS, ALCOHOL_REFERENCE, CANDY_REFERENCE,
+  NUTRITION_FIELDS, MEAL_QUALITY_LEVELS, ALCOHOL_REFERENCE, CANDY_REFERENCE, SAVOURY_REFERENCE,
   hasAnyEntry, type NutritionLog as NLog, type FieldDef,
 } from '@/lib/nutrition';
 
@@ -15,12 +15,12 @@ const todayStr = () => {
 };
 
 type Draft = {
-  alcohol_units: string; candy_portions: string; sugary_drinks: string;
+  alcohol_units: string; candy_portions: string; savoury_snacks: string; sugary_drinks: string;
   last_food_time: string; caffeine_after_14: boolean; meal_quality: string; notes: string;
 };
 
 const EMPTY: Draft = {
-  alcohol_units: '', candy_portions: '', sugary_drinks: '',
+  alcohol_units: '', candy_portions: '', savoury_snacks: '', sugary_drinks: '',
   last_food_time: '', caffeine_after_14: false, meal_quality: '', notes: '',
 };
 
@@ -109,6 +109,7 @@ export default function NutritionLog() {
     setDraft({
       alcohol_units: row.alcohol_units?.toString() ?? '',
       candy_portions: row.candy_portions?.toString() ?? '',
+      savoury_snacks: row.savoury_snacks?.toString() ?? '',
       sugary_drinks: row.sugary_drinks?.toString() ?? '',
       last_food_time: row.last_food_time ?? '',
       caffeine_after_14: row.caffeine_after_14 === true,
@@ -130,6 +131,7 @@ export default function NutritionLog() {
           date,
           alcohol_units: payload.alcohol_units === '' ? null : Number(payload.alcohol_units),
           candy_portions: payload.candy_portions === '' ? null : Number(payload.candy_portions),
+          savoury_snacks: payload.savoury_snacks === '' ? null : Number(payload.savoury_snacks),
           sugary_drinks: payload.sugary_drinks === '' ? null : Number(payload.sugary_drinks),
           last_food_time: payload.last_food_time || null,
           caffeine_after_14: payload.caffeine_after_14,
@@ -157,13 +159,14 @@ export default function NutritionLog() {
   const nothingEntered = !hasAnyEntry({
     alcohol_units: draft.alcohol_units === '' ? null : Number(draft.alcohol_units),
     candy_portions: draft.candy_portions === '' ? null : Number(draft.candy_portions),
+    savoury_snacks: draft.savoury_snacks === '' ? null : Number(draft.savoury_snacks),
     sugary_drinks: draft.sugary_drinks === '' ? null : Number(draft.sugary_drinks),
     meal_quality: draft.meal_quality === '' ? null : Number(draft.meal_quality),
     last_food_time: draft.last_food_time || null,
     caffeine_after_14: draft.caffeine_after_14,
   });
 
-  const numInput = (k: 'alcohol_units' | 'candy_portions' | 'sugary_drinks', step: string, ph: string) => (
+  const numInput = (k: 'alcohol_units' | 'candy_portions' | 'savoury_snacks' | 'sugary_drinks', step: string, ph: string) => (
     <input
       type="number" min="0" step={step} placeholder={ph}
       value={draft[k]} onChange={e => set(k, e.target.value)}
@@ -188,7 +191,7 @@ export default function NutritionLog() {
           <Button size="sm" variant="ghost" disabled={saving}
             title="Record explicit zeros for alcohol, candy and sugary drinks"
             onClick={() => {
-              const clean = { ...draft, alcohol_units: '0', candy_portions: '0', sugary_drinks: '0' };
+              const clean = { ...draft, alcohol_units: '0', candy_portions: '0', savoury_snacks: '0', sugary_drinks: '0' };
               setDraft(clean); save(clean);
             }}>
             <Sparkles className="w-3.5 h-3.5 mr-1.5" />Clean day
@@ -231,6 +234,20 @@ export default function NutritionLog() {
           </div>
           <Definition def={field('candy_portions')}
             extra={<RefTable title="Reference" rows={CANDY_REFERENCE.map(r => ({ label: r.label, value: r.portions }))} />} />
+        </div>
+
+        {/* Savoury snacks — crisps and similar. Separate from candy because the
+            mechanism differs (fat and salt, not a sugar load), and merging them
+            would blur the sugar signal this whole card exists to isolate. */}
+        <div className="rounded-md border border-border bg-card p-3">
+          <label className="text-xs font-semibold">{field('savoury_snacks').label}</label>
+          <p className="text-[11px] text-muted-foreground mb-2">{field('savoury_snacks').summary}</p>
+          <div className="flex items-center gap-2">
+            {numInput('savoury_snacks', '0.5', 'portions')}
+            <span className="text-[11px] text-muted-foreground">portions</span>
+          </div>
+          <Definition def={field('savoury_snacks')}
+            extra={<RefTable title="Reference" rows={SAVOURY_REFERENCE.map(r => ({ label: r.label, value: r.portions }))} />} />
         </div>
 
         {/* Sugary drinks */}

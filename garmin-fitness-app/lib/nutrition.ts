@@ -13,6 +13,7 @@
 export type NutritionField =
   | 'alcohol_units'
   | 'candy_portions'
+  | 'savoury_snacks'
   | 'sugary_drinks'
   | 'last_food_time'
   | 'caffeine_after_14'
@@ -23,6 +24,7 @@ export interface NutritionLog {
   date: string;                       // YYYY-MM-DD
   alcohol_units: number | null;
   candy_portions: number | null;
+  savoury_snacks: number | null;
   sugary_drinks: number | null;
   last_food_time: string | null;      // 'HH:MM'
   caffeine_after_14: boolean | null;
@@ -31,7 +33,7 @@ export interface NutritionLog {
 }
 
 export const NUTRITION_NUMERIC_FIELDS = [
-  'alcohol_units', 'candy_portions', 'sugary_drinks', 'meal_quality',
+  'alcohol_units', 'candy_portions', 'savoury_snacks', 'sugary_drinks', 'meal_quality',
 ] as const;
 
 /**
@@ -42,13 +44,14 @@ export const NUTRITION_NUMERIC_FIELDS = [
  * writes real zeros, and absence stays absence.
  */
 export function isCleanDay(log: NutritionLog): boolean {
-  return log.alcohol_units === 0 && log.candy_portions === 0 && log.sugary_drinks === 0;
+  return log.alcohol_units === 0 && log.candy_portions === 0
+      && log.savoury_snacks === 0 && log.sugary_drinks === 0;
 }
 
 /** Did this row record anything at all? Used to reject accidental empty saves. */
 export function hasAnyEntry(log: Partial<NutritionLog>): boolean {
   return [
-    log.alcohol_units, log.candy_portions, log.sugary_drinks,
+    log.alcohol_units, log.candy_portions, log.savoury_snacks, log.sugary_drinks,
     log.meal_quality, log.last_food_time,
   ].some(v => v != null && v !== '') || log.caffeine_after_14 === true;
 }
@@ -65,17 +68,40 @@ export interface FieldDef {
   doesNotCount: string[];
 }
 
+/** One Danish standard drink (genstand) = 12 g of pure alcohol. */
+export const GRAMS_PER_UNIT = 12;
+/** Density of ethanol, g/ml. */
+const ETHANOL_DENSITY = 0.789;
+
 /**
- * One Danish standard drink (genstand) = 12 g pure alcohol.
- * Computed as: volume(cl) x ABV(%) x 0.789 / 12, rounded to 1 decimal.
+ * Standard units in a drink, rounded to the nearest half.
+ *
+ * Half-unit resolution is deliberate and matches what the form asks for: how
+ * accurately you remember what you drank is a far bigger source of error than
+ * the arithmetic, so finer precision would be false.
+ */
+export function alcoholUnits(volumeMl: number, abvPercent: number): number {
+  const grams = volumeMl * (abvPercent / 100) * ETHANOL_DENSITY;
+  return Math.round((grams / GRAMS_PER_UNIT) * 2) / 2;
+}
+
+/**
+ * Reference table shown in the form. Values are COMPUTED, not typed by hand,
+ * so the table can never drift away from the formula.
+ *
+ * Wine is listed at 13/14/15% because that is what is actually in the bottle —
+ * an earlier 12%-only row understated a typical red by close to a full unit.
  */
 export const ALCOHOL_REFERENCE: { label: string; units: number }[] = [
-  { label: 'Beer, 33 cl @ 4.6%', units: 1.0 },
-  { label: 'Beer, 50 cl @ 4.6%', units: 1.5 },
-  { label: 'Strong beer, 33 cl @ 8%', units: 1.7 },
-  { label: 'Wine, 12 cl glass @ 12%', units: 1.0 },
-  { label: 'Wine, 75 cl bottle @ 12%', units: 6.0 },
-  { label: 'Spirits, 4 cl @ 40%', units: 1.0 },
+  { label: 'Beer, 33 cl @ 4.6%',        units: alcoholUnits(330, 4.6) },
+  { label: 'Beer, 50 cl @ 4.6%',        units: alcoholUnits(500, 4.6) },
+  { label: 'Strong beer, 33 cl @ 8%',   units: alcoholUnits(330, 8) },
+  { label: 'Wine, 12 cl glass @ 13%',   units: alcoholUnits(120, 13) },
+  { label: 'Wine, 15 cl glass @ 14%',   units: alcoholUnits(150, 14) },
+  { label: 'Wine, 75 cl bottle @ 13%',  units: alcoholUnits(750, 13) },
+  { label: 'Wine, 75 cl bottle @ 14%',  units: alcoholUnits(750, 14) },
+  { label: 'Wine, 75 cl bottle @ 15%',  units: alcoholUnits(750, 15) },
+  { label: 'Spirits, 4 cl @ 40%',       units: alcoholUnits(40, 40) },
 ];
 
 /** One candy portion ≈ 25-30 g of sugar confectionery. */
@@ -86,6 +112,15 @@ export const CANDY_REFERENCE: { label: string; portions: number }[] = [
   { label: 'Slice of cake', portions: 1.5 },
   { label: 'Two biscuits', portions: 1 },
   { label: 'Pastry / danish', portions: 2 },
+];
+
+/** One savoury portion ≈ 30 g. */
+export const SAVOURY_REFERENCE: { label: string; portions: number }[] = [
+  { label: 'Small bag of crisps, 40 g', portions: 1.5 },
+  { label: 'Sharing bag of crisps, 175 g', portions: 6 },
+  { label: 'Handful of salted nuts (~30 g)', portions: 1 },
+  { label: 'Bowl of salted popcorn', portions: 1.5 },
+  { label: 'Handful of pretzels / cheese puffs', portions: 1 },
 ];
 
 export const NUTRITION_FIELDS: FieldDef[] = [
@@ -119,6 +154,22 @@ export const NUTRITION_FIELDS: FieldDef[] = [
       'Dark chocolate over 70% in amounts under 20 g.',
       'Sugar inside a main meal (sauces, bread, dressing) — not trackable honestly.',
       'Sports nutrition taken during training — that is fuelling, logged as training.',
+    ],
+  },
+  {
+    key: 'savoury_snacks',
+    label: 'Savoury snacks',
+    summary: 'Portions. 1 portion ≈ 30 g. Crisps and similar — kept separate from candy on purpose.',
+    counts: [
+      'Crisps, salted nuts, popcorn, pretzels, cheese puffs, savoury biscuits.',
+      'Count portions, not packets: a 40 g bag is 1.5 portions, a 175 g sharing bag is 6.',
+      'Anything eaten from a bag in front of the TV belongs here.',
+    ],
+    doesNotCount: [
+      'Anything eaten as part of a meal — crackers with cheese at the table, nuts in a salad.',
+      'Plain unsalted nuts eaten as deliberate fuelling.',
+      'Vegetables, crudités, olives.',
+      'Sweet popcorn — that is candy, since the sugar is the point.',
     ],
   },
   {
@@ -208,6 +259,7 @@ export function coerceNutritionLog(row: Record<string, unknown>): NutritionLog {
     date,
     alcohol_units: num(row.alcohol_units),
     candy_portions: num(row.candy_portions),
+    savoury_snacks: num(row.savoury_snacks),
     sugary_drinks: num(row.sugary_drinks),
     last_food_time: row.last_food_time != null ? String(row.last_food_time).slice(0, 5) : null,
     caffeine_after_14: row.caffeine_after_14 == null ? null : Boolean(row.caffeine_after_14),

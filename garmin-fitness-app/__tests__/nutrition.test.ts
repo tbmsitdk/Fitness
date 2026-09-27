@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   coerceNutritionLog, isCleanDay, hasAnyEntry, lastFoodMinutes,
-  MEAL_QUALITY_LEVELS, NUTRITION_FIELDS, type NutritionLog,
+  MEAL_QUALITY_LEVELS, NUTRITION_FIELDS, alcoholUnits, ALCOHOL_REFERENCE, type NutritionLog,
 } from '@/lib/nutrition';
 import {
   addDays, isWeekend, mean, stdDev, doseResponse, effectSize, rankEffects,
@@ -11,7 +11,7 @@ import {
 
 function log(o: Partial<NutritionLog> & { date: string }): NutritionLog {
   return {
-    alcohol_units: null, candy_portions: null, sugary_drinks: null,
+    alcohol_units: null, candy_portions: null, savoury_snacks: null, sugary_drinks: null,
     last_food_time: null, caffeine_after_14: null, meal_quality: null, notes: null,
     ...o,
   };
@@ -42,19 +42,67 @@ describe('field definitions', () => {
   });
 });
 
+describe('alcoholUnits', () => {
+  it('matches the genstand definition — 12 g of ethanol is one unit', () => {
+    // 4 cl of 40% spirits = 40 * 0.40 * 0.789 = 12.6 g -> 1 unit
+    expect(alcoholUnits(40, 40)).toBe(1);
+  });
+
+  it('converts wine bottles at the strengths actually sold', () => {
+    expect(alcoholUnits(750, 13)).toBe(6.5);   // 76.9 g
+    expect(alcoholUnits(750, 14)).toBe(7);     // 82.9 g
+    expect(alcoholUnits(750, 15)).toBe(7.5);   // 88.8 g
+  });
+
+  it('scales with volume, so a large beer is not one unit', () => {
+    expect(alcoholUnits(500, 4.6)).toBe(1.5);
+    expect(alcoholUnits(330, 4.6)).toBe(1);
+  });
+
+  it('rounds to half units — finer precision than recall would be false', () => {
+    for (const u of [alcoholUnits(750, 13), alcoholUnits(330, 8), alcoholUnits(150, 14)]) {
+      expect(u * 2).toBe(Math.round(u * 2));
+    }
+  });
+});
+
+describe('ALCOHOL_REFERENCE', () => {
+  it('is computed from the formula, so the table cannot drift from it', () => {
+    const bottle13 = ALCOHOL_REFERENCE.find(r => r.label.includes('75 cl bottle @ 13%'))!;
+    expect(bottle13.units).toBe(alcoholUnits(750, 13));
+  });
+
+  it('covers the wine strengths actually on the shelf, not just 12%', () => {
+    const wines = ALCOHOL_REFERENCE.filter(r => r.label.startsWith('Wine'));
+    for (const abv of ['13%', '14%', '15%']) {
+      expect(wines.some(w => w.label.includes(abv)), abv).toBe(true);
+    }
+  });
+});
+
 describe('logged zero vs unlogged day', () => {
   it('treats an explicit clean day as clean', () => {
-    expect(isCleanDay(log({ date: '2026-09-01', alcohol_units: 0, candy_portions: 0, sugary_drinks: 0 }))).toBe(true);
+    expect(isCleanDay(log({
+      date: '2026-09-01',
+      alcohol_units: 0, candy_portions: 0, savoury_snacks: 0, sugary_drinks: 0,
+    }))).toBe(true);
   });
 
   it('does not treat an unlogged day as clean', () => {
     expect(isCleanDay(log({ date: '2026-09-01' }))).toBe(false);
   });
 
+  it('counts crisps toward a clean day — they are tracked, just not as candy', () => {
+    const noCrispsField = log({ date: '2026-09-01', alcohol_units: 0, candy_portions: 0, sugary_drinks: 0 });
+    expect(isCleanDay(noCrispsField)).toBe(false); // savoury_snacks still unlogged
+    expect(isCleanDay({ ...noCrispsField, savoury_snacks: 0 })).toBe(true);
+  });
+
   it('recognises an empty draft so blank saves can be rejected', () => {
     expect(hasAnyEntry({})).toBe(false);
     expect(hasAnyEntry({ alcohol_units: 0 })).toBe(true);
     expect(hasAnyEntry({ caffeine_after_14: true })).toBe(true);
+    expect(hasAnyEntry({ savoury_snacks: 2 })).toBe(true);
   });
 });
 

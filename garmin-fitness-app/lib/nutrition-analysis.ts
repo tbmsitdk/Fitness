@@ -298,6 +298,8 @@ export const STANDARD_EXPOSURES: { label: string; test: (l: NutritionLog) => boo
   { label: '3+ units alcohol',  test: l => l.alcohol_units == null ? null : l.alcohol_units >= 3 },
   { label: 'Any candy',         test: l => l.candy_portions == null ? null : l.candy_portions > 0 },
   { label: '3+ candy portions', test: l => l.candy_portions == null ? null : l.candy_portions >= 3 },
+  { label: 'Any crisps/snacks', test: l => l.savoury_snacks == null ? null : l.savoury_snacks > 0 },
+  { label: '2+ savoury snacks', test: l => l.savoury_snacks == null ? null : l.savoury_snacks >= 2 },
   { label: 'Sugary drinks',     test: l => l.sugary_drinks == null ? null : l.sugary_drinks > 0 },
   { label: 'Caffeine after 14', test: l => l.caffeine_after_14 },
   { label: 'Poor meals (≤2)',   test: l => l.meal_quality == null ? null : l.meal_quality <= 2 },

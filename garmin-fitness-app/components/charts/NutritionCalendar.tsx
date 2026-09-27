@@ -5,6 +5,7 @@ import type { NutritionLog } from '@/lib/nutrition';
 
 const ALCOHOL_RAMP = ['#4a2d6b', '#6b3fa0', '#8b5cc7', '#b088e0'];
 const CANDY_RAMP   = ['#7a3d18', '#a8541f', '#d95926', '#e88a5c'];
+const SAVOURY_RAMP = ['#6b5d13', '#97831b', '#c98500', '#dfae4d'];
 const EMPTY_CELL   = 'hsl(240 3.7% 12%)';
 const UNLOGGED     = 'hsl(240 3.7% 8%)';
 
@@ -28,7 +29,7 @@ function colour(s: number, ramp: string[]): string {
 }
 
 export default function NutritionCalendar({ logs, cutoff }: Props) {
-  const { days, byDate, maxAlcohol, maxCandy, stats } = useMemo(() => {
+  const { days, byDate, maxAlcohol, maxCandy, maxSavoury, stats } = useMemo(() => {
     const DAY_MS = 86_400_000;
     const p = (n: number) => String(n).padStart(2, '0');
     const iso = (d: Date) => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
@@ -45,12 +46,14 @@ export default function NutritionCalendar({ logs, cutoff }: Props) {
     const inWindow = list.map(d => map.get(d)).filter((l): l is NutritionLog => l != null);
     const alc = inWindow.map(l => l.alcohol_units).filter((v): v is number => v != null);
     const cnd = inWindow.map(l => l.candy_portions).filter((v): v is number => v != null);
+    const sav = inWindow.map(l => l.savoury_snacks).filter((v): v is number => v != null);
 
     return {
       days: list,
       byDate: map,
       maxAlcohol: Math.max(1, ...alc),
       maxCandy: Math.max(1, ...cnd),
+      maxSavoury: Math.max(1, ...sav),
       stats: {
         logged: inWindow.length,
         span,
@@ -68,7 +71,7 @@ export default function NutritionCalendar({ logs, cutoff }: Props) {
       <div className="flex flex-col items-center justify-center h-28 gap-1.5 text-center px-6">
         <p className="text-sm text-muted-foreground">Nothing logged yet</p>
         <p className="text-[11px] text-muted-foreground/60 max-w-md">
-          Log alcohol, candy and sugary drinks under Data → Food &amp; Drink. Once a few weeks
+          Log alcohol, candy, crisps and sugary drinks under Data → Food &amp; Drink. Once a few weeks
           exist, the impact cards below will compare your recovery on those days against clean ones.
         </p>
       </div>
@@ -117,6 +120,7 @@ export default function NutritionCalendar({ logs, cutoff }: Props) {
       <div className="space-y-1">
         {row('Alcohol', ALCOHOL_RAMP, maxAlcohol, l => l.alcohol_units, 'units')}
         {row('Candy', CANDY_RAMP, maxCandy, l => l.candy_portions, 'portions')}
+        {row('Crisps & snacks', SAVOURY_RAMP, maxSavoury, l => l.savoury_snacks, 'portions')}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
