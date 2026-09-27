@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   EXERCISES, EXERCISE_BY_KEY, exercisesByCategory, primaryValue, primaryUnit,
-  estimatedSeconds, estimateExerciseTss, coerceExerciseLog, defaultDraft,
+  estimatedSeconds, estimateExerciseTss, coerceExerciseLog, defaultDraft, primaryDisplay,
   currentStreak, totalSeconds, CATEGORY_COLOR, CATEGORY_ORDER, type ExerciseLog,
 } from '@/lib/exercises';
 
@@ -53,8 +53,20 @@ describe('primaryValue', () => {
     expect(primaryValue(log({ exercise_key: 'marches', duration_seconds: 60, sets: 2 }))).toBe(120);
   });
 
-  it('never multiplies a grip-strength reading by sets — it is a peak value', () => {
-    expect(primaryValue(log({ exercise_key: 'grip_strength_press', load_kg: 45, sets: 3 }))).toBe(45);
+  it('trends grip strength as resistance x repetitions, not kg alone', () => {
+    // 5kg x 120 must out-score 5kg x 100 — kg alone would call them identical.
+    expect(primaryValue(log({ exercise_key: 'grip_strength_press', load_kg: 5, reps: 100 }))).toBe(500);
+    expect(primaryValue(log({ exercise_key: 'grip_strength_press', load_kg: 5, reps: 120 }))).toBe(600);
+  });
+
+  it('never multiplies a grip-strength reading by sets', () => {
+    const a = primaryValue(log({ exercise_key: 'grip_strength_press', load_kg: 5, reps: 100, sets: 3 }));
+    expect(a).toBe(500);
+  });
+
+  it('returns null for grip strength when reps are missing, rather than mixing scales', () => {
+    // Falling back to kg alone would put "5" in a series of values near 500.
+    expect(primaryValue(log({ exercise_key: 'grip_strength_press', load_kg: 5 }))).toBeNull();
   });
 
   it('reports Airofit in whole minutes', () => {
@@ -66,12 +78,31 @@ describe('primaryValue', () => {
   });
 });
 
+describe('primaryDisplay', () => {
+  it('keeps both grip components visible instead of only the product', () => {
+    expect(primaryDisplay(log({ exercise_key: 'grip_strength_press', load_kg: 5, reps: 120 })))
+      .toBe('5 kg × 120');
+  });
+
+  it('shows kg alone when reps were never recorded', () => {
+    expect(primaryDisplay(log({ exercise_key: 'grip_strength_press', load_kg: 5 }))).toBe('5 kg');
+  });
+
+  it('renders a timed exercise with its unit', () => {
+    expect(primaryDisplay(log({ exercise_key: 'squats', duration_seconds: 30, sets: 2 }))).toBe('60 s');
+  });
+
+  it('renders a dash when nothing was recorded', () => {
+    expect(primaryDisplay(log({ exercise_key: 'squats' }))).toBe('—');
+  });
+});
+
 describe('primaryUnit', () => {
   it('maps each metric type to its unit', () => {
     expect(primaryUnit('squats')).toBe('s');
     expect(primaryUnit('dead_hang')).toBe('s');
     expect(primaryUnit('trunk_twists')).toBe('s');
-    expect(primaryUnit('grip_strength_press')).toBe('kg');
+    expect(primaryUnit('grip_strength_press')).toBe('kg·reps');
     expect(primaryUnit('airofit')).toBe('min');
   });
 });

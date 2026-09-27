@@ -156,7 +156,13 @@ export function primaryValue(log: ExerciseLog): number | null {
   switch (def.primaryMetric) {
     case 'reps':     return log.reps != null ? log.reps * sets : null;
     case 'duration': return log.duration_seconds != null ? log.duration_seconds * sets : null;
-    case 'load':     return log.load_kg;               // peak reading, never multiplied
+    // Grip strength is resistance AND repetitions — squeezing 5kg 120 times is
+    // progress over 5kg 100 times, and tracking kg alone hides it entirely.
+    // The product is the work done, so that is what trends. Needs both numbers:
+    // falling back to kg alone would mix values ~100x apart in one series.
+    case 'load':     return log.load_kg != null && log.reps != null
+                       ? Math.round(log.load_kg * log.reps * 10) / 10
+                       : null;
     case 'airofit':  return log.duration_seconds != null ? Math.round(log.duration_seconds / 60) : null;
   }
 }
@@ -165,10 +171,26 @@ export function primaryUnit(key: string): string {
   switch (EXERCISE_BY_KEY[key]?.primaryMetric) {
     case 'reps':     return 'reps';
     case 'duration': return 's';
-    case 'load':     return 'kg';
+    case 'load':     return 'kg·reps';
     case 'airofit':  return 'min';
     default:         return '';
   }
+}
+
+/**
+ * How a single log reads in a table — keeps the components of a compound metric
+ * visible. Grip strength trends as kg x reps, but "5 kg x 120" is what you
+ * actually did, and "600 kg·reps" on its own hides which half moved.
+ */
+export function primaryDisplay(log: ExerciseLog): string {
+  const def = EXERCISE_BY_KEY[log.exercise_key];
+  if (!def) return '—';
+  if (def.primaryMetric === 'load') {
+    if (log.load_kg == null) return '—';
+    return log.reps != null ? `${log.load_kg} kg × ${log.reps}` : `${log.load_kg} kg`;
+  }
+  const v = primaryValue(log);
+  return v != null ? `${v} ${primaryUnit(log.exercise_key)}` : '—';
 }
 
 /** Estimated seconds of work in a logged entry — explicit duration where

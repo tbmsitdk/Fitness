@@ -9,13 +9,14 @@ import { format, parseISO, startOfWeek } from 'date-fns';
 import { cn } from '@/lib/utils';
 import {
   EXERCISES, EXERCISE_BY_KEY, CATEGORY_COLOR, CATEGORY_LABEL, CATEGORY_ORDER,
-  ADHERENCE_RAMP, ADHERENCE_EMPTY, primaryUnit, primaryValue, estimatedSeconds,
+  ADHERENCE_RAMP, ADHERENCE_EMPTY, primaryUnit, primaryValue, primaryDisplay, estimatedSeconds,
   currentStreak, type ExerciseLog, type ExerciseCategory,
 } from '@/lib/exercises';
 
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
 const SURFACE = 'hsl(240 10% 7%)'; // chart surface — used as the 2px gap between stacked segments
-const GRID_DAYS = 28;
+/** Above this many days the adherence grid groups by week instead of by day. */
+const DAILY_CELL_LIMIT = 120;
 
 interface Props {
   cutoff: Date;
@@ -85,48 +86,90 @@ export default function ExerciseProgress({ cutoff, height = 240 }: Props) {
       const entries = inPeriod
         .filter(l => l.exercise_key === def.key)
         .sort((a, b) => a.date.localeCompare(b.date));
-      const values = entries
-        .map(primaryValue)
-        .filter((v): v is number => v != null);
-      if (values.length === 0) return null;
+      // Keep each value tied to its log so the table can show the components
+      // of a compound metric (grip strength's kg x reps) next to the trend.
+      const scored = entries
+        .map(l => ({ log: l, value: primaryValue(l) }))
+        .filter((e): e is { log: typeof e.log; value: number } => e.value != null);
+      if (scored.length === 0) return null;
+      const values = scored.map(e => e.value);
       const first = values[0];
-      const latest = values[values.length - 1];
+      const latest = scored[scored.length - 1];
+      const best = scored.reduce((a, b) => (b.value > a.value ? b : a));
       return {
         def,
         sessions: entries.length,
         values,
         first,
-        latest,
-        best: Math.max(...values),
-        change: latest - first,
+        latest: latest.value,
+        latestLabel: primaryDisplay(latest.log),
+        best: best.value,
+        bestLabel: primaryDisplay(best.log),
+        change: latest.value - first,
         unit: primaryUnit(def.key),
       };
     }).filter((r): r is NonNullable<typeof r> => r !== null);
   }, [inPeriod]);
 
-  // Adherence grid: work-seconds per exercise per day, last GRID_DAYS days
-  const { gridDays, gridRows, maxDaySeconds } = useMemo(() => {
-    const days: string[] = [];
-    const today = new Date();
-    for (let i = GRID_DAYS - 1; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      days.push(d.toISOString().slice(0, 10));
+  // Adherence grid: work-seconds per exercise per bucket, spanning the period
+  // selected at the top of the dashboard.
+  //
+  // One cell per day stops being readable somewhere past a few months — a year
+  // of daily cells is 365 slivers plus 365 gaps. Past DAILY_CELL_LIMIT we group
+  // into ISO weeks instead, which keeps a cell wide enough to see while still
+  // covering the whole period. The label and tooltip say which unit is in use.
+  const { gridBuckets, gridRows, maxBucketSeconds, byWeek } = useMemo(() => {
+    const DAY_MS = 86_400_000;
+    const midnight = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+    const iso = (d: Date) => {
+      // Local-time date string — toISOString() would shift the day in any
+      // timezone behind UTC and misfile evening sessions.
+      const p = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    };
+    /** Monday of the week containing d. */
+    const weekStart = (d: Date) => {
+      const x = midnight(d);
+      x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+      return x;
+    };
+
+    const today = midnight(new Date());
+    const start = midnight(cutoff);
+    const spanDays = Math.max(1, Math.round((today.getTime() - start.getTime()) / DAY_MS) + 1);
+    const grouped = spanDays > DAILY_CELL_LIMIT;
+
+    // Bucket start dates, oldest first.
+    const buckets: string[] = [];
+    if (grouped) {
+      for (let d = weekStart(start); d <= today; d.setDate(d.getDate() + 7)) buckets.push(iso(d));
+    } else {
+      for (let i = spanDays - 1; i >= 0; i--) {
+        buckets.push(iso(new Date(today.getTime() - i * DAY_MS)));
+      }
     }
-    const byKeyDay = new Map<string, number>();
+
+    const bucketKey = (dateStr: string) =>
+      grouped ? iso(weekStart(parseISO(dateStr))) : dateStr;
+
+    const byKeyBucket = new Map<string, number>();
     let maxSecs = 0;
     for (const log of inPeriod) {
-      const k = `${log.exercise_key}|${log.date.slice(0, 10)}`;
-      const secs = (byKeyDay.get(k) ?? 0) + estimatedSeconds(log);
-      byKeyDay.set(k, secs);
+      const k = `${log.exercise_key}|${bucketKey(log.date.slice(0, 10))}`;
+      const secs = (byKeyBucket.get(k) ?? 0) + estimatedSeconds(log);
+      byKeyBucket.set(k, secs);
       if (secs > maxSecs) maxSecs = secs;
     }
     const rows = scoreboard.map(r => ({
       def: r.def,
-      cells: days.map(d => byKeyDay.get(`${r.def.key}|${d}`) ?? 0),
+      cells: buckets.map(b => byKeyBucket.get(`${r.def.key}|${b}`) ?? 0),
     }));
-    return { gridDays: days, gridRows: rows, maxDaySeconds: maxSecs };
-  }, [inPeriod, scoreboard]);
+    return { gridBuckets: buckets, gridRows: rows, maxBucketSeconds: maxSecs, byWeek: grouped };
+  }, [inPeriod, scoreboard, cutoff]);
+
+  // Gaps become the dominant visual once there are many cells — shrink them so
+  // a long period reads as a density strip rather than a picket fence.
+  const cellGap = gridBuckets.length > 60 ? 1 : 2;
 
   // Weekly volume in MINUTES, stacked by category
   const weekly = useMemo(() => {
@@ -189,41 +232,48 @@ export default function ExerciseProgress({ cutoff, height = 240 }: Props) {
       {/* A — Adherence grid */}
       <div>
         <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
-          Adherence · last {GRID_DAYS} days
+          Adherence · {gridBuckets.length} {byWeek ? 'weeks' : 'days'}
+          <span className="normal-case tracking-normal text-muted-foreground/60">
+            {' '}· {format(parseISO(gridBuckets[0]), 'd MMM yyyy')} → today
+          </span>
         </p>
-        <div className="overflow-x-auto">
-          <div className="inline-block min-w-full space-y-0.5">
-            {gridRows.map(row => (
-              <div key={row.def.key} className="flex items-center gap-2">
-                <span className="w-[150px] shrink-0 text-[10px] text-muted-foreground truncate" title={row.def.label}>
-                  {row.def.label}
-                </span>
-                <div className="flex gap-[2px]">
-                  {row.cells.map((secs, i) => {
-                    const ratio = maxDaySeconds > 0 ? secs / maxDaySeconds : 0;
-                    const step = secs === 0 ? -1 : Math.min(ADHERENCE_RAMP.length - 1, Math.floor(ratio * ADHERENCE_RAMP.length));
-                    return (
-                      <div
-                        key={i}
-                        title={`${row.def.label} · ${format(parseISO(gridDays[i]), 'EEE d MMM')} · ${secs > 0 ? fmtSecs(secs) : 'not logged'}`}
-                        style={{
-                          width: 10, height: 10, borderRadius: 2,
-                          background: step === -1 ? ADHERENCE_EMPTY : ADHERENCE_RAMP[step],
-                        }}
-                      />
-                    );
-                  })}
-                </div>
+        {/* Cells flex to fill the available width, so the grid spans the card
+            at any period length rather than trailing off mid-row. */}
+        <div className="space-y-0.5">
+          {gridRows.map(row => (
+            <div key={row.def.key} className="flex items-center gap-2">
+              <span className="w-[110px] sm:w-[150px] shrink-0 text-[10px] text-muted-foreground truncate" title={row.def.label}>
+                {row.def.label}
+              </span>
+              <div className="flex flex-1 min-w-0" style={{ gap: cellGap }}>
+                {row.cells.map((secs, i) => {
+                  const ratio = maxBucketSeconds > 0 ? secs / maxBucketSeconds : 0;
+                  const step = secs === 0 ? -1 : Math.min(ADHERENCE_RAMP.length - 1, Math.floor(ratio * ADHERENCE_RAMP.length));
+                  const when = byWeek
+                    ? `week of ${format(parseISO(gridBuckets[i]), 'd MMM yyyy')}`
+                    : format(parseISO(gridBuckets[i]), 'EEE d MMM');
+                  return (
+                    <div
+                      key={i}
+                      title={`${row.def.label} · ${when} · ${secs > 0 ? fmtSecs(secs) : 'not logged'}`}
+                      className="flex-1 min-w-0"
+                      style={{
+                        height: 10, borderRadius: 2,
+                        background: step === -1 ? ADHERENCE_EMPTY : ADHERENCE_RAMP[step],
+                      }}
+                    />
+                  );
+                })}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
         <div className="flex items-center gap-2 mt-1.5 text-[10px] text-muted-foreground">
           <span>Less</span>
           <div style={{ width: 10, height: 10, borderRadius: 2, background: ADHERENCE_EMPTY }} />
           {ADHERENCE_RAMP.map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: 2, background: c }} />)}
           <span>More</span>
-          <span className="ml-1">· shade = time spent that day</span>
+          <span className="ml-1">· shade = time spent that {byWeek ? 'week' : 'day'}</span>
         </div>
       </div>
 
@@ -262,8 +312,8 @@ export default function ExerciseProgress({ cutoff, height = 240 }: Props) {
                         {r.def.label}
                       </span>
                     </td>
-                    <td className="px-3 py-1.5 text-right font-mono">{r.latest} {r.unit}</td>
-                    <td className="px-3 py-1.5 text-right font-mono text-muted-foreground">{r.best} {r.unit}</td>
+                    <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap">{r.latestLabel}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-muted-foreground whitespace-nowrap">{r.bestLabel}</td>
                     <td className={cn('px-3 py-1.5 text-right font-mono',
                       up ? 'text-green-400' : down ? 'text-amber-400' : 'text-muted-foreground')}>
                       {up ? '↑' : down ? '↓' : '→'} {r.change === 0 ? 'same' : `${up ? '+' : ''}${r.change} ${r.unit}`}
