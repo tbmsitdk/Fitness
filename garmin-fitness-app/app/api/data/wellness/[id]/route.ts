@@ -31,10 +31,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const client = createClient();
     await client.connect();
     try {
-      const result = await client.query(
-        `UPDATE wellness SET ${field} = $1 WHERE id = $2`,
-        [value, id]
-      );
+      // A hand-entered body-composition value comes off the Scanfit scale, so
+      // tag the row. Without this the converted Garmin history and new readings
+      // are indistinguishable, and the charts splice two different measures —
+      // Garmin reports Tanita-style muscle mass, Scanfit reports skeletal.
+      const BODY_COMP_FIELDS = new Set([
+        'weight_kg', 'body_fat_pct', 'muscle_mass_kg', 'bone_mass_kg',
+        'body_water_pct', 'visceral_fat', 'metabolic_age',
+      ]);
+      const result = BODY_COMP_FIELDS.has(field)
+        ? await client.query(
+            `UPDATE wellness SET ${field} = $1, body_comp_source = 'scanfit' WHERE id = $2`,
+            [value, id]
+          )
+        : await client.query(
+            `UPDATE wellness SET ${field} = $1 WHERE id = $2`,
+            [value, id]
+          );
       if (result.rowCount === 0) {
         return NextResponse.json({ error: 'Record not found' }, { status: 404 });
       }

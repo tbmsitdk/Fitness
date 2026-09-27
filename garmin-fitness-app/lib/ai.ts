@@ -216,11 +216,26 @@ export function buildFullContext(
   const bcTrend = (() => {
     const fat30   = last30Well.filter(w => w.body_fat_pct != null);
     const mus30   = last30Well.filter(w => w.muscle_mass_kg != null);
-    const fatDelta = fat30.length >= 2
+
+    // A 30-day window that straddles the Garmin -> Scanfit switch compares two
+    // different measures. Reporting that difference as a delta would have the
+    // coach announce dramatic body-composition change that never happened, so
+    // the delta is withheld and the reason is stated instead.
+    const spansDevices = (rows: typeof last30Well) => {
+      const sources = new Set(rows.map(w => w.body_comp_source ?? 'unknown'));
+      return sources.size > 1;
+    };
+    const fatDelta = fat30.length >= 2 && !spansDevices(fat30)
       ? Math.round((fat30.at(-1)!.body_fat_pct! - fat30[0].body_fat_pct!) * 10) / 10 : null;
-    const musDelta = mus30.length >= 2
+    const musDelta = mus30.length >= 2 && !spansDevices(mus30)
       ? Math.round((mus30.at(-1)!.muscle_mass_kg! - mus30[0].muscle_mass_kg!) * 10) / 10 : null;
-    return { body_fat_30d_delta: fatDelta, muscle_mass_30d_delta: musDelta };
+
+    return {
+      body_fat_30d_delta: fatDelta,
+      muscle_mass_30d_delta: musDelta,
+      deltas_withheld_device_change: (fat30.length >= 2 && spansDevices(fat30))
+                                  || (mus30.length >= 2 && spansDevices(mus30)) || undefined,
+    };
   })();
 
   // Cycling performance
@@ -313,7 +328,8 @@ export function buildFullContext(
       bone_mass_kg:   latestBC?.bone_mass_kg ?? null,
       body_water_pct: latestBC?.body_water_pct ?? null,
       trend_30d:      bcTrend,
-      note:           'Garmin smart scale data',
+      source:         latestBC?.body_comp_source ?? 'unknown',
+      note: 'Entered manually from a Scanfit scale. Scanfit reports SKELETAL muscle mass; the earlier Garmin Index S2 reported Tanita-style muscle mass (fat-free mass minus bone, including organs and water), which is roughly 40% higher for the same body. Rows tagged garmin_converted are historical Garmin readings rescaled by a single constant ratio (0.608) — an approximation, not measurement. If a delta is null and deltas_withheld_device_change is set, the window spans the switch: say so rather than reporting a change. Never interpret the step at the changeover as real muscle loss.',
     },
     wellness: {
       avg_resting_hr_14d:   avgRHR30 ? Math.round(avgRHR30) : null,

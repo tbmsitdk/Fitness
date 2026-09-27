@@ -60,6 +60,15 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS body_water_pct DECIMAL(5,2)`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS visceral_fat INTEGER`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS metabolic_age INTEGER`;
+  // Which scale produced a body-composition row. Garmin (Index S2) reports
+  // Tanita-style muscle mass — fat-free mass minus bone, including organs and
+  // all body water. Scanfit reports SKELETAL muscle mass, roughly 60% of that
+  // number for the same body. Without this column the two splice into one line
+  // and the device swap renders as a dramatic loss that never happened.
+  //   'garmin'            — as measured by the Index S2
+  //   'garmin_converted'  — Garmin reading rescaled to skeletal-muscle terms
+  //   'scanfit'           — as measured by the Scanfit scale
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS body_comp_source VARCHAR(20)`;
   // Apple Health mobility & gait metrics
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS flights_climbed INTEGER`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS respiratory_rate DECIMAL(5,2)`;
@@ -348,6 +357,8 @@ type WellnessRow = {
   bone_mass_kg: number | null;
   body_water_pct: number | null;
   visceral_fat: number | null;
+  // Optional: importers do not set it, only manual entry and the conversion do.
+  body_comp_source?: string | null;
   metabolic_age: number | null;
   // Apple Health mobility & gait
   flights_climbed: number | null;
@@ -600,6 +611,7 @@ export function coerceWellness(row: any) {
     bone_mass_kg:   row.bone_mass_kg   != null ? Number(row.bone_mass_kg)   : null,
     body_water_pct: row.body_water_pct != null ? Number(row.body_water_pct) : null,
     visceral_fat:   row.visceral_fat   != null ? Number(row.visceral_fat)   : null,
+    body_comp_source: row.body_comp_source != null ? String(row.body_comp_source) : null,
     metabolic_age:  row.metabolic_age  != null ? Number(row.metabolic_age)  : null,
     flights_climbed:             row.flights_climbed             != null ? Number(row.flights_climbed)             : null,
     respiratory_rate:            row.respiratory_rate            != null ? Number(row.respiratory_rate)            : null,

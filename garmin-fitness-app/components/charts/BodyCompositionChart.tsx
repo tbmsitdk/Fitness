@@ -136,18 +136,31 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
       <div className="flex flex-col items-center justify-center h-40 gap-2 text-center px-6">
         <p className="text-sm text-muted-foreground">No body composition data yet</p>
         <p className="text-[11px] text-muted-foreground/60 max-w-sm">
-          Sync your Garmin smart scale — the next daily sync will import body fat %, muscle mass,
-          bone mass, body water %, visceral fat rating, and metabolic age.
+          Enter your scale readings under Data → Wellness: weight, body fat %, muscle mass,
+          bone mass, body water %, visceral fat, and metabolic age. These are manual-entry
+          only — Garmin imports no longer overwrite them.
         </p>
       </div>
     );
   }
+
+  // Where the measuring device changed. Garmin's Tanita-style muscle mass and
+  // Scanfit's skeletal muscle mass are different quantities, so the step
+  // between them is an instrument artefact, not a body change — mark it rather
+  // than letting the line imply continuity.
+  const switchIdx = sorted.findIndex((w, i) =>
+    i > 0 && (w.body_comp_source ?? null) !== (sorted[i - 1].body_comp_source ?? null));
+  const switchDate = switchIdx > 0 ? sorted[switchIdx].date : null;
 
   const cfg  = METRICS.find(m => m.id === metric)!;
   const vals  = sorted.map(w => clean(w[cfg.key] as number | null));
   const avg7  = rollingAvg(vals, 7);
   const trend = linearTrend(vals);
   const bench = getBenchmarks(metric, age, sex);
+
+  const switchLabel = switchDate
+    ? format(parseISO(switchDate.slice(0, 10)), sorted.length > 90 ? "MMM ''yy" : 'd MMM')
+    : null;
 
   const data = sorted.map((w, i) => ({
     label: format(parseISO(w.date.slice(0, 10)), sorted.length > 90 ? "MMM ''yy" : 'd MMM'),
@@ -159,7 +172,10 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
 
   const nonNull = vals.filter((v): v is number => v != null);
   const latest  = nonNull.at(-1);
-  const delta   = nonNull.length >= 2 ? Math.round((nonNull.at(-1)! - nonNull[0]) * 10) / 10 : null;
+  // A change measured across the device switch is not a change in the body, so
+  // the headline delta is withheld rather than reporting an artefact.
+  const delta   = nonNull.length >= 2 && !switchDate
+    ? Math.round((nonNull.at(-1)! - nonNull[0]) * 10) / 10 : null;
   const rating  = latest != null ? ratingLabel(metric, latest, age, sex) : null;
 
   const tickEvery = data.length > 90 ? 14 : data.length > 30 ? 7 : 3;
@@ -264,6 +280,12 @@ export default function BodyCompositionChart({ wellness, activities = [], settin
 
           <ResponsiveContainer width="100%" height={height}>
             <ComposedChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              {/* Instrument change — the step here is a change of measure, not of body */}
+              {switchLabel && (
+                <ReferenceLine x={switchLabel} stroke="hsl(240 5% 50%)" strokeDasharray="3 3"
+                  label={{ value: 'new scale', position: 'insideTopLeft',
+                           fill: 'hsl(240 5% 55%)', fontSize: 9 }} />
+              )}
               <defs>
                 <linearGradient id="bcGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%"  stopColor={cfg.color} stopOpacity={0.12} />

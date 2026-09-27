@@ -34,6 +34,8 @@ export interface WellnessRecord {
   bone_mass_kg: number | null;
   body_water_pct: number | null;
   visceral_fat: number | null;
+  /** Which scale produced this row's body composition: garmin | garmin_converted | scanfit */
+  body_comp_source?: string | null;
   metabolic_age: number | null;
   stress_score: number | null;
   body_battery: number | null;
