@@ -126,6 +126,26 @@ export async function initializeDatabase() {
     )
   `;
 
+  // Food & drink. One row per day; every column nullable because a day may be
+  // partly logged. A logged 0 and an absent row mean different things — see
+  // lib/nutrition.ts — so nothing here defaults to zero.
+  await sql`
+    CREATE TABLE IF NOT EXISTS nutrition_logs (
+      id SERIAL PRIMARY KEY,
+      date DATE UNIQUE NOT NULL,
+      alcohol_units DECIMAL(4,1),
+      candy_portions DECIMAL(4,1),
+      sugary_drinks DECIMAL(4,1),
+      last_food_time TIME,
+      caffeine_after_14 BOOLEAN,
+      meal_quality SMALLINT,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_nutrition_date ON nutrition_logs(date)`;
+
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_type ON activities(activity_type)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_wellness_date ON wellness(date)`;

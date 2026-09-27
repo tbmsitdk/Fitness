@@ -6,6 +6,10 @@ import { vo2maxRating } from '@/lib/vo2max';
 import {
   EXERCISES, CATEGORY_LABEL, primaryValue, primaryUnit, type ExerciseLog,
 } from '@/lib/exercises';
+import type { NutritionLog } from '@/lib/nutrition';
+import {
+  rankEffects, STANDARD_EXPOSURES, type DayMetrics,
+} from '@/lib/nutrition-analysis';
 import type { UserSettings } from '@/lib/settings';
 
 const client = new Anthropic({
@@ -44,6 +48,78 @@ interface FullContext {
   cycling_performance: Record<string, unknown>;
   recovery: Record<string, unknown>;
   longevity: Record<string, unknown>;
+  nutrition: Record<string, unknown>;
+}
+
+/**
+ * Summarises food & drink for the coach, including the measured effect of each
+ * habit on next-morning recovery.
+ *
+ * The raw effect sizes matter more than the averages here: without them the
+ * coach can only repeat generic advice about alcohol, rather than telling the
+ * user what it actually costs THEM. Sample sizes travel with every number so
+ * the coach can hedge honestly on thin data instead of overstating it.
+ */
+function summariseNutrition(
+  logs: NutritionLog[] | undefined,
+  wellness: WellnessRecord[],
+  activities: Activity[],
+  thresholdHR: number,
+) {
+  if (!logs || logs.length === 0) {
+    return {
+      logged: false,
+      note: 'No food or drink logged. Do not speculate about diet, alcohol or sugar — there is no data. You may suggest logging it if diet seems relevant.',
+    };
+  }
+
+  const tssByDate = new Map<string, number>();
+  for (const a of activities) {
+    const d = a.date.slice(0, 10);
+    tssByDate.set(d, (tssByDate.get(d) ?? 0) + estimateTSS(a, thresholdHR));
+  }
+  const metricsByDate = new Map<string, DayMetrics>();
+  for (const w of wellness) {
+    const date = w.date.slice(0, 10);
+    metricsByDate.set(date, {
+      date, hrv: w.hrv_rmssd, restingHr: w.resting_hr, sleepHours: w.sleep_hours,
+      sleepScore: w.sleep_score, bodyBattery: w.body_battery, stress: w.stress_score,
+      tss: tssByDate.get(date) ?? null,
+    });
+  }
+
+  const present = (arr: (number | null)[]): number[] => arr.filter((v): v is number => v != null);
+  const alcohol = present(logs.map(l => l.alcohol_units));
+  const candy = present(logs.map(l => l.candy_portions));
+  const ranked = rankEffects(logs, metricsByDate, STANDARD_EXPOSURES).slice(0, 8);
+
+  return {
+    logged: true,
+    days_logged: logs.length,
+    alcohol: {
+      days_recorded: alcohol.length,
+      dry_days: alcohol.filter(v => v === 0).length,
+      drinking_days: alcohol.filter(v => v > 0).length,
+      avg_units_per_recorded_day: alcohol.length ? Math.round((alcohol.reduce((s, v) => s + v, 0) / alcohol.length) * 10) / 10 : null,
+    },
+    candy: {
+      days_recorded: candy.length,
+      days_with_candy: candy.filter(v => v > 0).length,
+      avg_portions_per_recorded_day: candy.length ? Math.round((candy.reduce((s, v) => s + v, 0) / candy.length) * 10) / 10 : null,
+    },
+    measured_effects: ranked.map(e => ({
+      habit: e.exposureLabel,
+      affects: e.outcome.label,
+      difference: e.delta != null ? Math.round(e.delta * 100) / 100 : null,
+      unit: e.outcome.unit,
+      cohens_d: e.d != null ? Math.round(e.d * 100) / 100 : null,
+      n_with: e.nExposed,
+      n_without: e.nBaseline,
+      reliable: !e.unreliable,
+      direction: e.worse ? 'worse' : 'better',
+    })),
+    note: 'Effects are measured the MORNING AFTER intake, comparing days the user logged. Days never logged are excluded, not treated as zero. Any entry with reliable=false has under 5 days on one side — mention the uncertainty rather than stating it as fact. These are associations in one person\'s observational data, not proven causation; weekends confound alcohol in particular. Where an effect is large and reliable, it is worth naming the specific number.',
+  };
 }
 
 // Summarises the manually-logged routine for the coach. Without this the coach
@@ -90,6 +166,7 @@ export function buildFullContext(
   userSettings?: Partial<UserSettings>,
   manualFtpWatts?: number | null,
   exerciseLogs?: ExerciseLog[],
+  nutritionLogs?: NutritionLog[],
 ): FullContext {
   const sorted = [...wellness].sort((a, b) => a.date.localeCompare(b.date));
   const now = Date.now();
@@ -222,6 +299,7 @@ export function buildFullContext(
       note: 'TSS/CTL/ATL estimated from HR + duration where Garmin did not supply a TSS value (most walks/runs). Treat weekly_tss as approximate load, not device-reported. Manually-logged strength/mobility work is NOT included in these figures — see strength_and_mobility.',
     },
     strength_and_mobility: summariseExerciseLogs(exerciseLogs),
+    nutrition: summariseNutrition(nutritionLogs, sorted, activities, thresholdHR),
     body_composition: {
       weight_kg:      latestBC?.weight_kg ?? latestWeight,
       body_fat_pct:   latestBC?.body_fat_pct ?? null,
@@ -281,8 +359,9 @@ export async function generateWeeklySummary(
   userSettings?: Partial<UserSettings>,
   manualFtpWatts?: number | null,
   exerciseLogs?: ExerciseLog[],
+  nutritionLogs?: NutritionLog[],
 ): Promise<AISummary> {
-  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs);
+  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs);
 
   // Forced tool call guarantees schema-valid JSON — no fence-stripping or
   // regex extraction, which broke when the model wrapped output in ```json.
@@ -356,8 +435,9 @@ export async function* streamChat(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sampleSummaries?: any[],
   exerciseLogs?: ExerciseLog[],
+  nutritionLogs?: NutritionLog[],
 ): AsyncGenerator<string> {
-  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs);
+  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs);
 
   const samplesSection = sampleSummaries && sampleSummaries.length > 0
     ? `\n\n## Per-Second HR & Power Analysis (Last ${sampleSummaries.length} Activities)

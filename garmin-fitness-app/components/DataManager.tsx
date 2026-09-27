@@ -8,6 +8,7 @@ import { Trash2, Lock, LockOpen, Pencil, Check, X, AlertTriangle, Loader2, Shiel
 import { format, parseISO } from 'date-fns';
 import type { OutlierProposal } from '@/app/api/data/outliers/route';
 import ExerciseLog from '@/components/ExerciseLog';
+import NutritionLog from '@/components/NutritionLog';
 import { useDataRefresh, useRefreshAfter } from '@/lib/data-refresh';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -734,7 +735,7 @@ function AnomalyDetector({ onApplied }: { onApplied: () => void }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type SubTab = 'wellness' | 'activities' | 'exercises' | 'anomalies';
+type SubTab = 'wellness' | 'activities' | 'exercises' | 'nutrition' | 'anomalies';
 
 export default function DataManager() {
   const [subTab, setSubTab] = useState<SubTab>('wellness');
@@ -744,6 +745,7 @@ export default function DataManager() {
     { id: 'wellness', label: 'Wellness' },
     { id: 'activities', label: 'Activities' },
     { id: 'exercises', label: 'Exercise Log' },
+    { id: 'nutrition', label: 'Food & Drink' },
     { id: 'anomalies', label: 'Anomaly Detector' },
   ];
 
@@ -779,6 +781,7 @@ export default function DataManager() {
           {subTab === 'wellness' && <WellnessTable key={refreshKey} />}
           {subTab === 'activities' && <ActivitiesTable key={refreshKey} />}
           {subTab === 'exercises' && <ExerciseLog key={refreshKey} />}
+          {subTab === 'nutrition' && <NutritionLog key={refreshKey} />}
           {subTab === 'anomalies' && <AnomalyDetector onApplied={() => setRefreshKey(k => k + 1)} />}
         </CardContent>
       </Card>

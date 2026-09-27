@@ -28,6 +28,7 @@ import OptimalTrainingDays from './charts/OptimalTrainingDays';
 import CardiovascularAge from './charts/CardiovascularAge';
 import ExerciseProgress from './charts/ExerciseProgress';
 import AirofitProgress from './charts/AirofitProgress';
+import NutritionSection from './charts/NutritionSection';
 import SleepDebtChart from './charts/SleepDebtChart';
 import BodyBatteryChart from './charts/BodyBatteryChart';
 import BodyCompositionChart from './charts/BodyCompositionChart';
@@ -330,6 +331,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           <ExpandableCard title="Airofit · Respiratory Capacity">
             {(expanded) => <AirofitProgress cutoff={cutoff} height={expanded ? 460 : undefined} />}
           </ExpandableCard>
+
+          {/* Food & drink, and whether it shows up in recovery the next morning */}
+          <NutritionSection allWellness={allWellness} allActivities={allActivities}
+            cutoff={cutoff} thresholdHR={thresholdHR} />
 
           {/* Load management */}
           <ExpandableCard title="Training Load & Forecast">
