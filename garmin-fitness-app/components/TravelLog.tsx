@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { useDataVersion, useRefreshAfter } from '@/lib/data-refresh';
 import {
   TIMEZONE_PRESETS, TRAVEL_MODES, TRAVEL_PURPOSES, zonesCrossed, shiftDirection,
-  expectedAdaptationDays, describeTrip, type TravelLog as Trip,
+  expectedAdaptationDays, describeTrip, utcOffsetOn, type TravelLog as Trip,
 } from '@/lib/travel';
+import { loadSettings, DEFAULT_SETTINGS } from '@/lib/settings';
 
 const todayStr = () => {
   const d = new Date();
@@ -27,12 +28,17 @@ interface Draft {
   notes: string;
 }
 
-const emptyDraft = (): Draft => ({
+/**
+ * A fresh trip, with the home side resolved from the Home Base setting FOR THE
+ * DEPARTURE DATE — so a July trip from Copenhagen starts at +2 (CEST) and a
+ * January one at +1, rather than both at a hardcoded number.
+ */
+const emptyDraft = (homeZone: string, on = todayStr()): Draft => ({
   destination: '',
-  depart_date: todayStr(),
-  arrive_date: todayStr(),
+  depart_date: on,
+  arrive_date: on,
   return_date: '',
-  home_utc_offset: '1',          // Copenhagen standard time
+  home_utc_offset: String(utcOffsetOn(homeZone, on) ?? 1),
   dest_utc_offset: '',
   travel_mode: 'flight',
   purpose: '',
@@ -43,8 +49,13 @@ const inputCls =
   'rounded border border-border bg-secondary px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring';
 
 export default function TravelLog() {
+  // Settings live in localStorage, so read after mount to keep server and
+  // client markup identical.
+  const [homeZone, setHomeZone] = useState(DEFAULT_SETTINGS.homeTimezone);
+  useEffect(() => { setHomeZone(loadSettings().homeTimezone ?? DEFAULT_SETTINGS.homeTimezone); }, []);
+
   const [trips, setTrips] = useState<Trip[] | null>(null);
-  const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [draft, setDraft] = useState<Draft>(() => emptyDraft(DEFAULT_SETTINGS.homeTimezone));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +81,13 @@ export default function TravelLog() {
       // Most trips arrive the day they depart; keep them in step until the user
       // says otherwise, rather than making them fill the same date twice.
       if (k === 'depart_date' && d.arrive_date === d.depart_date) next.arrive_date = v as string;
+      // Home offset follows the departure date: the same home base is +1 or +2
+      // depending on the season, and logging a summer trip at +1 would overstate
+      // every eastward shift by an hour.
+      if (k === 'depart_date' && !d.id) {
+        const resolved = utcOffsetOn(homeZone, v as string);
+        if (resolved != null) next.home_utc_offset = String(resolved);
+      }
       return next;
     });
     setSaved(false);
@@ -99,7 +117,7 @@ export default function TravelLog() {
         throw new Error(body.error ?? `HTTP ${r.status}`);
       }
       setSaved(true);
-      setDraft(emptyDraft());
+      setDraft(emptyDraft(homeZone));
       await load();
       return true;
     } catch (e) {
@@ -108,7 +126,7 @@ export default function TravelLog() {
     } finally {
       setSaving(false);
     }
-  }, [draft, load]);
+  }, [draft, load, homeZone]);
 
   const save = useRefreshAfter(doSave);
 
@@ -166,6 +184,12 @@ export default function TravelLog() {
           {saved && <span className="text-[11px] text-green-400 flex items-center gap-1"><Check className="w-3 h-3" />Saved</span>}
           {error && <span className="text-[11px] text-red-400">{error}</span>}
         </div>
+
+        <p className="text-[10px] text-muted-foreground">
+          Home base: <span className="font-mono text-foreground">{homeZone.replace('_', ' ')}</span>
+          {' '}— change it in Settings. The home offset below follows your departure date, so summer
+          time is already accounted for; override it only if you departed from somewhere else.
+        </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
@@ -254,7 +278,7 @@ export default function TravelLog() {
             {draft.id ? 'Update trip' : 'Add trip'}
           </Button>
           {draft.id && (
-            <Button size="sm" variant="ghost" onClick={() => setDraft(emptyDraft())}>Cancel</Button>
+            <Button size="sm" variant="ghost" onClick={() => setDraft(emptyDraft(homeZone))}>Cancel</Button>
           )}
         </div>
       </div>

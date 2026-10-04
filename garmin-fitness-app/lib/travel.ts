@@ -75,6 +75,52 @@ export const TIMEZONE_PRESETS: { label: string; offset: number }[] = [
   { label: 'Honolulu', offset: -10 },
 ];
 
+/**
+ * Actual UTC offset of an IANA zone ON A GIVEN DATE, daylight saving included.
+ *
+ * This is why the home base is stored as a zone name rather than a number.
+ * Copenhagen is +1 in winter and +2 under CEST, so a fixed offset mis-states
+ * every summer trip by an hour. For a European destination both ends shift
+ * together and the difference survives, but Copenhagen → Tokyo in July is a
+ * 7-hour shift, not the 8 a static table would claim.
+ *
+ * Falls back to null for an unrecognised zone rather than guessing — the caller
+ * then keeps whatever offset was entered by hand.
+ */
+export function utcOffsetOn(ianaZone: string, dateStr: string): number | null {
+  try {
+    // Midday avoids landing on the DST transition hour itself.
+    const at = new Date(`${dateStr}T12:00:00Z`);
+    if (Number.isNaN(at.getTime())) return null;
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: ianaZone, timeZoneName: 'longOffset',
+    }).formatToParts(at);
+    const name = parts.find(p => p.type === 'timeZoneName')?.value;   // e.g. "GMT+02:00"
+    if (!name) return null;
+    if (/^GMT$/.test(name)) return 0;
+    const m = /GMT([+-])(\d{1,2})(?::(\d{2}))?/.exec(name);
+    if (!m) return null;
+    const sign = m[1] === '-' ? -1 : 1;
+    return sign * (Number(m[2]) + Number(m[3] ?? 0) / 60);
+  } catch {
+    return null;   // environment without full ICU data
+  }
+}
+
+/** Home zones offered in Settings. Zone names, so DST resolves per date. */
+export const HOME_TIMEZONES: { label: string; zone: string }[] = [
+  { label: 'Copenhagen', zone: 'Europe/Copenhagen' },
+  { label: 'Oslo', zone: 'Europe/Oslo' },
+  { label: 'Stockholm', zone: 'Europe/Stockholm' },
+  { label: 'Berlin', zone: 'Europe/Berlin' },
+  { label: 'London', zone: 'Europe/London' },
+  { label: 'Paris', zone: 'Europe/Paris' },
+  { label: 'Amsterdam', zone: 'Europe/Amsterdam' },
+  { label: 'Madrid', zone: 'Europe/Madrid' },
+  { label: 'New York', zone: 'America/New_York' },
+  { label: 'Los Angeles', zone: 'America/Los_Angeles' },
+];
+
 export type ShiftDirection = 'east' | 'west' | 'none';
 
 /**

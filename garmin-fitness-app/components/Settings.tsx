@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Info } from 'lucide-react';
 import FtpTracker from '@/components/FtpTracker';
+import { HOME_TIMEZONES, utcOffsetOn } from '@/lib/travel';
 import { FtpEntry } from '@/types';
 
 interface Props {
@@ -159,6 +160,30 @@ export default function Settings({ settings, onSave, measuredMaxHR, ftpEntries, 
         <CardContent>
           <Field label="Minimum power for KPIs (W)" hint="Rides averaging below this power are treated as recovery rides and excluded from power curve, efficiency factor, power zones, FTP progression, and power-based personal bests. They still count toward weekly volume, cadence, and training load. Leave blank to include all rides.">
             <NumericInput value={form.minCyclingPower} onChange={v => update('minCyclingPower', v)} placeholder="e.g. 100" min={0} max={500} step={5} />
+          </Field>
+        </CardContent>
+      </Card>
+
+      {/* Home base */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle>Home Base</CardTitle></CardHeader>
+        <CardContent>
+          <Field label="Home timezone"
+            hint="Where you are when you are not travelling. Every trip you log defaults its home side to this, and the jet-lag analysis measures shifts relative to it. Stored as a zone rather than a fixed offset, so summer time is handled automatically.">
+            <select
+              value={form.homeTimezone ?? 'Europe/Copenhagen'}
+              onChange={e => update('homeTimezone', e.target.value)}
+              className="w-full rounded border border-border bg-secondary px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {HOME_TIMEZONES.map(t => {
+                const off = utcOffsetOn(t.zone, new Date().toISOString().slice(0, 10));
+                return (
+                  <option key={t.zone} value={t.zone}>
+                    {t.label}{off != null ? ` · currently UTC${off >= 0 ? '+' : ''}${off}` : ''}
+                  </option>
+                );
+              })}
+            </select>
           </Field>
         </CardContent>
       </Card>

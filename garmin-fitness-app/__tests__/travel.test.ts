@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  zonesCrossed, shiftDirection, expectedAdaptationDays, circadianEvents,
+  zonesCrossed, shiftDirection, expectedAdaptationDays, circadianEvents, utcOffsetOn, HOME_TIMEZONES,
   tripDates, tripLength, daysBetween, addDays, coerceTravelLog, describeTrip,
   type TravelLog,
 } from '@/lib/travel';
@@ -58,6 +58,43 @@ describe('zonesCrossed', () => {
 
   it('handles half-hour zones', () => {
     expect(zonesCrossed(1, 5.5)).toBe(4.5); // Copenhagen -> Delhi
+  });
+});
+
+describe('utcOffsetOn', () => {
+  it('resolves Copenhagen to +1 in winter and +2 under summer time', () => {
+    expect(utcOffsetOn('Europe/Copenhagen', '2026-01-15')).toBe(1);
+    expect(utcOffsetOn('Europe/Copenhagen', '2026-07-15')).toBe(2);
+  });
+
+  it('is why a fixed offset is wrong: the same trip differs by a zone in July', () => {
+    // Copenhagen -> Tokyo. Tokyo has no DST, so the shift shrinks in summer.
+    const winter = zonesCrossed(utcOffsetOn('Europe/Copenhagen', '2026-01-15')!, 9);
+    const summer = zonesCrossed(utcOffsetOn('Europe/Copenhagen', '2026-07-15')!, 9);
+    expect(winter).toBe(8);
+    expect(summer).toBe(7);
+  });
+
+  it('handles a zone with no DST and a negative offset', () => {
+    expect(utcOffsetOn('Asia/Tokyo', '2026-07-15')).toBe(9);
+    expect(utcOffsetOn('America/New_York', '2026-01-15')).toBe(-5);
+    expect(utcOffsetOn('America/New_York', '2026-07-15')).toBe(-4);
+  });
+
+  it('handles UTC itself and half-hour zones', () => {
+    expect(utcOffsetOn('UTC', '2026-01-15')).toBe(0);
+    expect(utcOffsetOn('Asia/Kolkata', '2026-01-15')).toBe(5.5);
+  });
+
+  it('returns null for an unknown zone rather than guessing an offset', () => {
+    expect(utcOffsetOn('Not/AZone', '2026-01-15')).toBeNull();
+  });
+
+  it('offers Copenhagen as a home base, and every listed zone resolves', () => {
+    expect(HOME_TIMEZONES.some(t => t.zone === 'Europe/Copenhagen')).toBe(true);
+    for (const t of HOME_TIMEZONES) {
+      expect(utcOffsetOn(t.zone, '2026-01-15'), t.zone).not.toBeNull();
+    }
   });
 });
 

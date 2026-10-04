@@ -100,6 +100,9 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS ftp_watts INTEGER`;
   // Recovery ride cutoff — cycling activities below this avg power are excluded from power KPIs
   await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS min_cycling_power INTEGER`;
+  // Home base when not travelling. IANA zone name, not an offset, so DST is
+  // resolved per trip date rather than baked in wrong half the year.
+  await sql`ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS home_timezone VARCHAR(64)`;
 
   // Log of automated Garmin sync runs (written by the GitHub Actions workflow via /api/sync-log)
   await sql`

@@ -8,6 +8,15 @@ export interface UserSettings {
   garminFtp: number | null;  // auto-synced from Garmin biometric profile (set by Zwift FTP tests)
   dailyStepsGoal: number;
   minCyclingPower: number | null;  // rides averaging below this (W) are excluded from power KPIs
+  /**
+   * Where you live when you are not travelling, as an IANA zone name.
+   *
+   * Stored as a zone name rather than a fixed offset so the real UTC offset can
+   * be resolved for the DATE of each trip — Copenhagen is +1 in winter and +2
+   * under CEST, and a static offset silently mis-states every summer trip by an
+   * hour. Every travel entry defaults its home side from this.
+   */
+  homeTimezone: string;
 }
 
 const STORAGE_KEY = 'fitness_user_settings';
@@ -22,6 +31,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   garminFtp: null,
   dailyStepsGoal: 10000,
   minCyclingPower: null,
+  homeTimezone: 'Europe/Copenhagen',
 };
 
 // Age as of a specific date rather than today — used to build historical
