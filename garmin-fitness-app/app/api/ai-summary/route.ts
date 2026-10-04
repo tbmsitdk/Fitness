@@ -4,6 +4,7 @@ import { sql } from '@vercel/postgres';
 import { generateWeeklySummary } from '@/lib/ai';
 import { coerceActivity, coerceWellness } from '@/lib/db';
 import { coerceNutritionLog } from '@/lib/nutrition';
+import { coerceTravelLog } from '@/lib/travel';
 import { coerceExerciseLog } from '@/lib/exercises';
 import { AISummary } from '@/types';
 import type { UserSettings } from '@/lib/settings';
@@ -19,7 +20,7 @@ async function buildSummary(userSettings?: UserSettings) {
   const actCutoff  = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
   const wellCutoff = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
 
-  const [actResult, wellResult, ftpResult, exerciseResult, nutritionResult] = await Promise.all([
+  const [actResult, wellResult, ftpResult, exerciseResult, nutritionResult, travelResult] = await Promise.all([
     sql`SELECT * FROM activities WHERE date >= ${actCutoff} ORDER BY date`,
     sql`SELECT * FROM wellness WHERE date >= ${wellCutoff} ORDER BY date`,
     sql`SELECT ftp_watts FROM ftp_entries ORDER BY date DESC LIMIT 1`,
@@ -30,6 +31,9 @@ async function buildSummary(userSettings?: UserSettings) {
                to_char(last_food_time, 'HH24:MI') AS last_food_time,
                caffeine_after_14, meal_quality, notes
         FROM nutrition_logs WHERE date >= ${actCutoff.slice(0, 10)} ORDER BY date`,
+    sql`SELECT id, destination, depart_date::text, arrive_date::text, return_date::text,
+               home_utc_offset, dest_utc_offset, travel_mode, purpose, notes
+        FROM travel_logs ORDER BY depart_date`,
   ]);
 
   const activities = actResult.rows.map(coerceActivity);
@@ -37,12 +41,13 @@ async function buildSummary(userSettings?: UserSettings) {
   const manualFtpWatts: number | null = ftpResult.rows[0]?.ftp_watts ? Number(ftpResult.rows[0].ftp_watts) : null;
   const exerciseLogs = exerciseResult.rows.map(coerceExerciseLog);
   const nutritionLogs = nutritionResult.rows.map(coerceNutritionLog);
+  const travelLogs = travelResult.rows.map(coerceTravelLog);
 
   if (activities.length === 0) {
     throw Object.assign(new Error('No activity data found. Please upload your Garmin export first.'), { status: 404 });
   }
 
-  return generateWeeklySummary(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs);
+  return generateWeeklySummary(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs, travelLogs);
 }
 
 // POST — called from AICoach with optional settings

@@ -159,6 +159,28 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS savoury_snacks DECIMAL(4,1)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_nutrition_date ON nutrition_logs(date)`;
 
+  // Travel. One row per TRIP — per-day consequences (days away, days spent
+  // mid-adaptation) are derived in lib/travel.ts rather than entered.
+  // return_date is nullable so a trip can be logged on departure and closed on
+  // return; an open trip is treated as running up to today.
+  await sql`
+    CREATE TABLE IF NOT EXISTS travel_logs (
+      id SERIAL PRIMARY KEY,
+      destination VARCHAR(120) NOT NULL,
+      depart_date DATE NOT NULL,
+      arrive_date DATE NOT NULL,
+      return_date DATE,
+      home_utc_offset DECIMAL(4,2) NOT NULL,
+      dest_utc_offset DECIMAL(4,2) NOT NULL,
+      travel_mode VARCHAR(20),
+      purpose VARCHAR(20),
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_travel_depart ON travel_logs(depart_date)`;
+
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_type ON activities(activity_type)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_wellness_date ON wellness(date)`;

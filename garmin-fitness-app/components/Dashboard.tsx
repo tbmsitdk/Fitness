@@ -29,6 +29,7 @@ import CardiovascularAge from './charts/CardiovascularAge';
 import ExerciseProgress from './charts/ExerciseProgress';
 import AirofitProgress from './charts/AirofitProgress';
 import NutritionSection from './charts/NutritionSection';
+import TravelSection from './charts/TravelSection';
 import SleepDebtChart from './charts/SleepDebtChart';
 import BodyBatteryChart from './charts/BodyBatteryChart';
 import BodyCompositionChart from './charts/BodyCompositionChart';
@@ -334,6 +335,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
 
           {/* Food & drink, and whether it shows up in recovery the next morning */}
           <NutritionSection allWellness={allWellness} allActivities={allActivities}
+            cutoff={cutoff} thresholdHR={thresholdHR} />
+
+          {/* Travel, timezone shifts, and what they cost in recovery */}
+          <TravelSection allWellness={allWellness} allActivities={allActivities}
             cutoff={cutoff} thresholdHR={thresholdHR} />
 
           {/* Load management */}

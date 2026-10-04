@@ -7,8 +7,10 @@ import {
   EXERCISES, CATEGORY_LABEL, primaryValue, primaryUnit, type ExerciseLog,
 } from '@/lib/exercises';
 import type { NutritionLog } from '@/lib/nutrition';
+import { circadianEvents, type TravelLog } from '@/lib/travel';
+import { travelKpis, travelEffect, zoneCorrelation } from '@/lib/travel-analysis';
 import {
-  rankEffects, STANDARD_EXPOSURES, type DayMetrics,
+  rankEffects, STANDARD_EXPOSURES, OUTCOMES, type DayMetrics,
 } from '@/lib/nutrition-analysis';
 import type { UserSettings } from '@/lib/settings';
 
@@ -49,6 +51,90 @@ interface FullContext {
   recovery: Record<string, unknown>;
   longevity: Record<string, unknown>;
   nutrition: Record<string, unknown>;
+  travel: Record<string, unknown>;
+}
+
+/**
+ * Travel and timezone exposure, with the measured recovery cost.
+ *
+ * Without this the coach sees an unexplained HRV collapse and reads it as
+ * overtraining — then prescribes rest for what was actually an eight-hour
+ * time shift.
+ */
+function summariseTravel(
+  trips: TravelLog[] | undefined,
+  wellness: WellnessRecord[],
+  activities: Activity[],
+  thresholdHR: number,
+) {
+  if (!trips || trips.length === 0) {
+    return {
+      logged: false,
+      note: 'No travel logged. Do not attribute anything to jet lag — there is no data. If recovery dips without a training explanation, asking whether the user travelled is reasonable.',
+    };
+  }
+
+  const tssByDate = new Map<string, number>();
+  for (const a of activities) {
+    const d = a.date.slice(0, 10);
+    tssByDate.set(d, (tssByDate.get(d) ?? 0) + estimateTSS(a, thresholdHR));
+  }
+  const metricsByDate = new Map<string, DayMetrics>();
+  for (const w of wellness) {
+    const date = w.date.slice(0, 10);
+    metricsByDate.set(date, {
+      date, hrv: w.hrv_rmssd, restingHr: w.resting_hr, sleepHours: w.sleep_hours,
+      sleepScore: w.sleep_score, bodyBattery: w.body_battery, stress: w.stress_score,
+      tss: tssByDate.get(date) ?? null,
+    });
+  }
+
+  const p = (n: number) => String(n).padStart(2, '0');
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+  const start = new Date(now.getTime() - 90 * 86400000);
+  const startStr = `${start.getFullYear()}-${p(start.getMonth() + 1)}-${p(start.getDate())}`;
+
+  const events = trips.flatMap(circadianEvents);
+  const kpis = travelKpis(trips, startStr, todayStr);
+  const hrv = OUTCOMES.find(o => o.key === 'hrv')!;
+  const sleep = OUTCOMES.find(o => o.key === 'sleepScore')!;
+
+  // Is the user mid-adaptation right now? The single most decision-relevant fact.
+  const recent = events
+    .filter(e => e.date <= todayStr)
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+  const daysSinceLastShift = recent
+    ? Math.round((new Date(todayStr).getTime() - new Date(recent.date).getTime()) / 86400000)
+    : null;
+
+  return {
+    logged: true,
+    period: '90 days',
+    trips_in_period: kpis.trips,
+    days_away: kpis.daysAway,
+    pct_of_period_away: kpis.daysAwayPct,
+    total_zones_crossed: kpis.totalZonesCrossed,
+    largest_single_shift: kpis.maxZones,
+    work_trips: kpis.workTrips,
+    estimated_days_adapting: kpis.daysInTransition,
+    most_recent_shift: recent ? {
+      date: recent.date,
+      zones: recent.zones,
+      direction: recent.direction,
+      leg: recent.leg,
+      days_ago: daysSinceLastShift,
+      expected_adaptation_days: recent.adaptationDays,
+      likely_still_adapting: daysSinceLastShift != null && daysSinceLastShift < recent.adaptationDays,
+    } : null,
+    measured_cost: {
+      hrv_eastward: travelEffect(events, metricsByDate, hrv, 'east'),
+      hrv_westward: travelEffect(events, metricsByDate, hrv, 'west'),
+      sleep_eastward: travelEffect(events, metricsByDate, sleep, 'east'),
+      hrv_per_zone_east: zoneCorrelation(events, metricsByDate, hrv, 'east'),
+    },
+    note: 'Deviations are measured against the user\'s own average in the 14 days before each departure, so seasonal drift is already removed. POSITIVE zones mean eastward (clock advances, the harder direction). Eastward and westward are never pooled. If likely_still_adapting is true, a low HRV or poor sleep score is expected and is NOT evidence of overtraining — say so rather than prescribing rest for jet lag. Entries with unreliable=true or n below 5 are thin: state the uncertainty. Travel also brings bad sleep, poor food and work stress, so attribute to the timezone shift with appropriate hedging, never as established cause.',
+  };
 }
 
 /**
@@ -173,6 +259,7 @@ export function buildFullContext(
   manualFtpWatts?: number | null,
   exerciseLogs?: ExerciseLog[],
   nutritionLogs?: NutritionLog[],
+  travelLogs?: TravelLog[],
 ): FullContext {
   const sorted = [...wellness].sort((a, b) => a.date.localeCompare(b.date));
   const now = Date.now();
@@ -321,6 +408,7 @@ export function buildFullContext(
     },
     strength_and_mobility: summariseExerciseLogs(exerciseLogs),
     nutrition: summariseNutrition(nutritionLogs, sorted, activities, thresholdHR),
+    travel: summariseTravel(travelLogs, sorted, activities, thresholdHR),
     body_composition: {
       weight_kg:      latestBC?.weight_kg ?? latestWeight,
       body_fat_pct:   latestBC?.body_fat_pct ?? null,
@@ -382,8 +470,9 @@ export async function generateWeeklySummary(
   manualFtpWatts?: number | null,
   exerciseLogs?: ExerciseLog[],
   nutritionLogs?: NutritionLog[],
+  travelLogs?: TravelLog[],
 ): Promise<AISummary> {
-  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs);
+  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs, travelLogs);
 
   // Forced tool call guarantees schema-valid JSON — no fence-stripping or
   // regex extraction, which broke when the model wrapped output in ```json.
@@ -458,8 +547,9 @@ export async function* streamChat(
   sampleSummaries?: any[],
   exerciseLogs?: ExerciseLog[],
   nutritionLogs?: NutritionLog[],
+  travelLogs?: TravelLog[],
 ): AsyncGenerator<string> {
-  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs);
+  const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs, travelLogs);
 
   const samplesSection = sampleSummaries && sampleSummaries.length > 0
     ? `\n\n## Per-Second HR & Power Analysis (Last ${sampleSummaries.length} Activities)
