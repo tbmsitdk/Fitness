@@ -12,8 +12,13 @@ const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(24
 
 interface Props {
   settings: UserSettings;
+  /** FULL history — the series is reconstructed by forward-filling sparse
+   *  biomarker readings, so trimming the input would start the fill from
+   *  nothing and distort the early points. Display is trimmed instead. */
   wellness: WellnessRecord[];
   activities: Activity[];
+  /** Period selector. Filters what is SHOWN, never what is computed. */
+  cutoff?: Date;
 }
 
 const FACTOR_COLOR: Record<string, string> = {
@@ -39,7 +44,7 @@ function ProgressBar({ label, score, color }: { label: string; score: number; co
   );
 }
 
-export default function CardiovascularAge({ settings, wellness, activities }: Props) {
+export default function CardiovascularAge({ settings, wellness, activities, cutoff }: Props) {
   const { chrono, result } = useMemo(() => {
     const chrono = getAge(settings);
     const sorted = [...wellness].sort((a, b) => b.date.localeCompare(a.date));
@@ -70,9 +75,20 @@ export default function CardiovascularAge({ settings, wellness, activities }: Pr
     [wellness, activities, settings]
   );
 
-  const spanYears = new Set(history.map(p => p.date.slice(0, 4))).size > 1;
+  // Reconstruct over everything, then show only the selected period. If fewer
+  // than two points survive the cut the window is too short to draw a line, so
+  // fall back to the full series rather than rendering an empty panel.
+  const visible = useMemo(() => {
+    if (!cutoff) return history;
+    const from = cutoff.toISOString().slice(0, 10);
+    const windowed = history.filter(p => p.date >= from);
+    return windowed.length >= 2 ? windowed : history;
+  }, [history, cutoff]);
+  const trimmed = cutoff != null && visible.length < history.length;
+
+  const spanYears = new Set(visible.map(p => p.date.slice(0, 4))).size > 1;
   const dateFmt = spanYears ? "MMM ''yy" : 'MMM d';
-  const chartData = history.map(p => ({
+  const chartData = visible.map(p => ({
     label: format(parseISO(p.date), dateFmt),
     cardioAge: p.cardioAge,
     chronoAge: p.chronoAge,
@@ -84,7 +100,10 @@ export default function CardiovascularAge({ settings, wellness, activities }: Pr
   const deltaText = delta < 0 ? `${Math.abs(delta)} yrs younger` : delta > 0 ? `${delta} yrs older` : 'same as chrono age';
 
   return (
-    <div className="space-y-4">
+    // Two columns on wide screens: the scores and factor bars never needed the
+    // full width, and the time series was pushed below the fold for no reason.
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+      <div className="space-y-4">
       <div className="flex gap-4 flex-wrap">
         <div className="p-4 rounded-lg border border-border bg-card space-y-1">
           <p className="text-[10px] tracking-widest uppercase text-muted-foreground">Cardiovascular Age</p>
@@ -102,7 +121,7 @@ export default function CardiovascularAge({ settings, wellness, activities }: Pr
         </div>
       </div>
 
-      <div className="space-y-3 max-w-md">
+      <div className="space-y-3">
         {result.factors.map(f => (
           <ProgressBar
             key={f.key}
@@ -119,9 +138,10 @@ export default function CardiovascularAge({ settings, wellness, activities }: Pr
         norms shown elsewhere in the app; HRV is scored against an approximate age-expected baseline and varies
         widely between individuals, so it's given a lighter weight.
       </p>
+      </div>
 
       {chartData.length >= 2 && (
-        <div className="pt-2 border-t border-border/60">
+        <div className="xl:pt-0 pt-2 xl:border-t-0 border-t border-border/60">
           <p className="text-xs font-semibold mb-2">Cardiovascular Age Over Time</p>
           <ResponsiveContainer width="100%" height={220}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -137,6 +157,9 @@ export default function CardiovascularAge({ settings, wellness, activities }: Pr
           <p className="text-[10px] text-muted-foreground/60 mt-1 italic">
             Green = cardiovascular age reconstructed weekly from historical biomarkers (forward-filled between
             readings). Grey dashed = chronological age at each point in time. Below the grey line = biologically younger.
+            {trimmed
+              ? ' Showing the selected period; the reconstruction still runs over your whole history, so the trend here is not restarted at the window edge.'
+              : ''}
           </p>
         </div>
       )}

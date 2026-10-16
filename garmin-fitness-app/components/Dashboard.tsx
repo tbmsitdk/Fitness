@@ -494,7 +494,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           </ExpandableCard>
 
           <ExpandableCard title="Walking & Activity">
-            {(expanded) => <WalkingChart activities={allActivities} height={expanded ? 520 : undefined} />}
+            {/* Period-filtered: this chart plots exactly what it is given and
+                does no windowing of its own, so allActivities ignored the
+                range selector and always drew the full history. */}
+            {(expanded) => <WalkingChart activities={activities} height={expanded ? 520 : undefined} />}
           </ExpandableCard>
 
           <ExpandableCard title="HR During Walks">
@@ -524,7 +527,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               than beside the walking charts they used to be paired with. */}
           <ExpandableCard title="Cardiovascular Age">
             {/* Computes its own latest-reading + rolling windows — needs unfiltered history */}
-            {() => <CardiovascularAge settings={settings} wellness={sortedAllWellness} activities={allActivities} />}
+            {() => <CardiovascularAge settings={settings} wellness={sortedAllWellness} activities={allActivities} cutoff={cutoff} />}
           </ExpandableCard>
           <ExpandableCard title="Heart Rate">
             {(expanded) => <HeartRateChart wellness={sortedWellness} activities={activities} height={expanded ? 500 : undefined} />}
