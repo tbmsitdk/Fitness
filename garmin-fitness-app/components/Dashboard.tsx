@@ -102,7 +102,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 export default function Dashboard({ activities, allActivities, wellness, allWellness, cutoff, settings = DEFAULT_SETTINGS, ftpEntries = [] }: Props) {
-  const [subTab, setSubTab] = useState<'home' | 'running' | 'cycling' | 'health' | 'training'>('home');
+  const [subTab, setSubTab] = useState<'home' | 'running' | 'cycling' | 'walking' | 'health' | 'training'>('home');
   const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
   const [wellMetric, setWellMetric] = useState<WellnessMetric>('rhr');
   const [cadenceSport, setCadenceSport] = useState<'running' | 'cycling'>('running');
@@ -233,6 +233,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
     { id: 'training', label: 'Training' },
     { id: 'running',  label: 'Running'  },
     { id: 'cycling',  label: 'Cycling'  },
+    { id: 'walking',  label: 'Walking'  },
     { id: 'health',   label: 'Health'   },
   ] as const;
 
@@ -368,9 +369,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             <ExpandableCard title="Monthly Consistency">
               {(expanded) => <ConsistencyChart data={consistency} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
-            <ExpandableCard title="Weekly Calories">
-              {(expanded) => <CaloriesChart activities={activities} height={expanded ? 480 : undefined} />}
-            </ExpandableCard>
           </div>
 
           {/* Recent activities — click for per-second HR/power/cadence detail */}
@@ -488,6 +486,29 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       )}
 
       {/* ── HEALTH ───────────────────────────────────────────────────────── */}
+      {subTab === 'walking' && (
+        <div className="space-y-4">
+          {/* Volume first: steps are the daily total, walks are the logged sessions. */}
+          <ExpandableCard title="Daily Steps">
+            {(expanded) => <StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} height={expanded ? 500 : undefined} />}
+          </ExpandableCard>
+
+          <ExpandableCard title="Walking & Activity">
+            {(expanded) => <WalkingChart activities={allActivities} height={expanded ? 520 : undefined} />}
+          </ExpandableCard>
+
+          <ExpandableCard title="HR During Walks">
+            {(expanded) => <HRZoneDistribution cutoff={cutoff} fallbackMaxHR={maxHR} sport="walking" height={expanded ? 460 : undefined} />}
+          </ExpandableCard>
+
+          <p className="text-[10px] text-muted-foreground/60 italic">
+            Gait metrics — walking speed, asymmetry and double-support time — are still under
+            Health → Mobility &amp; Vitals, because they arrive bundled with respiratory rate and
+            blood oxygen in one Apple Health card. Splitting that card would move those too.
+          </p>
+        </div>
+      )}
+
       {subTab === 'health' && (
         <div className="space-y-4">
           <SectionHeading>Recovery &amp; Readiness</SectionHeading>
@@ -551,8 +572,8 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             <ExpandableCard title="Weight">
               {(expanded) => <WeightChart wellness={sortedWellness} heightCm={settings.heightCm} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
-            <ExpandableCard title="Daily Steps">
-              {(expanded) => <StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} height={expanded ? 460 : undefined} />}
+            <ExpandableCard title="Weekly Calories">
+              {(expanded) => <CaloriesChart activities={activities} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
 
@@ -581,15 +602,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               </ChartErrorBoundary>
             )}
           </ExpandableCard>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ExpandableCard title="Walking & Activity">
-              {(expanded) => <WalkingChart activities={allActivities} height={expanded ? 480 : undefined} />}
-            </ExpandableCard>
-            <ExpandableCard title="HR During Walks">
-              {(expanded) => <HRZoneDistribution cutoff={cutoff} fallbackMaxHR={maxHR} sport="walking" height={expanded ? 360 : undefined} />}
-            </ExpandableCard>
-          </div>
 
           <SectionHeading>Explore</SectionHeading>
           {/* Correlation explorer — finds statistical relationships across your own metrics */}
