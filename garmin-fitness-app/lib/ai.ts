@@ -7,6 +7,10 @@ import {
   EXERCISES, CATEGORY_LABEL, primaryValue, primaryUnit, type ExerciseLog,
 } from '@/lib/exercises';
 import type { NutritionLog } from '@/lib/nutrition';
+import {
+  predictedVitalCapacity, predictedMIP, predictedMEP, percentOfPredicted,
+} from '@/lib/respiratory';
+import { computeCardioAge } from '@/lib/cardio-age';
 import { circadianEvents, type TravelLog } from '@/lib/travel';
 import { travelKpis, travelEffect, zoneCorrelation } from '@/lib/travel-analysis';
 import {
@@ -39,7 +43,27 @@ Guidelines:
 - Flag concrete risks: injury (ACWR >1.5, high monotony), overtraining (HRV decline + high TSS), health (sleep debt, body fat trends)
 - Celebrate specific wins with numbers
 - Be honest about weaknesses — a good coach tells hard truths kindly
-- Format with clear markdown sections`;
+- Format with clear markdown sections
+
+USING THE FULL DATA SET — the context contains more than Garmin activities, and a report
+that ignores the manually-logged sections reads as though the user's effort was not noticed:
+- strength_and_mobility — real resistance and mobility work that does NOT appear as Garmin
+  activities. Never state the user does no strength training when this section has data.
+- respiratory — Airofit lung capacity and inspiratory/expiratory strength, with predicted
+  values. Distinct from the Airofit SESSION TIME in strength_and_mobility.
+- nutrition — alcohol, sugar, crisps, caffeine and meal quality, with the measured effect of
+  each on next-morning recovery. Where an effect is large and reliable, name the number.
+- travel — timezone shifts and their measured cost. If likely_still_adapting is true, do not
+  read low HRV as overtraining.
+- cardiovascular_age — use its factor scores to say which single change would move it most.
+- apple_health_vitals — gait quality and respiratory rate.
+- body_composition — read the source field; values may come from a different scale than the
+  history, and muscle mass definitions differ between devices.
+
+Each section carries its own note with caveats and sample sizes. Respect them: where a note
+says a number is unreliable, thin, or an artefact of measurement, say so rather than asserting
+it. If a section reports logged:false, that means NO DATA — never infer a zero or a problem
+from absence, and do not invent a trend for it.`;
 
 interface FullContext {
   user_profile: Record<string, unknown>;
@@ -52,6 +76,104 @@ interface FullContext {
   longevity: Record<string, unknown>;
   nutrition: Record<string, unknown>;
   travel: Record<string, unknown>;
+  cardiovascular_age: Record<string, unknown>;
+  respiratory: Record<string, unknown>;
+  apple_health_vitals: Record<string, unknown>;
+}
+
+/**
+ * Airofit device measurements.
+ *
+ * summariseExerciseLogs reports Airofit as SESSION MINUTES only, because that
+ * is what primaryValue returns for it. The actual capacity readings — lung
+ * capacity and inspiratory/expiratory strength — are the point of using the
+ * device and were invisible to the coach entirely. Each is paired with its
+ * predicted value so the coach can judge rather than just read a number back.
+ */
+function summariseRespiratory(
+  logs: ExerciseLog[] | undefined,
+  age: number | null,
+  sex: 'male' | 'female',
+  heightCm: number | null,
+) {
+  const readings = (logs ?? []).filter(l =>
+    l.exercise_key === 'airofit' &&
+    (l.vital_capacity_l != null || l.inspiratory_strength != null || l.expiratory_strength != null));
+
+  if (readings.length === 0) {
+    return {
+      logged: false,
+      note: 'No Airofit capacity readings. The user may still be logging Airofit session time under strength_and_mobility — that is training time, not a measurement, and says nothing about respiratory capacity.',
+    };
+  }
+
+  const sorted = [...readings].sort((a, b) => a.date.localeCompare(b.date));
+  const latestOf = (k: 'vital_capacity_l' | 'inspiratory_strength' | 'expiratory_strength') =>
+    [...sorted].reverse().find(r => r[k] != null)?.[k] ?? null;
+  const firstOf = (k: 'vital_capacity_l' | 'inspiratory_strength' | 'expiratory_strength') =>
+    sorted.find(r => r[k] != null)?.[k] ?? null;
+  const change = (k: Parameters<typeof latestOf>[0]) => {
+    const a = firstOf(k), b = latestOf(k);
+    return a != null && b != null ? Math.round((b - a) * 100) / 100 : null;
+  };
+
+  const a = age ?? 55;
+  const vcPredicted = predictedVitalCapacity(a, sex, heightCm);
+
+  return {
+    logged: true,
+    sessions_with_readings: sorted.length,
+    first_reading_date: sorted[0].date,
+    latest_reading_date: sorted[sorted.length - 1].date,
+    vital_capacity_l: {
+      latest: latestOf('vital_capacity_l'),
+      change_since_first: change('vital_capacity_l'),
+      predicted: vcPredicted,
+      pct_of_predicted: percentOfPredicted(latestOf('vital_capacity_l'), vcPredicted),
+    },
+    inspiratory_strength_cmh2o: {
+      latest: latestOf('inspiratory_strength'),
+      change_since_first: change('inspiratory_strength'),
+      predicted_mip: predictedMIP(a, sex),
+      pct_of_predicted: percentOfPredicted(latestOf('inspiratory_strength'), predictedMIP(a, sex)),
+    },
+    expiratory_strength_cmh2o: {
+      latest: latestOf('expiratory_strength'),
+      change_since_first: change('expiratory_strength'),
+      predicted_mep: predictedMEP(a, sex),
+      pct_of_predicted: percentOfPredicted(latestOf('expiratory_strength'), predictedMEP(a, sex)),
+    },
+    note: 'Vital capacity predicted from ECCS/Quanjer (1993); MIP/MEP from Black & Hyatt (1969). IMPORTANT: the MIP/MEP equations describe a clinical maneuver against a closed valve, and a handheld trainer reads well below them — the expiratory gap especially is largely an artefact of the measurement, NOT evidence of weakness. Do not tell the user their expiratory strength is dangerously low on the strength of pct_of_predicted. The trend in their own numbers is the meaningful signal; predicted values are orientation only. Without a height in settings, vital capacity has no prediction and pct_of_predicted is null.',
+  };
+}
+
+/**
+ * Apple Health gait and vitals, which the dashboard shows but the coach never
+ * received — including the walking-quality metrics that are relevant to
+ * longevity and to interpreting a drop in training capacity.
+ */
+function summariseAppleVitals(wellness: WellnessRecord[]) {
+  const last30 = wellness.slice(-30);
+  const avgOf = (k: keyof WellnessRecord) => {
+    const vals = last30.map(w => w[k]).filter((v): v is number => typeof v === 'number' && v > 0);
+    return vals.length ? Math.round((vals.reduce((s, v) => s + v, 0) / vals.length) * 100) / 100 : null;
+  };
+  const out = {
+    respiratory_rate_30d: avgOf('respiratory_rate'),
+    oxygen_saturation_pct_30d: avgOf('oxygen_saturation'),
+    walking_speed_m_s_30d: avgOf('walking_speed'),
+    walking_asymmetry_pct_30d: avgOf('walking_asymmetry_pct'),
+    walking_double_support_pct_30d: avgOf('walking_double_support_pct'),
+    flights_climbed_30d_avg: avgOf('flights_climbed'),
+    mindful_minutes_30d_total: last30.reduce((s, w) => s + (w.mindful_minutes ?? 0), 0),
+  };
+  const anyData = Object.values(out).some(v => v != null && v !== 0);
+  if (!anyData) return { logged: false, note: 'No Apple Health vitals synced.' };
+  return {
+    logged: true,
+    ...out,
+    note: 'From Apple Health, 30-day averages. Walking speed and double-support time are gait-quality markers that decline with age and are independently associated with longevity; asymmetry above ~3% can indicate a one-sided issue worth mentioning if it is rising.',
+  };
 }
 
 /**
@@ -409,18 +531,26 @@ export function buildFullContext(
     strength_and_mobility: summariseExerciseLogs(exerciseLogs),
     nutrition: summariseNutrition(nutritionLogs, sorted, activities, thresholdHR),
     travel: summariseTravel(travelLogs, sorted, activities, thresholdHR),
+    respiratory: summariseRespiratory(exerciseLogs, age, (userSettings?.sex ?? 'male') as 'male' | 'female', userSettings?.heightCm ?? null),
+    apple_health_vitals: summariseAppleVitals(sorted),
     body_composition: {
       weight_kg:      latestBC?.weight_kg ?? latestWeight,
       body_fat_pct:   latestBC?.body_fat_pct ?? null,
       muscle_mass_kg: latestBC?.muscle_mass_kg ?? null,
       bone_mass_kg:   latestBC?.bone_mass_kg ?? null,
       body_water_pct: latestBC?.body_water_pct ?? null,
+      visceral_fat:   latestBC?.visceral_fat ?? null,
+      metabolic_age:  latestBC?.metabolic_age ?? null,
       trend_30d:      bcTrend,
       source:         latestBC?.body_comp_source ?? 'unknown',
       note: 'Entered manually from a Scanfit scale. Scanfit reports SKELETAL muscle mass; the earlier Garmin Index S2 reported Tanita-style muscle mass (fat-free mass minus bone, including organs and water), which is roughly 40% higher for the same body. Rows tagged garmin_converted are historical Garmin readings rescaled by a single constant ratio (0.608) — an approximation, not measurement. If a delta is null and deltas_withheld_device_change is set, the window spans the switch: say so rather than reporting a change. Never interpret the step at the changeover as real muscle loss.',
     },
     wellness: {
       avg_resting_hr_14d:   avgRHR30 ? Math.round(avgRHR30) : null,
+      avg_hrv_rmssd_7d:     avg(nonNull(last7Well.map(w => w.hrv_rmssd)))?.toFixed(1) ?? null,
+      avg_hrv_rmssd_14d:    avg(nonNull(last14Well.map(w => w.hrv_rmssd)))?.toFixed(1) ?? null,
+      avg_hrv_rmssd_30d:    avg(nonNull(last30Well.map(w => w.hrv_rmssd)))?.toFixed(1) ?? null,
+      avg_stress_score_14d: avg(nonNull(last14Well.map(w => w.stress_score)))?.toFixed(0) ?? null,
       avg_recovery_score_7d: recovery7,
       avg_recovery_score_14d: recovery14,
       avg_sleep_hours_14d:  last14Well.length
@@ -448,6 +578,31 @@ export function buildFullContext(
       training_monotony_risk: !latestTL ? 'unknown'
         : (latestTL.atl / Math.max(latestTL.ctl, 1)) > 1.5 ? 'high' : 'normal',
     },
+    cardiovascular_age: (() => {
+      const bf = latestBC?.body_fat_pct ?? null;
+      // Same inputs the dashboard card uses, so the two can never disagree.
+      const activeMins28 = activities
+        .filter(a => now - new Date(a.date).getTime() < 28 * 86400000)
+        .reduce((sum, a) => sum + (a.duration_seconds ?? 0) / 60, 0) / 4;
+      const r = computeCardioAge({
+        age: age ?? 55,
+        sex: (userSettings?.sex ?? 'male') as 'male' | 'female',
+        restingHr: avgRHR30 ?? null,
+        vo2max: latestVo2 ?? null,
+        bodyFatPct: bf,
+        hrvRmssd: avg(nonNull(last30Well.map(w => w.hrv_rmssd))) ?? null,
+        weeklyActiveMinutes: activeMins28,
+        sleepScore14dAvg: avg(nonNull(last14Well.map(w => w.sleep_score))) ?? null,
+      });
+      return {
+        cardio_age: r.cardioAge,
+        chronological_age: age,
+        delta_years: age != null ? r.cardioAge - age : null,
+        composite_score: r.composite,
+        factors: r.factors.map(f => ({ factor: f.label, score: f.score, raw: f.raw, weight: f.weight })),
+        note: 'Weighted composite; only factors with data are included and the rest reweighted. A negative delta_years means biologically younger than chronological age. Use the FACTOR scores to say what would move it — the lowest-scoring factor is the one worth acting on.',
+      };
+    })(),
     longevity: {
       vo2max:              latestVo2,
       vo2max_context:      latestVo2 && age

@@ -356,7 +356,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               {() => <OptimalTrainingDays trainingLoad={trainingLoad} />}
             </ExpandableCard>
             <ExpandableCard title="Training Monotony">
-              {(expanded) => <TrainingMonotony activities={allActivities} thresholdHR={thresholdHR} height={expanded ? 480 : undefined} />}
+              {(expanded) => <TrainingMonotony activities={allActivities} thresholdHR={thresholdHR} cutoff={cutoff} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
           <ExpandableCard title="Injury Risk">

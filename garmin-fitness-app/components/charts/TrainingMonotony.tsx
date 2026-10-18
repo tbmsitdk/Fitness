@@ -37,20 +37,38 @@ function monotonyColor(m: number): string {
   return '#22C55E';
 }
 
+/**
+ * Fewest weeks worth plotting. Monotony is a week-over-week pattern, so one or
+ * two bars say nothing — at 1W the honest answer is to widen the view rather
+ * than draw a single bar and imply a trend.
+ */
+const MIN_WEEKS = 8;
+
 export default function TrainingMonotony({
   activities,
   thresholdHR = 165,
   height = 220,
+  cutoff,
 }: {
+  /** FULL history. Weeks are computed whole and the DISPLAY is trimmed — see below. */
   activities: Activity[];
   thresholdHR?: number;
   height?: number;
+  /** Period selector. Trims what is shown, never what is computed. */
+  cutoff?: Date;
 }) {
-  const { chartData, currentMonotony, currentStrain } = useMemo(() => {
-    // Build daily TSS map
+  const { chartData, currentMonotony, currentStrain, flooredTo } = useMemo(() => {
+    // Build daily TSS map, keyed by LOCAL date. toISOString() would roll a
+    // late-evening session into the next day in any timezone ahead of UTC,
+    // splitting one day's load across two and distorting that week's SD.
+    const localDate = (d: string | Date) => {
+      const x = new Date(d);
+      const p = (n: number) => String(n).padStart(2, '0');
+      return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
+    };
     const dailyTSS = new Map<string, number>();
     for (const a of activities) {
-      const dateStr = new Date(a.date).toISOString().split('T')[0];
+      const dateStr = localDate(a.date);
       dailyTSS.set(dateStr, (dailyTSS.get(dateStr) ?? 0) + estimateTSS(a, thresholdHR));
     }
 
@@ -65,7 +83,8 @@ export default function TrainingMonotony({
 
     // Fill each week to 7 days (missing days = 0)
     const weeks = Array.from(weekMap.keys()).sort();
-    const data: WeekData[] = weeks.map(weekStart => {
+    const spanYearsAll = new Set(weeks.map(w => w.substring(0, 4))).size > 1;
+    const data: (WeekData & { weekStart: string })[] = weeks.map(weekStart => {
       const days = weekMap.get(weekStart)!;
       // Pad to 7 days with zeros for missing days
       while (days.length < 7) days.push(0);
@@ -74,22 +93,39 @@ export default function TrainingMonotony({
       const monotony = sd === 0 ? 0 : mean / sd;
       const weeklyTSS = days.reduce((s, v) => s + v, 0);
       const strain = weeklyTSS * monotony;
-      const spanYears = weeks.length > 0 && new Set(weeks.map(w => w.substring(0, 4))).size > 1;
       return {
-        label: format(parseISO(weekStart), spanYears ? "MMM ''yy" : 'MMM d'),
+        weekStart,
+        label: format(parseISO(weekStart), spanYearsAll ? "MMM ''yy" : 'MMM d'),
         monotony: Math.round(monotony * 100) / 100,
         strain: Math.round(strain),
         weeklyTSS: Math.round(weeklyTSS),
       };
     });
 
+    // Trim to the selected period. Weeks are computed whole first, so a cutoff
+    // landing mid-week never produces a partial week padded with zeros — that
+    // would inflate the SD and understate monotony for that week.
+    let shown = data;
+    let floored = false;
+    if (cutoff) {
+      const from = format(startOfWeek(cutoff, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const windowed = data.filter(d => d.weekStart >= from);
+      if (windowed.length >= MIN_WEEKS) {
+        shown = windowed;
+      } else {
+        shown = data.slice(-MIN_WEEKS);
+        floored = windowed.length < shown.length;
+      }
+    }
+
     const latest = data[data.length - 1];
     return {
-      chartData: data,
+      chartData: shown,
       currentMonotony: latest?.monotony ?? 0,
       currentStrain: latest?.strain ?? 0,
+      flooredTo: floored ? shown.length : null,
     };
-  }, [activities, thresholdHR]);
+  }, [activities, thresholdHR, cutoff]);
 
   if (chartData.length === 0) {
     return (
@@ -166,6 +202,7 @@ export default function TrainingMonotony({
       </ResponsiveContainer>
       <p className="text-[10px] text-muted-foreground/60 italic">
         Monotony = mean daily TSS ÷ std dev. &gt;2.0 = high injury risk. Strain = weekly TSS × monotony.
+        {flooredTo != null && ` Showing the last ${flooredTo} weeks rather than the selected period — monotony is a week-over-week pattern, and a shorter window cannot show one.`}
       </p>
     </div>
   );
