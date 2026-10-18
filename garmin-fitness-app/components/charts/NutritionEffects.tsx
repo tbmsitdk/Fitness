@@ -73,8 +73,8 @@ export default function NutritionEffects({ logs, metricsByDate, limit = 12 }: Pr
               </>}
         </p>
         <p className="text-[11px] text-muted-foreground/60 max-w-md">
-          The usual missing piece is clean days: a day you didn&apos;t open the form counts as
-          unknown, not as zero. Use &ldquo;Clean day&rdquo; so those days can act as the baseline.
+          The usual missing piece is days recorded as 0. A day you didn&apos;t open the form
+          counts as unknown rather than zero, so only an explicit 0 can act as the baseline.
         </p>
       </div>
     );

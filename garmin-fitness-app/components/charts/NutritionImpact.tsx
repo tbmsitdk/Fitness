@@ -75,7 +75,7 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
         You have <strong>{someDays}</strong> day{someDays === 1 ? '' : 's'} with {noun} logged, but
         <strong> no days recorded as zero</strong>. There is nothing to compare against.
       </>;
-      shortfall = `Use the "Clean day" button on ${cleanWord} days — a day you simply didn't open the form counts as unknown, not as zero, so those days can't serve as the baseline.`;
+      shortfall = `Enter 0 on ${cleanWord} days. A day you simply didn't open the form counts as unknown rather than zero, so it cannot serve as the baseline — only an explicit 0 can.`;
     } else if (someDays === 0) {
       reason = <>
         You have <strong>{zeroDays}</strong> {cleanWord} day{zeroDays === 1 ? '' : 's'} logged but none

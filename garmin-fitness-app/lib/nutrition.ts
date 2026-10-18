@@ -40,13 +40,14 @@ export const NUTRITION_NUMERIC_FIELDS = [
  * A logged zero and an unlogged day are completely different facts, and
  * conflating them destroys the analysis: every day you forgot to log would
  * silently become a sober, sugar-free day and wash out the very effect you are
- * looking for. The form therefore has an explicit "clean day" action that
- * writes real zeros, and absence stays absence.
+ * looking for. A 0 must therefore be typed to mean "none today"; absence stays
+ * absence and is excluded from every comparison.
+ *
+ * This is decided PER FIELD, not per day: entering 0 for alcohol makes that day
+ * a valid alcohol baseline even if candy was left blank. There is deliberately
+ * no whole-day "clean" concept — it would have required all four inputs before
+ * any one of them could be used.
  */
-export function isCleanDay(log: NutritionLog): boolean {
-  return log.alcohol_units === 0 && log.candy_portions === 0
-      && log.savoury_snacks === 0 && log.sugary_drinks === 0;
-}
 
 /** Did this row record anything at all? Used to reject accidental empty saves. */
 export function hasAnyEntry(log: Partial<NutritionLog>): boolean {

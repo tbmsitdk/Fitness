@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
-  coerceNutritionLog, isCleanDay, hasAnyEntry, lastFoodMinutes,
+  coerceNutritionLog, hasAnyEntry, lastFoodMinutes,
   MEAL_QUALITY_LEVELS, NUTRITION_FIELDS, alcoholUnits, ALCOHOL_REFERENCE, type NutritionLog,
 } from '@/lib/nutrition';
 import {
   addDays, isWeekend, mean, stdDev, doseResponse, effectSize, rankEffects,
-  weekendSplit, ALCOHOL_BUCKETS, OUTCOMES, MIN_BUCKET_N, STANDARD_EXPOSURES,
+  weekendSplit, ALCOHOL_BUCKETS, CANDY_BUCKETS, OUTCOMES, MIN_BUCKET_N, STANDARD_EXPOSURES,
   type DayMetrics,
 } from '@/lib/nutrition-analysis';
 
@@ -81,21 +81,31 @@ describe('ALCOHOL_REFERENCE', () => {
 });
 
 describe('logged zero vs unlogged day', () => {
-  it('treats an explicit clean day as clean', () => {
-    expect(isCleanDay(log({
-      date: '2026-09-01',
-      alcohol_units: 0, candy_portions: 0, savoury_snacks: 0, sugary_drinks: 0,
-    }))).toBe(true);
+  const metrics = new Map([['2026-09-02', {
+    date: '2026-09-02', hrv: 50, restingHr: null, sleepHours: null,
+    sleepScore: null, bodyBattery: null, stress: null, tss: null,
+  }]]);
+
+  it('counts an explicit 0 as a usable baseline day', () => {
+    const dr = doseResponse(
+      [log({ date: '2026-09-01', alcohol_units: 0 })],
+      metrics, l => l.alcohol_units, ALCOHOL_BUCKETS, HRV,
+    );
+    expect(dr.buckets[0].n).toBe(1);
   });
 
-  it('does not treat an unlogged day as clean', () => {
-    expect(isCleanDay(log({ date: '2026-09-01' }))).toBe(false);
+  it('does not count a blank as a zero', () => {
+    const dr = doseResponse(
+      [log({ date: '2026-09-01' })],
+      metrics, l => l.alcohol_units, ALCOHOL_BUCKETS, HRV,
+    );
+    expect(dr.buckets[0].n).toBe(0);
   });
 
-  it('counts crisps toward a clean day — they are tracked, just not as candy', () => {
-    const noCrispsField = log({ date: '2026-09-01', alcohol_units: 0, candy_portions: 0, sugary_drinks: 0 });
-    expect(isCleanDay(noCrispsField)).toBe(false); // savoury_snacks still unlogged
-    expect(isCleanDay({ ...noCrispsField, savoury_snacks: 0 })).toBe(true);
+  it('decides per field — a 0 for alcohol works even when candy is blank', () => {
+    const day = [log({ date: '2026-09-01', alcohol_units: 0 })];  // candy never entered
+    expect(doseResponse(day, metrics, l => l.alcohol_units, ALCOHOL_BUCKETS, HRV).buckets[0].n).toBe(1);
+    expect(doseResponse(day, metrics, l => l.candy_portions, CANDY_BUCKETS, HRV).buckets[0].n).toBe(0);
   });
 
   it('recognises an empty draft so blank saves can be rejected', () => {

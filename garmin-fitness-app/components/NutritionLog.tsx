@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Check, Loader2, Info, Sparkles } from 'lucide-react';
+import { Check, Loader2, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDataVersion, useRefreshAfter } from '@/lib/data-refresh';
 import {
@@ -185,17 +185,6 @@ export default function NutritionLog() {
         <div className="ml-auto flex items-center gap-2">
           {savedAt && <span className="text-[11px] text-green-400 flex items-center gap-1"><Check className="w-3 h-3" />Saved</span>}
           {error && <span className="text-[11px] text-red-400">{error}</span>}
-          {/* Writes real zeros. Without this, a day you simply never opened would
-              be indistinguishable from a day with nothing to report — and every
-              forgotten day would quietly count as sober and sugar-free. */}
-          <Button size="sm" variant="ghost" disabled={saving}
-            title="Record explicit zeros for alcohol, candy and sugary drinks"
-            onClick={() => {
-              const clean = { ...draft, alcohol_units: '0', candy_portions: '0', savoury_snacks: '0', sugary_drinks: '0' };
-              setDraft(clean); save(clean);
-            }}>
-            <Sparkles className="w-3.5 h-3.5 mr-1.5" />Clean day
-          </Button>
           <Button size="sm" onClick={() => save(draft)} disabled={saving || nothingEntered}
             title={nothingEntered ? 'Nothing entered yet' : 'Save this day'}>
             {saving ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
@@ -206,9 +195,11 @@ export default function NutritionLog() {
 
       <p className="text-[11px] text-muted-foreground border-l-2 border-border pl-2.5 leading-relaxed">
         This is not calorie tracking. It records a few things that are easy to recall and
-        plausibly affect your sleep and training. <strong>Leave a field blank if you genuinely
-        don&apos;t know</strong> — a blank means &ldquo;not recorded&rdquo;, while a 0 means
-        &ldquo;none today&rdquo;, and the analysis treats them very differently.
+        plausibly affect your sleep and training.{' '}
+        <strong>Enter 0 for anything you had none of</strong> — that is what makes a day usable
+        as a comparison baseline. <strong>Leave a field blank only if you genuinely don&apos;t
+        know</strong>: blank means &ldquo;not recorded&rdquo; and is excluded from the analysis,
+        so a forgotten day never counts as a clean one.
       </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
