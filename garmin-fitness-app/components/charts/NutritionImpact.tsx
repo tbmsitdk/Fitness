@@ -6,7 +6,7 @@ import {
 import type { NutritionLog } from '@/lib/nutrition';
 import {
   doseResponse, OUTCOMES, ALCOHOL_BUCKETS, CANDY_BUCKETS, MIN_BUCKET_N,
-  weekendSplit, type DayMetrics, type OutcomeDef,
+  weekendSplit, addDays, OUTCOME_LAG_DAYS, type DayMetrics, type OutcomeDef,
 } from '@/lib/nutrition-analysis';
 
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
@@ -54,13 +54,55 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
     .map(b => ({ ...b, display: b.value == null ? 0 : Number(b.value.toFixed(outcome.decimals)) }));
 
   if (data.length < 2) {
+    // A generic "not enough data" leaves the reader guessing which of three
+    // different things is missing. Work out which one it actually is.
+    const recorded = logs.filter(l => intakeOf(l) != null);
+    const zeroDays = recorded.filter(l => intakeOf(l) === 0).length;
+    const someDays = recorded.filter(l => (intakeOf(l) ?? 0) > 0).length;
+    const withOutcome = recorded.filter(l =>
+      metricsByDate.get(addDays(l.date, OUTCOME_LAG_DAYS))?.[outcome.key] != null).length;
+
+    const noun = exposure === 'alcohol' ? 'alcohol' : 'sweets';
+    const cleanWord = exposure === 'alcohol' ? 'dry' : 'sugar-free';
+
+    let reason: React.ReactNode;
+    let shortfall: string;
+    if (recorded.length === 0) {
+      reason = <>Nothing logged for {noun} yet.</>;
+      shortfall = `Log at least ${MIN_BUCKET_N} days with and ${MIN_BUCKET_N} without.`;
+    } else if (zeroDays === 0) {
+      reason = <>
+        You have <strong>{someDays}</strong> day{someDays === 1 ? '' : 's'} with {noun} logged, but
+        <strong> no days recorded as zero</strong>. There is nothing to compare against.
+      </>;
+      shortfall = `Use the "Clean day" button on ${cleanWord} days — a day you simply didn't open the form counts as unknown, not as zero, so those days can't serve as the baseline.`;
+    } else if (someDays === 0) {
+      reason = <>
+        You have <strong>{zeroDays}</strong> {cleanWord} day{zeroDays === 1 ? '' : 's'} logged but none
+        with {noun}, so there is no exposure to measure.
+      </>;
+      shortfall = 'This will fill in on its own next time you log a day with some.';
+    } else if (withOutcome < 2) {
+      reason = <>
+        {recorded.length} days logged, but only <strong>{withOutcome}</strong> have
+        a {outcome.label.toLowerCase()} reading the <em>morning after</em>.
+      </>;
+      shortfall = 'The watch needs to capture the following night for a logged day to count.';
+    } else {
+      reason = <>
+        {zeroDays} {cleanWord} and {someDays} with {noun}, but they do not yet span two different bands.
+      </>;
+      shortfall = 'Keep logging — a wider range of amounts will separate them.';
+    }
+
     return (
-      <div className="flex flex-col items-center justify-center gap-1.5 text-center px-6" style={{ height: height + 40 }}>
+      <div className="flex flex-col items-center justify-center gap-2 text-center px-6" style={{ height: height + 40 }}>
         <p className="text-sm text-muted-foreground">Not enough data yet</p>
-        <p className="text-[11px] text-muted-foreground/60 max-w-sm">
-          This compares your {outcome.label.toLowerCase()} the morning after
-          {exposure === 'alcohol' ? ' drinking' : ' eating sweets'} against days with none.
-          It needs logged days in at least two different bands — keep logging and it will fill in.
+        <p className="text-[11px] text-muted-foreground/80 max-w-md">{reason}</p>
+        <p className="text-[11px] text-muted-foreground/60 max-w-md">{shortfall}</p>
+        <p className="text-[10px] text-muted-foreground/50 max-w-md pt-1">
+          A readable comparison needs {MIN_BUCKET_N} days on each side; you have{' '}
+          <span className="font-mono">{zeroDays}</span> and <span className="font-mono">{someDays}</span>.
         </p>
       </div>
     );

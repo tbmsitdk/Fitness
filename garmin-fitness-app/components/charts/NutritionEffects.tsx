@@ -61,11 +61,20 @@ export default function NutritionEffects({ logs, metricsByDate, limit = 12 }: Pr
 
   if (shown.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-28 gap-1.5 text-center px-6">
+      <div className="flex flex-col items-center justify-center h-32 gap-2 text-center px-6">
         <p className="text-sm text-muted-foreground">Nothing to rank yet</p>
+        <p className="text-[11px] text-muted-foreground/80 max-w-md">
+          {logs.length === 0
+            ? 'No food or drink logged yet.'
+            : <>
+                {logs.length} day{logs.length === 1 ? '' : 's'} logged, but no habit yet has days
+                both <strong>with</strong> and <strong>without</strong> it plus a recovery reading
+                the morning after — so there is nothing to compare.
+              </>}
+        </p>
         <p className="text-[11px] text-muted-foreground/60 max-w-md">
-          This needs logged days both with and without each habit, plus recovery data the
-          morning after. Roughly six weeks of logging gets the first reliable comparisons.
+          The usual missing piece is clean days: a day you didn&apos;t open the form counts as
+          unknown, not as zero. Use &ldquo;Clean day&rdquo; so those days can act as the baseline.
         </p>
       </div>
     );
