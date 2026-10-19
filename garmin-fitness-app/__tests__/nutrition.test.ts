@@ -6,6 +6,7 @@ import {
 import {
   addDays, isWeekend, mean, stdDev, doseResponse, effectSize, rankEffects,
   weekendSplit, ALCOHOL_BUCKETS, CANDY_BUCKETS, OUTCOMES, MIN_BUCKET_N, STANDARD_EXPOSURES,
+  availableOutcomes, stressStandsInForHrv,
   type DayMetrics,
 } from '@/lib/nutrition-analysis';
 
@@ -170,6 +171,50 @@ describe('mean / stdDev', () => {
   it('returns null for an empty set', () => expect(mean([])).toBeNull());
   it('needs two points for a standard deviation', () => expect(stdDev([5])).toBeNull());
   it('is zero for identical values', () => expect(stdDev([4, 4, 4])).toBe(0));
+});
+
+describe('availableOutcomes', () => {
+  const day = (over: Partial<DayMetrics>): DayMetrics => ({
+    date: '2026-09-01', hrv: null, restingHr: null, sleepHours: null,
+    sleepScore: null, bodyBattery: null, stress: null, tss: null, ...over,
+  });
+
+  it('drops outcomes the device never records', () => {
+    // A Vivosmart 5 exports no RMSSD, only a stress score.
+    const m = new Map([['2026-09-01', day({ stress: 30, restingHr: 54 })]]);
+    const keys = availableOutcomes(m).map(o => o.key);
+    expect(keys).not.toContain('hrv');
+    expect(keys).toContain('stress');
+    expect(keys).toContain('restingHr');
+  });
+
+  it('keeps an outcome that has even one reading', () => {
+    const m = new Map([
+      ['2026-09-01', day({})],
+      ['2026-09-02', day({ hrv: 50 })],
+    ]);
+    expect(availableOutcomes(m).map(o => o.key)).toContain('hrv');
+  });
+
+  it('returns nothing when there is no data at all', () => {
+    expect(availableOutcomes(new Map())).toEqual([]);
+  });
+
+  it('detects when stress is standing in for HRV', () => {
+    const noHrv = new Map([['2026-09-01', day({ stress: 30 })]]);
+    const withHrv = new Map([['2026-09-01', day({ hrv: 50, stress: 30 })]]);
+    expect(stressStandsInForHrv(noHrv)).toBe(true);
+    expect(stressStandsInForHrv(withHrv)).toBe(false);
+  });
+
+  it('never silently swaps stress in for HRV — they run opposite directions', () => {
+    // Substituting one for the other would invert every conclusion, so the
+    // directions must stay distinct.
+    const hrv = OUTCOMES.find(o => o.key === 'hrv')!;
+    const stress = OUTCOMES.find(o => o.key === 'stress')!;
+    expect(hrv.higherIsBetter).toBe(true);
+    expect(stress.higherIsBetter).toBe(false);
+  });
 });
 
 describe('doseResponse', () => {

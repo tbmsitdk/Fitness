@@ -60,6 +60,34 @@ export const OUTCOMES: OutcomeDef[] = [
 ];
 
 /**
+ * Outcomes that actually have data.
+ *
+ * Not every device reports every metric. The Garmin Vivosmart 5, for one,
+ * exports no raw HRV (RMSSD) at all — its stress score IS the HRV-derived
+ * metric, computed from beat-to-beat intervals by Firstbeat. A card that
+ * defaults to HRV on such a device reports "0 days have an HRV reading" while
+ * the user is looking at a full HRV chart elsewhere, which reads as a bug.
+ *
+ * Stress is deliberately NOT substituted for HRV: it runs in the opposite
+ * direction (lower is better), so silently swapping it in would invert every
+ * conclusion. It is already its own outcome with the correct direction — the
+ * fix is to stop offering outcomes that have no data.
+ */
+export function availableOutcomes(
+  metricsByDate: Map<string, DayMetrics>,
+  outcomes: OutcomeDef[] = OUTCOMES,
+): OutcomeDef[] {
+  const days = [...metricsByDate.values()];
+  return outcomes.filter(o => days.some(d => d[o.key] != null));
+}
+
+/** True when the device reports no RMSSD but does report stress. */
+export function stressStandsInForHrv(metricsByDate: Map<string, DayMetrics>): boolean {
+  const days = [...metricsByDate.values()];
+  return !days.some(d => d.hrv != null) && days.some(d => d.stress != null);
+}
+
+/**
  * Which day's metrics answer for intake on day D.
  *
  * Everything here is measured the MORNING AFTER, so every outcome uses D+1.

@@ -5,7 +5,9 @@ import {
   ReferenceLine, ReferenceArea, ResponsiveContainer,
 } from 'recharts';
 import type { CircadianEvent } from '@/lib/travel';
-import { OUTCOMES, type DayMetrics, type OutcomeDef } from '@/lib/nutrition-analysis';
+import {
+  OUTCOMES, availableOutcomes, stressStandsInForHrv, type DayMetrics, type OutcomeDef,
+} from '@/lib/nutrition-analysis';
 import {
   recoveryCurve, zoneCorrelation, travelEffect, CURVE_FROM, CURVE_TO, MIN_BUCKET_N,
 } from '@/lib/travel-analysis';
@@ -21,8 +23,14 @@ interface Props {
 }
 
 export default function TravelRecovery({ events, metricsByDate, height = 240 }: Props) {
-  const [outcomeKey, setOutcomeKey] = useState('hrv');
-  const outcome: OutcomeDef = OUTCOMES.find(o => o.key === outcomeKey) ?? OUTCOMES[0];
+  // Same rule as the nutrition cards: never default to a metric this device
+  // does not record.
+  const outcomes = useMemo(() => availableOutcomes(metricsByDate), [metricsByDate]);
+  const hrvIsStress = useMemo(() => stressStandsInForHrv(metricsByDate), [metricsByDate]);
+  const [requested, setRequested] = useState<string | null>(null);
+  const outcome: OutcomeDef = outcomes.find(o => o.key === requested) ?? outcomes[0] ?? OUTCOMES[0];
+  const setOutcomeKey = setRequested;
+  const outcomeKey = outcome.key;
 
   const east = useMemo(() => recoveryCurve(events, metricsByDate, outcome, 'east'), [events, metricsByDate, outcome]);
   const west = useMemo(() => recoveryCurve(events, metricsByDate, outcome, 'west'), [events, metricsByDate, outcome]);
@@ -67,7 +75,7 @@ export default function TravelRecovery({ events, metricsByDate, height = 240 }: 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1">
-        {OUTCOMES.map(o => (
+        {outcomes.map(o => (
           <button key={o.key} onClick={() => setOutcomeKey(o.key)}
             className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
               o.key === outcomeKey ? 'border-primary bg-primary/10 text-foreground'
@@ -156,6 +164,13 @@ export default function TravelRecovery({ events, metricsByDate, height = 240 }: 
           );
         })}
       </div>
+
+      {hrvIsStress && outcome.key === 'stress' && (
+        <p className="text-[10px] text-muted-foreground/70 italic">
+          Your tracker exports no raw HRV (RMSSD); stress score is its HRV-derived equivalent.
+          Lower is better, so a line ABOVE baseline after arrival means worse recovery.
+        </p>
+      )}
 
       <p className="text-[10px] text-muted-foreground/60 italic leading-relaxed">
         Day 0 is arrival. Each trip is measured against your own average in the 14 days before it

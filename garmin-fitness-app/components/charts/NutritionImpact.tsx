@@ -6,7 +6,8 @@ import {
 import type { NutritionLog } from '@/lib/nutrition';
 import {
   doseResponse, OUTCOMES, ALCOHOL_BUCKETS, CANDY_BUCKETS, MIN_BUCKET_N,
-  weekendSplit, addDays, OUTCOME_LAG_DAYS, type DayMetrics, type OutcomeDef,
+  weekendSplit, addDays, OUTCOME_LAG_DAYS, availableOutcomes, stressStandsInForHrv,
+  type DayMetrics, type OutcomeDef,
 } from '@/lib/nutrition-analysis';
 
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
@@ -25,8 +26,15 @@ interface Props {
 }
 
 export default function NutritionImpact({ logs, metricsByDate, exposure, height = 200 }: Props) {
-  const [outcomeKey, setOutcomeKey] = useState<string>('hrv');
-  const outcome: OutcomeDef = OUTCOMES.find(o => o.key === outcomeKey) ?? OUTCOMES[0];
+  // Only offer outcomes the device actually records. Defaulting to HRV on a
+  // tracker that exports no RMSSD produced "0 days have an HRV reading" next to
+  // a full HRV chart elsewhere in the app.
+  const outcomes = useMemo(() => availableOutcomes(metricsByDate), [metricsByDate]);
+  const hrvIsStress = useMemo(() => stressStandsInForHrv(metricsByDate), [metricsByDate]);
+  const [requested, setRequested] = useState<string | null>(null);
+  const outcome: OutcomeDef = outcomes.find(o => o.key === requested) ?? outcomes[0] ?? OUTCOMES[0];
+  const setOutcomeKey = setRequested;
+  const outcomeKey = outcome.key;
 
   const buckets = exposure === 'alcohol' ? ALCOHOL_BUCKETS : CANDY_BUCKETS;
   const intakeOf = exposure === 'alcohol'
@@ -113,7 +121,7 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1">
-        {OUTCOMES.map(o => (
+        {outcomes.map(o => (
           <button key={o.key} onClick={() => setOutcomeKey(o.key)}
             className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
               o.key === outcomeKey
@@ -182,6 +190,14 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
           {Math.sign(split.weekday.delta) === Math.sign(split.weekend.delta)
             ? ' The effect appears in both, so it is probably not just the weekend.'
             : ' The two disagree — this may be weekend habits rather than the intake itself.'}
+        </p>
+      )}
+
+      {hrvIsStress && outcome.key === 'stress' && (
+        <p className="text-[10px] text-muted-foreground/70 italic">
+          Your tracker exports no raw HRV (RMSSD), so stress score is the HRV-derived metric here —
+          Garmin computes it from beat-to-beat intervals. Lower is better, so a positive difference
+          is a worse outcome.
         </p>
       )}
 

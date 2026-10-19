@@ -10,7 +10,7 @@ import {
   type TravelLog,
 } from '@/lib/travel';
 import { travelKpis, tripImpacts } from '@/lib/travel-analysis';
-import { OUTCOMES, type DayMetrics } from '@/lib/nutrition-analysis';
+import { OUTCOMES, availableOutcomes, type DayMetrics } from '@/lib/nutrition-analysis';
 import ExpandableCard from '@/components/ExpandableCard';
 import TravelRecovery from './TravelRecovery';
 
@@ -18,7 +18,7 @@ const EAST = '#d95926';
 const WEST = '#3987e5';
 const SAME = 'hsl(240 5% 45%)';
 const EMPTY = 'hsl(240 3.7% 10%)';
-const HRV = OUTCOMES.find(o => o.key === 'hrv')!;
+
 
 interface Props {
   allWellness: WellnessRecord[];
@@ -79,13 +79,21 @@ export default function TravelSection({ allWellness, allActivities, cutoff, thre
   const kpis = useMemo(() => travelKpis(trips ?? [], periodStart, today), [trips, periodStart, today]);
 
   // Per-trip HRV impact, newest first — the concrete "what did this one cost me"
+  // Score trips on whatever recovery metric this device actually records —
+  // hardcoding HRV left the table empty on a tracker that exports no RMSSD.
+  const primary = useMemo(() => {
+    const avail = availableOutcomes(metricsByDate);
+    return avail.find(o => o.key === 'hrv') ?? avail.find(o => o.key === 'stress')
+        ?? avail[0] ?? OUTCOMES[0];
+  }, [metricsByDate]);
+
   // tripImpacts truncates each window at the next shift, so back-to-back trips
   // never inherit each other's dips.
-  const impacts = useMemo(() => tripImpacts(events, metricsByDate, HRV)
+  const impacts = useMemo(() => tripImpacts(events, metricsByDate, primary)
     .filter(i => i.event.leg === 'outbound' && i.event.direction !== 'none' && i.baseline != null)
     .sort((a, b) => b.event.date.localeCompare(a.event.date))
     .slice(0, 8),
-  [events, metricsByDate]);
+  [events, metricsByDate, primary]);
 
   const strip = useMemo(() => {
     const span = Math.max(1, daysBetween(periodStart, today) + 1);
@@ -163,7 +171,7 @@ export default function TravelSection({ allWellness, allActivities, cutoff, thre
       </ExpandableCard>
 
       {impacts.length > 0 && (
-        <ExpandableCard title="Cost of Each Trip · HRV">
+        <ExpandableCard title={`Cost of Each Trip · ${primary.label}`}>
           {() => (
             <div className="space-y-2">
               <div className="overflow-x-auto">
@@ -192,12 +200,14 @@ export default function TravelSection({ allWellness, allActivities, cutoff, thre
                           </span>
                         </td>
                         <td className="px-2 py-1.5 text-[11px] font-mono text-right text-muted-foreground">
-                          {i.baseline!.toFixed(1)}
+                          {i.baseline!.toFixed(primary.decimals)}
                         </td>
                         <td className="px-2 py-1.5 text-[11px] font-mono text-right">
                           {i.worstDeviation != null ? (
-                            <span className={i.worstDeviation < 0 ? 'text-red-400' : 'text-green-400'}>
-                              {i.worstDeviation > 0 ? '+' : ''}{i.worstDeviation.toFixed(1)}
+                            <span className={
+                              (primary.higherIsBetter ? i.worstDeviation < 0 : i.worstDeviation > 0)
+                                ? 'text-red-400' : 'text-green-400'}>
+                              {i.worstDeviation > 0 ? '+' : ''}{i.worstDeviation.toFixed(primary.decimals)}
                               <span className="text-muted-foreground/60 ml-1">
                                 d{i.worstOffset}
                               </span>
@@ -213,11 +223,12 @@ export default function TravelSection({ allWellness, allActivities, cutoff, thre
                 </table>
               </div>
               <p className="text-[10px] text-muted-foreground/60 italic leading-relaxed">
-                Baseline is your own mean HRV in the 14 days before departure. &ldquo;Worst&rdquo; is
-                the largest drop in the two weeks after arrival, with the day it fell on.
+                Baseline is your own mean {primary.label.toLowerCase()} in the 14 days before
+                departure. &ldquo;Worst&rdquo; is the largest adverse move in the two weeks after
+                arrival, with the day it happened.
                 &ldquo;Back to normal&rdquo; is the first day within 5% of baseline that also held
                 the next day — one good day inside a bad week is noise, not recovery.
-                A trip is listed only if its pre-departure window had at least four HRV readings.
+                A trip is listed only if its pre-departure window had at least four readings.
               </p>
             </div>
           )}
