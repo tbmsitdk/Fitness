@@ -9,6 +9,7 @@ import type { DayMetrics } from '@/lib/nutrition-analysis';
 import ExpandableCard from '@/components/ExpandableCard';
 import NutritionCalendar from './NutritionCalendar';
 import NutritionImpact from './NutritionImpact';
+import NutritionCombined from './NutritionCombined';
 import NutritionEffects from './NutritionEffects';
 
 interface Props {
@@ -94,6 +95,15 @@ export default function NutritionSection({ allWellness, allActivities, cutoff, t
         {(expanded) => (
           <NutritionImpact logs={logs} metricsByDate={metricsByDate}
             exposure="candy" height={expanded ? 360 : undefined} />
+        )}
+      </ExpandableCard>
+
+      {/* The single-exposure cards cannot separate "alcohol alone" from
+          "alcohol with dessert" — this splits the four cases apart. */}
+      <ExpandableCard title="Alcohol × Sugar · Combined">
+        {(expanded) => (
+          <NutritionCombined logs={logs} metricsByDate={metricsByDate}
+            height={expanded ? 380 : undefined} />
         )}
       </ExpandableCard>
 

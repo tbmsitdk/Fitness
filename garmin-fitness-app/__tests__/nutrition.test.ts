@@ -6,7 +6,7 @@ import {
 import {
   addDays, isWeekend, mean, stdDev, doseResponse, effectSize, rankEffects,
   weekendSplit, ALCOHOL_BUCKETS, CANDY_BUCKETS, OUTCOMES, MIN_BUCKET_N, STANDARD_EXPOSURES,
-  availableOutcomes, stressStandsInForHrv,
+  availableOutcomes, stressStandsInForHrv, combinedImpact,
   type DayMetrics,
 } from '@/lib/nutrition-analysis';
 
@@ -267,6 +267,111 @@ describe('doseResponse', () => {
     const logs = [log({ date: '2026-09-01', alcohol_units: 0 })];
     const dr = doseResponse(logs, new Map(), l => l.alcohol_units, ALCOHOL_BUCKETS, HRV);
     expect(dr.n).toBe(0);
+  });
+});
+
+describe('combinedImpact', () => {
+  // Outcome day is always the day AFTER the log date.
+  const m = (pairs: [string, number][]) => new Map(pairs.map(([d, hrv]) => [d, metrics(d, hrv)]));
+
+  it('splits days four ways and measures each against clean days', () => {
+    const logs = [
+      log({ date: '2026-09-01', alcohol_units: 0, candy_portions: 0 }),  // neither
+      log({ date: '2026-09-03', alcohol_units: 3, candy_portions: 0 }),  // alcohol only
+      log({ date: '2026-09-05', alcohol_units: 0, candy_portions: 2 }),  // sugar only
+      log({ date: '2026-09-07', alcohol_units: 3, candy_portions: 2 }),  // both
+    ];
+    const r = combinedImpact(logs, m([
+      ['2026-09-02', 50], ['2026-09-04', 44], ['2026-09-06', 46], ['2026-09-08', 36],
+    ]), HRV);
+
+    expect(r.cells.neither.value).toBe(50);
+    expect(r.cells.alcoholOnly.delta).toBe(-6);
+    expect(r.cells.sugarOnly.delta).toBe(-4);
+    expect(r.cells.both.delta).toBe(-14);
+  });
+
+  it('calls it compounding when the pair costs more than the parts added up', () => {
+    const logs = [
+      log({ date: '2026-09-01', alcohol_units: 0, candy_portions: 0 }),
+      log({ date: '2026-09-03', alcohol_units: 3, candy_portions: 0 }),
+      log({ date: '2026-09-05', alcohol_units: 0, candy_portions: 2 }),
+      log({ date: '2026-09-07', alcohol_units: 3, candy_portions: 2 }),
+    ];
+    // -6 and -4 separately would predict -10; observed -14.
+    const r = combinedImpact(logs, m([
+      ['2026-09-02', 50], ['2026-09-04', 44], ['2026-09-06', 46], ['2026-09-08', 36],
+    ]), HRV);
+    expect(r.interaction).toBe(-4);
+    expect(r.interactionLabel).toBe('compounding');
+  });
+
+  it('calls it additive when the pair costs what the parts predict', () => {
+    const logs = [
+      log({ date: '2026-09-01', alcohol_units: 0, candy_portions: 0 }),
+      log({ date: '2026-09-03', alcohol_units: 3, candy_portions: 0 }),
+      log({ date: '2026-09-05', alcohol_units: 0, candy_portions: 2 }),
+      log({ date: '2026-09-07', alcohol_units: 3, candy_portions: 2 }),
+    ];
+    const r = combinedImpact(logs, m([
+      ['2026-09-02', 50], ['2026-09-04', 44], ['2026-09-06', 46], ['2026-09-08', 40],
+    ]), HRV);
+    expect(r.interactionLabel).toBe('additive');
+  });
+
+  it('judges direction by the metric — a RISE in stress is the bad way', () => {
+    const stress = OUTCOMES.find(o => o.key === 'stress')!;
+    const withStress = (d: string, v: number): [string, DayMetrics] => [d, {
+      date: d, hrv: null, restingHr: null, sleepHours: null, sleepScore: null,
+      bodyBattery: null, stress: v, tss: null,
+    }];
+    const logs = [
+      log({ date: '2026-09-01', alcohol_units: 0, candy_portions: 0 }),
+      log({ date: '2026-09-03', alcohol_units: 3, candy_portions: 0 }),
+      log({ date: '2026-09-05', alcohol_units: 0, candy_portions: 2 }),
+      log({ date: '2026-09-07', alcohol_units: 3, candy_portions: 2 }),
+    ];
+    // Stress RISES, and rising further than additive is compounding.
+    const r = combinedImpact(logs, new Map([
+      withStress('2026-09-02', 20), withStress('2026-09-04', 26),
+      withStress('2026-09-06', 24), withStress('2026-09-08', 36),
+    ]), stress);
+    expect(r.cells.both.delta).toBe(16);          // worse
+    expect(r.interactionLabel).toBe('compounding');
+  });
+
+  it('counts a day as sugar when only drinks were logged', () => {
+    const logs = [log({ date: '2026-09-01', alcohol_units: 0, sugary_drinks: 2 })];
+    const r = combinedImpact(logs, m([['2026-09-02', 40]]), HRV);
+    expect(r.cells.sugarOnly.n).toBe(1);
+  });
+
+  it('refuses to place a day when only one of the two was recorded', () => {
+    // Alcohol logged, sugar blank: could be "alcohol only" OR "both". Guessing
+    // would move real "both" days into "alcohol only" and flatten the interaction.
+    const logs = [log({ date: '2026-09-01', alcohol_units: 3 })];
+    const r = combinedImpact(logs, m([['2026-09-02', 40]]), HRV);
+    expect(r.cells.alcoholOnly.n).toBe(0);
+    expect(r.cells.both.n).toBe(0);
+    expect(r.unclassified).toBe(1);
+  });
+
+  it('does not report an interaction when a group is missing', () => {
+    const logs = [
+      log({ date: '2026-09-01', alcohol_units: 0, candy_portions: 0 }),
+      log({ date: '2026-09-03', alcohol_units: 3, candy_portions: 0 }),
+    ];
+    const r = combinedImpact(logs, m([['2026-09-02', 50], ['2026-09-04', 44]]), HRV);
+    expect(r.interaction).toBeNull();
+    expect(r.interactionLabel).toBeNull();
+    expect(r.unreliable).toBe(true);
+  });
+
+  it('treats crisps as neither — they are savoury, not sugar', () => {
+    const logs = [log({ date: '2026-09-01', alcohol_units: 0, candy_portions: 0, savoury_snacks: 4 })];
+    const r = combinedImpact(logs, m([['2026-09-02', 50]]), HRV);
+    expect(r.cells.neither.n).toBe(1);
+    expect(r.cells.sugarOnly.n).toBe(0);
   });
 });
 

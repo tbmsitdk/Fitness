@@ -332,3 +332,131 @@ export const STANDARD_EXPOSURES: { label: string; test: (l: NutritionLog) => boo
   { label: 'Caffeine after 14', test: l => l.caffeine_after_14 },
   { label: 'Poor meals (≤2)',   test: l => l.meal_quality == null ? null : l.meal_quality <= 2 },
 ];
+
+// ── Alcohol × sugar together ─────────────────────────────────────────────────
+
+/**
+ * Alcohol and sugar rarely arrive separately — a night out is usually both, and
+ * the single-exposure cards cannot tell "alcohol alone" from "alcohol with
+ * dessert". This splits days four ways so the two can be told apart, and asks
+ * the question neither card can: when they land together, is the cost the sum
+ * of the parts, or more?
+ *
+ * Sugar here means candy OR sugary drinks. Crisps are excluded — they are
+ * savoury, tracked separately, and lumping them in would blur the sugar signal.
+ */
+export type CombinedCellKey = 'neither' | 'alcoholOnly' | 'sugarOnly' | 'both';
+
+export interface CombinedCell {
+  key: CombinedCellKey;
+  label: string;
+  n: number;
+  value: number | null;
+  /** Difference from the "neither" cell. Null on the baseline itself. */
+  delta: number | null;
+  unreliable: boolean;
+}
+
+export interface CombinedImpact {
+  outcome: OutcomeDef;
+  cells: Record<CombinedCellKey, CombinedCell>;
+  /** Days skipped because one of the two was never recorded — see below. */
+  unclassified: number;
+  /** Observed "both" effect minus the sum of the two single effects. */
+  interaction: number | null;
+  /** Plain-language reading of the interaction, direction-aware. */
+  interactionLabel: 'compounding' | 'additive' | 'less than additive' | null;
+  /** True when any contributing cell is below MIN_BUCKET_N. */
+  unreliable: boolean;
+}
+
+const CELL_LABEL: Record<CombinedCellKey, string> = {
+  neither: 'Neither',
+  alcoholOnly: 'Alcohol only',
+  sugarOnly: 'Sugar only',
+  both: 'Both',
+};
+
+export function combinedImpact(
+  logs: NutritionLog[],
+  metricsByDate: Map<string, DayMetrics>,
+  outcome: OutcomeDef,
+): CombinedImpact {
+  const samples: Record<CombinedCellKey, number[]> =
+    { neither: [], alcoholOnly: [], sugarOnly: [], both: [] };
+  let unclassified = 0;
+
+  for (const log of logs) {
+    // Sugar needs at least one of its two inputs recorded; a day with candy
+    // logged and drinks blank still counts, since candy alone proves sugar.
+    const candy = log.candy_portions;
+    const drinks = log.sugary_drinks;
+    const sugarKnown = candy != null || drinks != null;
+    const sugar = (candy ?? 0) > 0 || (drinks ?? 0) > 0;
+
+    // Both axes must be known, or the day cannot be placed: alcohol recorded
+    // with sugar blank could be "alcohol only" or "both", and guessing would
+    // put real "both" days into the "alcohol only" cell and flatten the
+    // interaction this whole function exists to measure.
+    if (log.alcohol_units == null || !sugarKnown) {
+      const outcomeDay = metricsByDate.get(addDays(log.date, OUTCOME_LAG_DAYS));
+      if (outcomeDay?.[outcome.key] != null) unclassified++;
+      continue;
+    }
+
+    const value = metricsByDate.get(addDays(log.date, OUTCOME_LAG_DAYS))?.[outcome.key];
+    if (value == null) continue;
+
+    const alcohol = log.alcohol_units > 0;
+    const key: CombinedCellKey =
+      alcohol && sugar ? 'both' : alcohol ? 'alcoholOnly' : sugar ? 'sugarOnly' : 'neither';
+    samples[key].push(value);
+  }
+
+  const baseline = mean(samples.neither);
+  const cell = (key: CombinedCellKey): CombinedCell => {
+    const arr = samples[key];
+    const value = arr.length ? mean(arr) : null;
+    return {
+      key,
+      label: CELL_LABEL[key],
+      n: arr.length,
+      value,
+      delta: key !== 'neither' && value != null && baseline != null ? value - baseline : null,
+      unreliable: arr.length > 0 && arr.length < MIN_BUCKET_N,
+    };
+  };
+
+  const cells = {
+    neither: cell('neither'),
+    alcoholOnly: cell('alcoholOnly'),
+    sugarOnly: cell('sugarOnly'),
+    both: cell('both'),
+  };
+
+  // Interaction: does the combination cost more than the two separately?
+  let interaction: number | null = null;
+  let interactionLabel: CombinedImpact['interactionLabel'] = null;
+  const { alcoholOnly, sugarOnly, both } = cells;
+  if (alcoholOnly.delta != null && sugarOnly.delta != null && both.delta != null) {
+    interaction = both.delta - (alcoholOnly.delta + sugarOnly.delta);
+    // "Worse" depends on the metric's direction, so normalise before judging.
+    const worseWay = outcome.higherIsBetter ? -1 : 1;
+    const normalised = interaction * worseWay;
+    const scale = Math.max(Math.abs(alcoholOnly.delta), Math.abs(sugarOnly.delta), 1e-9);
+    // Within 25% of the additive expectation is not a distinguishable interaction.
+    if (Math.abs(interaction) < scale * 0.25) interactionLabel = 'additive';
+    else if (normalised > 0) interactionLabel = 'compounding';
+    else interactionLabel = 'less than additive';
+  }
+
+  return {
+    outcome,
+    cells,
+    unclassified,
+    interaction,
+    interactionLabel,
+    unreliable: Object.values(cells).some(c => c.n > 0 && c.n < MIN_BUCKET_N)
+             || Object.values(cells).some(c => c.n === 0),
+  };
+}
