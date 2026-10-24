@@ -130,13 +130,26 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
           sub={result.interaction != null ? `${signed(result.interaction)} vs the two added up` : 'needs all four groups'} />
       </div>
 
+      {hasBaseline && (
+        <p className="text-[10px] text-muted-foreground">
+          How much <strong>worse</strong> than your clean days — taller is worse.
+          {' '}Clean days averaged{' '}
+          <span className="font-mono text-foreground">
+            {fmt(result.cells.neither.value!)}{outcome.unit ? ` ${outcome.unit}` : ''}
+          </span>{' '}{outcome.label.toLowerCase()}.
+        </p>
+      )}
+
       {hasBaseline ? (
         <ResponsiveContainer width="100%" height={height}>
           <BarChart data={data} margin={{ top: 4, right: 8, left: -14, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} />
             <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false}
-              tickFormatter={(v: number) => (v > 0 ? `+${v}` : String(v))} />
+              width={52}
+              tickFormatter={(v: number) => (v > 0 ? `+${v}` : String(v))}
+              label={{ value: 'worse →', angle: -90, position: 'insideLeft',
+                       fill: 'hsl(240 5% 55%)', fontSize: 9, offset: 12 }} />
             {/* Zero is a clean day; bars rise into harm and fall into benefit. */}
             <ReferenceLine y={0} stroke={BASE} strokeDasharray="4 4"
               label={{ value: 'clean days', position: 'insideTopRight', fill: BASE, fontSize: 9 }} />
@@ -149,10 +162,11 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
                 return [`${actual}${d} · ${dir} · n=${p.n}${p.unreliable ? ' ⚠' : ''}`, outcome.label];
               }} />
             <Bar dataKey="harm" radius={[3, 3, 0, 0]}>
+              {/* Thin groups fade rather than turning grey — see NutritionImpact. */}
               {data.map(d => (
                 <Cell key={d.label}
-                  fill={d.unreliable ? THIN : d.harm == null || d.harm === 0 ? BASE
-                    : d.harm > 0 ? WORSE : BETTER} />
+                  fill={d.harm == null || d.harm === 0 ? BASE : d.harm > 0 ? WORSE : BETTER}
+                  fillOpacity={d.unreliable ? 0.45 : 1} />
               ))}
             </Bar>
           </BarChart>

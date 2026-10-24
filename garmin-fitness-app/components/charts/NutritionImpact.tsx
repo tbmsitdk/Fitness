@@ -144,13 +144,26 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
         ))}
       </div>
 
+      {baseline != null && (
+        <p className="text-[10px] text-muted-foreground">
+          How much <strong>worse</strong> than days with none — taller is worse.
+          {' '}Days with none averaged{' '}
+          <span className="font-mono text-foreground">
+            {baseline.toFixed(outcome.decimals)}{outcome.unit ? ` ${outcome.unit}` : ''}
+          </span>{' '}{outcome.label.toLowerCase()}.
+        </p>
+      )}
+
       {baseline != null ? (
         <ResponsiveContainer width="100%" height={height}>
           <BarChart data={data} margin={{ top: 4, right: 8, left: -14, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} />
             <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false}
-              tickFormatter={(v: number) => (v > 0 ? `+${v}` : String(v))} />
+              width={52}
+              tickFormatter={(v: number) => (v > 0 ? `+${v}` : String(v))}
+              label={{ value: 'worse →', angle: -90, position: 'insideLeft',
+                       fill: 'hsl(240 5% 55%)', fontSize: 9, offset: 12 }} />
             {/* Zero is the "None" band; bars rise into harm, fall into benefit. */}
             <ReferenceLine y={0} stroke={NEUTRAL} strokeDasharray="4 4"
               label={{ value: 'none', position: 'insideTopRight', fill: NEUTRAL, fontSize: 9 }} />
@@ -164,10 +177,14 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
                 return [`${actual}${d} · ${dir} · n=${p.n}${p.unreliable ? ' ⚠' : ''}`, outcome.label];
               }} />
             <Bar dataKey="harm" radius={[3, 3, 0, 0]}>
+              {/* A thin bucket keeps its HARM colour and is faded instead of
+                  greyed. Replacing the colour made the worst bar the palest
+                  one, inverting the visual order the chart exists to show —
+                  the ⚠ in the table and tooltip carries the uncertainty. */}
               {data.map(b => (
                 <Cell key={b.label}
-                  fill={b.unreliable ? UNRELIABLE : b.harm == null || b.harm === 0 ? NEUTRAL
-                    : b.harm > 0 ? BAD : GOOD} />
+                  fill={b.harm == null || b.harm === 0 ? NEUTRAL : b.harm > 0 ? BAD : GOOD}
+                  fillOpacity={b.unreliable ? 0.45 : 1} />
               ))}
             </Bar>
           </BarChart>
