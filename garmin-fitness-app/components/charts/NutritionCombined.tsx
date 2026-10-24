@@ -52,7 +52,10 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
 
   const fmt = (v: number) => v.toFixed(outcome.decimals);
   const signed = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(outcome.decimals)}`;
-  const isWorse = (delta: number) => (outcome.higherIsBetter ? delta < 0 : delta > 0);
+  // A behavioural metric has no "worse" direction — see OutcomeDef.behavioural.
+  const isWorse = (delta: number) =>
+    outcome.behavioural ? false : (outcome.higherIsBetter ? delta < 0 : delta > 0);
+  const hasBaseline = result.cells.neither.value != null;
 
   if (present.length < 2) {
     return (
@@ -107,7 +110,7 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
         <Tile label="Both together" value={String(result.cells.both.n)}
           sub={result.cells.both.delta != null ? `${signed(result.cells.both.delta)} ${outcome.unit}` : 'not enough data'}
           tone={result.cells.both.delta != null ? (isWorse(result.cells.both.delta) ? 'bad' : 'good') : undefined} />
-        <Tile label="Worst group" value={worst?.label ?? '—'}
+        <Tile label={outcome.behavioural ? 'Highest group' : 'Worst group'} value={worst?.label ?? '—'}
           sub={worst?.delta != null ? `${signed(worst.delta)} ${outcome.unit} vs clean` : ''}
           tone={worst?.delta != null && isWorse(worst.delta) ? 'bad' : undefined} />
         <Tile label="Combination" value={result.interactionLabel ?? '—'}
@@ -134,7 +137,9 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
           <Bar dataKey="value" radius={[3, 3, 0, 0]}>
             {data.map(d => (
               <Cell key={d.label}
-                fill={d.unreliable ? THIN : d.delta == null ? BASE : isWorse(d.delta) ? WORSE : BETTER} />
+                fill={d.unreliable || outcome.behavioural || d.delta == null
+                  ? (d.unreliable ? THIN : BASE)
+                  : isWorse(d.delta) ? WORSE : BETTER} />
             ))}
           </Bar>
         </BarChart>
@@ -146,8 +151,11 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
             <span className="w-24 text-muted-foreground">{c.label}</span>
             <span className="font-mono w-16 text-right">{c.value != null ? fmt(c.value) : '—'}</span>
             <span className={`font-mono w-16 text-right ${
-              c.delta == null ? 'text-muted-foreground' : isWorse(c.delta) ? 'text-red-400' : 'text-green-400'}`}>
-              {c.delta != null ? signed(c.delta) : 'baseline'}
+              c.delta == null || outcome.behavioural ? 'text-muted-foreground'
+                : isWorse(c.delta) ? 'text-red-400' : 'text-green-400'}`}>
+              {c.delta != null ? signed(c.delta)
+                : c.key === 'neither' ? 'baseline'
+                : hasBaseline ? '—' : 'no baseline'}
             </span>
             <span className="text-muted-foreground">n={c.n}</span>
             {c.unreliable && <span className="text-amber-400">⚠ under {MIN_BUCKET_N} days</span>}
@@ -162,6 +170,16 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
             : result.interactionLabel === 'additive'
             ? <>The combination costs about what the two separately predict — they appear to act independently rather than amplifying each other.</>
             : <>Together they cost <strong>less than the two separately</strong> would predict. That usually means one is doing most of the damage, or the groups overlap in some other way.</>}
+        </p>
+      )}
+
+      {outcome.behavioural && (
+        <p className="text-[10px] text-amber-400/80 italic leading-relaxed">
+          Next-day load is how hard you <em>chose</em> to train, not something that happened to
+          you — so it is shown without a good/bad reading. A higher figure after drinking does not
+          mean drinking helped; it means you trained anyway, or that day happened to fall before a
+          planned session. For whether a habit cost you something, use Resting HR, Sleep score,
+          Body battery or Stress.
         </p>
       )}
 

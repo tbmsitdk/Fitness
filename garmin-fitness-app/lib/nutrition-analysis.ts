@@ -45,6 +45,15 @@ export interface OutcomeDef {
   unit: string;
   /** Does a HIGHER value mean a better outcome? Drives colouring, not maths. */
   higherIsBetter: boolean;
+  /**
+   * True when the metric records a CHOICE rather than something that happened
+   * to the body. Next-day training load is the only one: HRV, sleep and resting
+   * HR are measured outcomes, but how hard you trained the next day is a
+   * decision. "More load after drinking" does not mean drinking helped — it
+   * means you trained anyway, or that the day happened to fall before a
+   * planned session. Flagged so the UI never colours it good or bad.
+   */
+  behavioural?: boolean;
   /** Decimal places when displayed. */
   decimals: number;
 }
@@ -56,7 +65,7 @@ export const OUTCOMES: OutcomeDef[] = [
   { key: 'sleepHours',  label: 'Sleep',         unit: 'h',  higherIsBetter: true,  decimals: 2 },
   { key: 'bodyBattery', label: 'Body battery',  unit: '',   higherIsBetter: true,  decimals: 1 },
   { key: 'stress',      label: 'Stress',        unit: '',   higherIsBetter: false, decimals: 1 },
-  { key: 'tss',         label: 'Next-day load', unit: 'TSS', higherIsBetter: true, decimals: 1 },
+  { key: 'tss',         label: 'Next-day load', unit: 'TSS', higherIsBetter: true, decimals: 1, behavioural: true },
 ];
 
 /**

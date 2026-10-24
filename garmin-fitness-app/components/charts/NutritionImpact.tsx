@@ -151,10 +151,13 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
           <Bar dataKey="display" radius={[3, 3, 0, 0]}>
             {data.map(b => {
               const isBaseline = b.delta == null;
-              const worse = b.delta != null && (outcome.higherIsBetter ? b.delta < 0 : b.delta > 0);
+              const worse = !outcome.behavioural && b.delta != null
+                && (outcome.higherIsBetter ? b.delta < 0 : b.delta > 0);
               return (
                 <Cell key={b.label}
-                  fill={b.unreliable ? UNRELIABLE : isBaseline ? NEUTRAL : worse ? BAD : GOOD} />
+                  fill={b.unreliable ? UNRELIABLE
+                    : isBaseline || outcome.behavioural ? NEUTRAL
+                    : worse ? BAD : GOOD} />
               );
             })}
           </Bar>
@@ -169,10 +172,12 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
               {b.value != null ? b.value.toFixed(outcome.decimals) : '—'}
             </span>
             <span className={`font-mono w-16 text-right ${
-              b.delta == null ? 'text-muted-foreground'
+              b.delta == null || outcome.behavioural ? 'text-muted-foreground'
                 : (outcome.higherIsBetter ? b.delta < 0 : b.delta > 0) ? 'text-red-400' : 'text-green-400'
             }`}>
-              {b.delta != null ? `${b.delta > 0 ? '+' : ''}${b.delta.toFixed(outcome.decimals)}` : 'baseline'}
+              {b.delta != null ? `${b.delta > 0 ? '+' : ''}${b.delta.toFixed(outcome.decimals)}`
+                : dr.buckets[0]?.label === b.label ? 'baseline'
+                : baseline != null ? '—' : 'no baseline'}
             </span>
             <span className="text-muted-foreground">n={b.n}</span>
             {b.unreliable && <span className="text-amber-400">⚠ under {MIN_BUCKET_N} days</span>}
@@ -190,6 +195,14 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
           {Math.sign(split.weekday.delta) === Math.sign(split.weekend.delta)
             ? ' The effect appears in both, so it is probably not just the weekend.'
             : ' The two disagree — this may be weekend habits rather than the intake itself.'}
+        </p>
+      )}
+
+      {outcome.behavioural && (
+        <p className="text-[10px] text-amber-400/80 italic leading-relaxed">
+          Next-day load is how hard you <em>chose</em> to train, not something that happened to you,
+          so it carries no good/bad reading. Use Resting HR, Sleep score, Body battery or Stress to
+          judge whether a habit cost you anything.
         </p>
       )}
 

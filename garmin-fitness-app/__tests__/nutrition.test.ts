@@ -207,6 +207,18 @@ describe('availableOutcomes', () => {
     expect(stressStandsInForHrv(withHrv)).toBe(false);
   });
 
+  it('marks next-day load as behavioural so it is never coloured good or bad', () => {
+    // It records a CHOICE (how hard you trained), not something that happened
+    // to you — "more load after drinking" must never read as a benefit.
+    const tss = OUTCOMES.find(o => o.key === 'tss')!;
+    expect(tss.behavioural).toBe(true);
+
+    // Everything else is a measured outcome and keeps its direction.
+    for (const o of OUTCOMES.filter(x => x.key !== 'tss')) {
+      expect(o.behavioural, o.key).toBeFalsy();
+    }
+  });
+
   it('never silently swaps stress in for HRV — they run opposite directions', () => {
     // Substituting one for the other would invert every conclusion, so the
     // directions must stay distinct.
