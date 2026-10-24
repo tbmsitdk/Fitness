@@ -57,9 +57,20 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
     outcome,
   ), [logs, metricsByDate, intakeOf, outcome]);
 
+  /**
+   * Bars show HARM, not the raw metric: the change from the baseline band,
+   * flipped so UP IS ALWAYS WORSE whatever direction the metric runs. A drop
+   * in sleep score and a rise in resting HR are both damage, and plotting raw
+   * values forced the reader to recall each metric's direction.
+   */
   const data = dr.buckets
     .filter(b => b.n > 0)
-    .map(b => ({ ...b, display: b.value == null ? 0 : Number(b.value.toFixed(outcome.decimals)) }));
+    .map((b, i) => ({
+      ...b,
+      harm: i === 0 ? 0
+        : b.delta == null ? null
+        : Number((outcome.higherIsBetter ? -b.delta : b.delta).toFixed(outcome.decimals)),
+    }));
 
   if (data.length < 2) {
     // A generic "not enough data" leaves the reader guessing which of three
@@ -133,33 +144,45 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
         ))}
       </div>
 
-      <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={data} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} />
-          <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false}
-            domain={['dataMin - 2', 'dataMax + 2']} />
-          {baseline != null && (
-            <ReferenceLine y={baseline} stroke={NEUTRAL} strokeDasharray="4 4" />
-          )}
-          <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }}
-            formatter={(v: number, _n, item) => {
-              const p = item.payload as typeof data[number];
-              const d = p.delta == null ? '' : ` (${p.delta > 0 ? '+' : ''}${p.delta.toFixed(outcome.decimals)})`;
-              return [`${v}${outcome.unit ? ' ' + outcome.unit : ''}${d} · n=${p.n}${p.unreliable ? ' ⚠' : ''}`, outcome.label];
-            }} />
-          <Bar dataKey="display" radius={[3, 3, 0, 0]}>
-            {data.map(b => {
-              const isBaseline = b.delta == null;
-              const worse = b.delta != null && (outcome.higherIsBetter ? b.delta < 0 : b.delta > 0);
-              return (
+      {baseline != null ? (
+        <ResponsiveContainer width="100%" height={height}>
+          <BarChart data={data} margin={{ top: 4, right: 8, left: -14, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false} />
+            <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false}
+              tickFormatter={(v: number) => (v > 0 ? `+${v}` : String(v))} />
+            {/* Zero is the "None" band; bars rise into harm, fall into benefit. */}
+            <ReferenceLine y={0} stroke={NEUTRAL} strokeDasharray="4 4"
+              label={{ value: 'none', position: 'insideTopRight', fill: NEUTRAL, fontSize: 9 }} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }}
+              formatter={(_v: number, _n, item) => {
+                const p = item.payload as typeof data[number];
+                const dir = p.harm == null || p.harm === 0 ? 'baseline' : p.harm > 0 ? 'worse' : 'better';
+                const actual = p.value != null
+                  ? `${p.value.toFixed(outcome.decimals)}${outcome.unit ? ' ' + outcome.unit : ''}` : '—';
+                const d = p.delta == null ? '' : ` (${p.delta > 0 ? '+' : ''}${p.delta.toFixed(outcome.decimals)})`;
+                return [`${actual}${d} · ${dir} · n=${p.n}${p.unreliable ? ' ⚠' : ''}`, outcome.label];
+              }} />
+            <Bar dataKey="harm" radius={[3, 3, 0, 0]}>
+              {data.map(b => (
                 <Cell key={b.label}
-                  fill={b.unreliable ? UNRELIABLE : isBaseline ? NEUTRAL : worse ? BAD : GOOD} />
-              );
-            })}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+                  fill={b.unreliable ? UNRELIABLE : b.harm == null || b.harm === 0 ? NEUTRAL
+                    : b.harm > 0 ? BAD : GOOD} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      ) : (
+        <div style={{ height }} className="flex flex-col items-center justify-center gap-1.5 text-center px-6">
+          <p className="text-[11px] text-muted-foreground/80 max-w-md">
+            No days logged with none, so there is nothing to measure impact against — the chart plots
+            the change from a day without any, and without one there is no zero.
+          </p>
+          <p className="text-[11px] text-muted-foreground/60">
+            Enter 0 on a day you had none. The values are listed below meanwhile.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-0.5">
         {dr.buckets.filter(b => b.n > 0).map(b => (
@@ -205,6 +228,9 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
       )}
 
       <p className="text-[10px] text-muted-foreground/60 italic leading-relaxed">
+        Bars show the change from days with none, sign-flipped so <strong>up is always worse</strong>
+        whatever direction the metric runs — a drop in sleep score and a rise in resting HR both rise
+        here. The numbers under the chart are the real values.
         Measured the morning after, so tonight&apos;s intake is compared against tomorrow&apos;s
         numbers. Only days you actually logged are counted; a blank day is never treated as zero.
         This is your own data over time, which is decent personal evidence — but it shows

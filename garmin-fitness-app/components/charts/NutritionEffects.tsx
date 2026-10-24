@@ -22,7 +22,11 @@ function magnitude(d: number): string {
 
 function Row({ e }: { e: EffectSize }) {
   const d = e.d!;
-  const pct = Math.min(100, Math.abs(d) / 1.2 * 100);
+  // Diverging bar: harm grows RIGHT of centre, benefit LEFT, for every metric.
+  // A single direction forced the reader to decode each row's sign against the
+  // metric's own direction — a drop in sleep score and a rise in resting HR are
+  // both damage but have opposite signs.
+  const half = Math.min(50, Math.abs(d) / 1.2 * 50);
   return (
     <tr className="border-t border-border/50">
       <td className="px-2 py-1.5 text-[11px]">{e.exposureLabel}</td>
@@ -33,10 +37,17 @@ function Row({ e }: { e: EffectSize }) {
         </span>
         <span className="text-muted-foreground">{e.outcome.unit ? ` ${e.outcome.unit}` : ''}</span>
       </td>
-      <td className="px-2 py-1.5 w-28">
-        <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-          <div className="h-full rounded-full"
-            style={{ width: `${pct}%`, background: e.worse ? '#d55181' : '#199e70' }} />
+      <td className="px-2 py-1.5 w-36">
+        <div className="relative h-1.5 rounded-full bg-secondary" title={e.worse ? 'worse' : 'better'}>
+          {/* centre = no effect */}
+          <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
+          <div className="absolute inset-y-0 rounded-full"
+            style={{
+              width: `${half}%`,
+              left: e.worse ? '50%' : undefined,
+              right: e.worse ? undefined : '50%',
+              background: e.worse ? '#d55181' : '#199e70',
+            }} />
         </div>
       </td>
       <td className="px-2 py-1.5 text-[10px] text-muted-foreground whitespace-nowrap">
@@ -89,8 +100,8 @@ export default function NutritionEffects({ logs, metricsByDate, limit = 12 }: Pr
               <th className="px-2 py-1 text-left font-medium">Habit</th>
               <th className="px-2 py-1 text-left font-medium">Affects</th>
               <th className="px-2 py-1 text-right font-medium">Difference</th>
+              <th className="px-2 py-1 text-center font-medium">← better · worse →</th>
               <th className="px-2 py-1 text-left font-medium">Size</th>
-              <th className="px-2 py-1 text-left font-medium"></th>
               <th className="px-2 py-1 text-right font-medium">n with/without</th>
             </tr>
           </thead>
@@ -108,6 +119,9 @@ export default function NutritionEffects({ logs, metricsByDate, limit = 12 }: Pr
       )}
 
       <p className="text-[10px] text-muted-foreground/60 italic leading-relaxed">
+        Bars diverge from the centre: <strong>right is worse, left is better</strong>, for every
+        metric — a drop in sleep score and a rise in resting HR are both damage despite the opposite
+        signs in the Difference column.
         Ranked by effect size (Cohen&apos;s d), which makes metrics on different scales comparable —
         10 ms of HRV and 3 bpm of resting HR are not otherwise. Differences are measured the
         morning after.{' '}
