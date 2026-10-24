@@ -196,18 +196,12 @@ function summariseTravel(
     };
   }
 
-  const tssByDate = new Map<string, number>();
-  for (const a of activities) {
-    const d = a.date.slice(0, 10);
-    tssByDate.set(d, (tssByDate.get(d) ?? 0) + estimateTSS(a, thresholdHR));
-  }
   const metricsByDate = new Map<string, DayMetrics>();
   for (const w of wellness) {
     const date = w.date.slice(0, 10);
     metricsByDate.set(date, {
       date, hrv: w.hrv_rmssd, restingHr: w.resting_hr, sleepHours: w.sleep_hours,
       sleepScore: w.sleep_score, bodyBattery: w.body_battery, stress: w.stress_score,
-      tss: tssByDate.get(date) ?? null,
     });
   }
 
@@ -281,18 +275,12 @@ function summariseNutrition(
     };
   }
 
-  const tssByDate = new Map<string, number>();
-  for (const a of activities) {
-    const d = a.date.slice(0, 10);
-    tssByDate.set(d, (tssByDate.get(d) ?? 0) + estimateTSS(a, thresholdHR));
-  }
   const metricsByDate = new Map<string, DayMetrics>();
   for (const w of wellness) {
     const date = w.date.slice(0, 10);
     metricsByDate.set(date, {
       date, hrv: w.hrv_rmssd, restingHr: w.resting_hr, sleepHours: w.sleep_hours,
       sleepScore: w.sleep_score, bodyBattery: w.body_battery, stress: w.stress_score,
-      tss: tssByDate.get(date) ?? null,
     });
   }
 

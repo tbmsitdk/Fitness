@@ -52,9 +52,7 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
 
   const fmt = (v: number) => v.toFixed(outcome.decimals);
   const signed = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(outcome.decimals)}`;
-  // A behavioural metric has no "worse" direction — see OutcomeDef.behavioural.
-  const isWorse = (delta: number) =>
-    outcome.behavioural ? false : (outcome.higherIsBetter ? delta < 0 : delta > 0);
+  const isWorse = (delta: number) => (outcome.higherIsBetter ? delta < 0 : delta > 0);
   const hasBaseline = result.cells.neither.value != null;
 
   if (present.length < 2) {
@@ -77,11 +75,13 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
     );
   }
 
-  // The worst group, judged in the metric's own direction.
-  const worst = present
-    .filter(c => c.delta != null)
-    .sort((a, b) => (isWorse(a.delta!) ? -Math.abs(a.delta!) : Math.abs(a.delta!))
-                  - (isWorse(b.delta!) ? -Math.abs(b.delta!) : Math.abs(b.delta!)))[0];
+  // The worst group, judged in the metric's own direction — and ONLY among
+  // groups that are genuinely worse than clean days. Previously this sorted
+  // every group and took one end, so on a metric where everything beat the
+  // baseline it labelled the smallest IMPROVEMENT as "worst": sleep score
+  // +6.5 was being reported as the worst group.
+  const harmed = present.filter(c => c.delta != null && isWorse(c.delta));
+  const worst = harmed.sort((a, b) => Math.abs(b.delta!) - Math.abs(a.delta!))[0] ?? null;
 
   const data = present.map(c => ({
     label: c.label,
@@ -110,9 +110,12 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
         <Tile label="Both together" value={String(result.cells.both.n)}
           sub={result.cells.both.delta != null ? `${signed(result.cells.both.delta)} ${outcome.unit}` : 'not enough data'}
           tone={result.cells.both.delta != null ? (isWorse(result.cells.both.delta) ? 'bad' : 'good') : undefined} />
-        <Tile label={outcome.behavioural ? 'Highest group' : 'Worst group'} value={worst?.label ?? '—'}
-          sub={worst?.delta != null ? `${signed(worst.delta)} ${outcome.unit} vs clean` : ''}
-          tone={worst?.delta != null && isWorse(worst.delta) ? 'bad' : undefined} />
+        <Tile label="Worst group"
+          value={worst ? worst.label : hasBaseline ? 'None' : '—'}
+          sub={worst
+            ? `${signed(worst.delta!)} ${outcome.unit} vs clean`
+            : hasBaseline ? 'no group worse than clean days' : 'needs clean days to compare'}
+          tone={worst ? 'bad' : undefined} />
         <Tile label="Combination" value={result.interactionLabel ?? '—'}
           sub={result.interaction != null ? `${signed(result.interaction)} vs the two added up` : 'needs all four groups'} />
       </div>
@@ -137,8 +140,7 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
           <Bar dataKey="value" radius={[3, 3, 0, 0]}>
             {data.map(d => (
               <Cell key={d.label}
-                fill={d.unreliable || outcome.behavioural || d.delta == null
-                  ? (d.unreliable ? THIN : BASE)
+                fill={d.unreliable ? THIN : d.delta == null ? BASE
                   : isWorse(d.delta) ? WORSE : BETTER} />
             ))}
           </Bar>
@@ -151,7 +153,7 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
             <span className="w-24 text-muted-foreground">{c.label}</span>
             <span className="font-mono w-16 text-right">{c.value != null ? fmt(c.value) : '—'}</span>
             <span className={`font-mono w-16 text-right ${
-              c.delta == null || outcome.behavioural ? 'text-muted-foreground'
+              c.delta == null ? 'text-muted-foreground'
                 : isWorse(c.delta) ? 'text-red-400' : 'text-green-400'}`}>
               {c.delta != null ? signed(c.delta)
                 : c.key === 'neither' ? 'baseline'
@@ -166,22 +168,13 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
       {result.interactionLabel && (
         <p className="text-[10px] text-muted-foreground/80 leading-relaxed">
           {result.interactionLabel === 'compounding'
-            ? <>Together they cost <strong>more than the two separately</strong> — {signed(result.interaction!)} {outcome.unit} beyond what adding the single effects would predict. If that holds up, separating them matters more than moderating either one.</>
+            ? <>Together the result is <strong>worse than the two separately predict</strong> — {signed(result.interaction!)} {outcome.unit} away from what adding the single effects would give. If that holds up, keeping them apart matters more than moderating either one.</>
             : result.interactionLabel === 'additive'
-            ? <>The combination costs about what the two separately predict — they appear to act independently rather than amplifying each other.</>
-            : <>Together they cost <strong>less than the two separately</strong> would predict. That usually means one is doing most of the damage, or the groups overlap in some other way.</>}
+            ? <>The combination lands about where the two separately predict — they appear to act independently rather than amplifying each other.</>
+            : <>Together the result is <strong>better than the two separately predict</strong>. That usually means one is doing most of the work, or the groups overlap in some other way.</>}
         </p>
       )}
 
-      {outcome.behavioural && (
-        <p className="text-[10px] text-amber-400/80 italic leading-relaxed">
-          Next-day load is how hard you <em>chose</em> to train, not something that happened to
-          you — so it is shown without a good/bad reading. A higher figure after drinking does not
-          mean drinking helped; it means you trained anyway, or that day happened to fall before a
-          planned session. For whether a habit cost you something, use Resting HR, Sleep score,
-          Body battery or Stress.
-        </p>
-      )}
 
       {hrvIsStress && outcome.key === 'stress' && (
         <p className="text-[10px] text-muted-foreground/70 italic">

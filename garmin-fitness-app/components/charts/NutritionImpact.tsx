@@ -151,13 +151,10 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
           <Bar dataKey="display" radius={[3, 3, 0, 0]}>
             {data.map(b => {
               const isBaseline = b.delta == null;
-              const worse = !outcome.behavioural && b.delta != null
-                && (outcome.higherIsBetter ? b.delta < 0 : b.delta > 0);
+              const worse = b.delta != null && (outcome.higherIsBetter ? b.delta < 0 : b.delta > 0);
               return (
                 <Cell key={b.label}
-                  fill={b.unreliable ? UNRELIABLE
-                    : isBaseline || outcome.behavioural ? NEUTRAL
-                    : worse ? BAD : GOOD} />
+                  fill={b.unreliable ? UNRELIABLE : isBaseline ? NEUTRAL : worse ? BAD : GOOD} />
               );
             })}
           </Bar>
@@ -172,7 +169,7 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
               {b.value != null ? b.value.toFixed(outcome.decimals) : '—'}
             </span>
             <span className={`font-mono w-16 text-right ${
-              b.delta == null || outcome.behavioural ? 'text-muted-foreground'
+              b.delta == null ? 'text-muted-foreground'
                 : (outcome.higherIsBetter ? b.delta < 0 : b.delta > 0) ? 'text-red-400' : 'text-green-400'
             }`}>
               {b.delta != null ? `${b.delta > 0 ? '+' : ''}${b.delta.toFixed(outcome.decimals)}`
@@ -198,13 +195,6 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
         </p>
       )}
 
-      {outcome.behavioural && (
-        <p className="text-[10px] text-amber-400/80 italic leading-relaxed">
-          Next-day load is how hard you <em>chose</em> to train, not something that happened to you,
-          so it carries no good/bad reading. Use Resting HR, Sleep score, Body battery or Stress to
-          judge whether a habit cost you anything.
-        </p>
-      )}
 
       {hrvIsStress && outcome.key === 'stress' && (
         <p className="text-[10px] text-muted-foreground/70 italic">

@@ -4,7 +4,6 @@ import { Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Activity, WellnessRecord } from '@/types';
 import { useDataVersion } from '@/lib/data-refresh';
-import { estimateTSS } from '@/lib/training-load';
 import {
   circadianEvents, tripDates, zonesCrossed, shiftDirection, addDays, daysBetween,
   type TravelLog,
@@ -24,7 +23,6 @@ interface Props {
   allWellness: WellnessRecord[];
   allActivities: Activity[];
   cutoff: Date;
-  thresholdHR: number;
 }
 
 function Kpi({ label, value, sub }: { label: string; value: string; sub: string }) {
@@ -37,7 +35,7 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub: string 
   );
 }
 
-export default function TravelSection({ allWellness, allActivities, cutoff, thresholdHR }: Props) {
+export default function TravelSection({ allWellness, allActivities, cutoff }: Props) {
   const [trips, setTrips] = useState<TravelLog[] | null>(null);
   const dataVersion = useDataVersion();
 
@@ -51,22 +49,16 @@ export default function TravelSection({ allWellness, allActivities, cutoff, thre
   }, [dataVersion]);
 
   const metricsByDate = useMemo(() => {
-    const tssByDate = new Map<string, number>();
-    for (const a of allActivities) {
-      const d = a.date.slice(0, 10);
-      tssByDate.set(d, (tssByDate.get(d) ?? 0) + estimateTSS(a, thresholdHR));
-    }
     const m = new Map<string, DayMetrics>();
     for (const w of allWellness) {
       const date = w.date.slice(0, 10);
       m.set(date, {
         date, hrv: w.hrv_rmssd, restingHr: w.resting_hr, sleepHours: w.sleep_hours,
         sleepScore: w.sleep_score, bodyBattery: w.body_battery, stress: w.stress_score,
-        tss: tssByDate.get(date) ?? null,
       });
     }
     return m;
-  }, [allWellness, allActivities, thresholdHR]);
+  }, [allWellness]);
 
   const p = (n: number) => String(n).padStart(2, '0');
   const today = (() => { const d = new Date(); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; })();

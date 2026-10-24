@@ -593,9 +593,9 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Both of these measure effects on sleep, HRV and resting HR, so they
               answer health questions even though the inputs are behavioural. */}
           <NutritionSection allWellness={allWellness} allActivities={allActivities}
-            cutoff={cutoff} thresholdHR={thresholdHR} />
+            cutoff={cutoff} />
           <TravelSection allWellness={allWellness} allActivities={allActivities}
-            cutoff={cutoff} thresholdHR={thresholdHR} />
+            cutoff={cutoff} />
 
           <SectionHeading>Mobility &amp; Vitals</SectionHeading>
           <ExpandableCard title="Apple Health Vitals">

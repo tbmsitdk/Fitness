@@ -34,7 +34,7 @@ function metricsWith(overrides: Record<string, number>, base = 50, from = '2026-
   for (let i = 0; i < days; i++) {
     const d = addDays(from, i);
     m.set(d, { date: d, hrv: overrides[d] ?? base, restingHr: null, sleepHours: null,
-               sleepScore: null, bodyBattery: null, stress: null, tss: null });
+               sleepScore: null, bodyBattery: null, stress: null });
   }
   return m;
 }
@@ -204,7 +204,7 @@ describe('baselineBefore', () => {
   it('refuses to invent a baseline from too few readings', () => {
     const m = new Map<string, DayMetrics>();
     m.set('2026-09-01', { date: '2026-09-01', hrv: 50, restingHr: null, sleepHours: null,
-                          sleepScore: null, bodyBattery: null, stress: null, tss: null });
+                          sleepScore: null, bodyBattery: null, stress: null });
     expect(baselineBefore('2026-09-02', m, HRV)).toBeNull();
   });
 });

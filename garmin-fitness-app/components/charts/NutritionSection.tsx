@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Activity, WellnessRecord } from '@/types';
 import { useDataVersion } from '@/lib/data-refresh';
-import { estimateTSS } from '@/lib/training-load';
 import type { NutritionLog } from '@/lib/nutrition';
 import type { DayMetrics } from '@/lib/nutrition-analysis';
 import ExpandableCard from '@/components/ExpandableCard';
@@ -16,7 +15,6 @@ interface Props {
   allWellness: WellnessRecord[];
   allActivities: Activity[];
   cutoff: Date;
-  thresholdHR: number;
 }
 
 /**
@@ -27,7 +25,7 @@ interface Props {
  * slice: an intake on the last day of the window needs the NEXT day's recovery
  * numbers, which would otherwise sit just outside the filter.
  */
-export default function NutritionSection({ allWellness, allActivities, cutoff, thresholdHR }: Props) {
+export default function NutritionSection({ allWellness, allActivities, cutoff }: Props) {
   const [logs, setLogs] = useState<NutritionLog[] | null>(null);
   const dataVersion = useDataVersion();
 
@@ -41,11 +39,6 @@ export default function NutritionSection({ allWellness, allActivities, cutoff, t
   }, [dataVersion]);
 
   const metricsByDate = useMemo(() => {
-    const tssByDate = new Map<string, number>();
-    for (const a of allActivities) {
-      const d = a.date.slice(0, 10);
-      tssByDate.set(d, (tssByDate.get(d) ?? 0) + estimateTSS(a, thresholdHR));
-    }
     const m = new Map<string, DayMetrics>();
     for (const w of allWellness) {
       const date = w.date.slice(0, 10);
@@ -57,11 +50,10 @@ export default function NutritionSection({ allWellness, allActivities, cutoff, t
         sleepScore: w.sleep_score,
         bodyBattery: w.body_battery,
         stress: w.stress_score,
-        tss: tssByDate.get(date) ?? null,
       });
     }
     return m;
-  }, [allWellness, allActivities, thresholdHR]);
+  }, [allWellness]);
 
   // Only the calendar is period-scoped; the analysis cards deliberately use
   // every logged day, because they need all the sample size they can get.

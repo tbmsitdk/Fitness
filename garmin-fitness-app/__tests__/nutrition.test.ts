@@ -20,7 +20,7 @@ function log(o: Partial<NutritionLog> & { date: string }): NutritionLog {
 
 function metrics(date: string, hrv: number): DayMetrics {
   return { date, hrv, restingHr: null, sleepHours: null, sleepScore: null,
-           bodyBattery: null, stress: null, tss: null };
+           bodyBattery: null, stress: null };
 }
 
 const HRV = OUTCOMES.find(o => o.key === 'hrv')!;
@@ -176,7 +176,7 @@ describe('mean / stdDev', () => {
 describe('availableOutcomes', () => {
   const day = (over: Partial<DayMetrics>): DayMetrics => ({
     date: '2026-09-01', hrv: null, restingHr: null, sleepHours: null,
-    sleepScore: null, bodyBattery: null, stress: null, tss: null, ...over,
+    sleepScore: null, bodyBattery: null, stress: null, ...over,
   });
 
   it('drops outcomes the device never records', () => {
@@ -207,16 +207,20 @@ describe('availableOutcomes', () => {
     expect(stressStandsInForHrv(withHrv)).toBe(false);
   });
 
-  it('marks next-day load as behavioural so it is never coloured good or bad', () => {
-    // It records a CHOICE (how hard you trained), not something that happened
-    // to you — "more load after drinking" must never read as a benefit.
-    const tss = OUTCOMES.find(o => o.key === 'tss')!;
-    expect(tss.behavioural).toBe(true);
+  it('points every outcome in the right direction', () => {
+    // Getting one of these backwards silently inverts every verdict the cards
+    // draw, so each is asserted by name rather than by rule.
+    const dir = Object.fromEntries(OUTCOMES.map(o => [o.key, o.higherIsBetter]));
+    expect(dir.hrv).toBe(true);          // more heart-rate variability is better
+    expect(dir.sleepScore).toBe(true);   // a higher sleep SCORE is better
+    expect(dir.sleepHours).toBe(true);   // more sleep is better
+    expect(dir.bodyBattery).toBe(true);  // more charge is better
+    expect(dir.restingHr).toBe(false);   // a lower resting pulse is better
+    expect(dir.stress).toBe(false);      // less stress is better
+  });
 
-    // Everything else is a measured outcome and keeps its direction.
-    for (const o of OUTCOMES.filter(x => x.key !== 'tss')) {
-      expect(o.behavioural, o.key).toBeFalsy();
-    }
+  it('no longer offers next-day load — it records a choice, not an outcome', () => {
+    expect(OUTCOMES.map(o => o.key)).not.toContain('tss');
   });
 
   it('never silently swaps stress in for HRV — they run opposite directions', () => {
@@ -335,7 +339,7 @@ describe('combinedImpact', () => {
     const stress = OUTCOMES.find(o => o.key === 'stress')!;
     const withStress = (d: string, v: number): [string, DayMetrics] => [d, {
       date: d, hrv: null, restingHr: null, sleepHours: null, sleepScore: null,
-      bodyBattery: null, stress: v, tss: null,
+      bodyBattery: null, stress: v,
     }];
     const logs = [
       log({ date: '2026-09-01', alcohol_units: 0, candy_portions: 0 }),
