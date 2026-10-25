@@ -109,3 +109,20 @@ something that happened to the body. Removed.
 Plotting absolute values when no baseline exists looks meaningful but compares
 to nothing. Say what is missing and what to do about it, with the real counts,
 rather than a generic "not enough data".
+
+## 11. The git repo root is one level ABOVE the app
+
+`~/Developer/Claude` is the repository; `garmin-fitness-app/` is a subdirectory.
+GitHub Actions only reads `.github/workflows/` at the **repository root**, so a
+workflow placed in `garmin-fitness-app/.github/workflows/` never runs.
+
+`pr-checks.yml` (typecheck + tests, on every push to main and every PR) lived
+there and had therefore **never executed** — across 23 pushes. The safety net
+appeared to exist and did not. Two shadow copies of the sync workflows lived
+there too; one pointed at a stale script, which had previously caused a real
+incident where per-second data never landed while the sync reported success.
+
+**Rule:** workflows go in `/.github/workflows/`. Paths inside them are
+repo-root-relative, so app-level steps need `working-directory:
+garmin-fitness-app`. Never keep a second copy of a workflow — a duplicate that
+silently does nothing is worse than no copy at all.
