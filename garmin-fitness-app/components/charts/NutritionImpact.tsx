@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import type { NutritionLog } from '@/lib/nutrition';
 import {
-  doseResponse, OUTCOMES, ALCOHOL_BUCKETS, CANDY_BUCKETS, MIN_BUCKET_N,
+  doseResponse, OUTCOMES, ALCOHOL_BUCKETS, CANDY_BUCKETS, MIN_BUCKET_N, MIN_BASELINE_N,
   weekendSplit, addDays, OUTCOME_LAG_DAYS, availableOutcomes, stressStandsInForHrv, isWeekend,
   type DayMetrics, type OutcomeDef,
 } from '@/lib/nutrition-analysis';
@@ -137,7 +137,9 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
     );
   }
 
-  const baseline = dr.buckets[0]?.value ?? null;
+  const baselineN = dr.buckets[0]?.n ?? 0;
+  // A difference is only as trustworthy as the thing it is measured against.
+  const baseline = baselineN >= MIN_BASELINE_N ? (dr.buckets[0]?.value ?? null) : null;
 
   return (
     <div className="space-y-2">
@@ -174,7 +176,9 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
 
       {baseline != null && (
         <p className="text-[10px] text-muted-foreground">
-          Change in {outcome.label.toLowerCase()} versus days with none.{' '}
+          Change in {outcome.label.toLowerCase()} versus <strong>days with none of this one</strong>
+          {' '}(other intakes are not considered — the Combined card uses a stricter group, so its
+          numbers differ).{' '}
           <strong>{outcome.higherIsBetter ? 'Higher is better' : 'Lower is better'}</strong> for this
           metric, so red bars are the bad direction whichever way they point.
           {' '}Days with none averaged{' '}
@@ -224,11 +228,14 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
       ) : (
         <div style={{ height }} className="flex flex-col items-center justify-center gap-1.5 text-center px-6">
           <p className="text-[11px] text-muted-foreground/80 max-w-md">
-            No days logged with none, so there is nothing to measure impact against — the chart plots
-            the change from a day without any, and without one there is no zero.
+            {baselineN === 0
+              ? 'No days logged with none, so there is nothing to measure impact against.'
+              : <>Only <strong>{baselineN}</strong> day{baselineN === 1 ? '' : 's'} logged with none.
+                 Every bar would be measured against {baselineN === 1 ? 'that single morning' : 'those few mornings'},
+                 so one unlucky reading would set the whole card.</>}
           </p>
           <p className="text-[11px] text-muted-foreground/60">
-            Enter 0 on a day you had none. The values are listed below meanwhile.
+            Needs {MIN_BASELINE_N}+. Enter 0 on days you had none — the values are listed below meanwhile.
           </p>
         </div>
       )}

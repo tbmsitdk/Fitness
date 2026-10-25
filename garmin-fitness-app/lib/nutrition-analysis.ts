@@ -26,6 +26,15 @@ import type { NutritionLog } from './nutrition';
 /** Below this many days, a bucket's mean is not worth reporting as fact. */
 export const MIN_BUCKET_N = 5;
 
+/**
+ * Below this many days in the BASELINE group, no difference is worth drawing
+ * at all. Every other bar is measured against it, so a one-day baseline turns
+ * one unlucky morning into every number on the card — and because the cards
+ * define their baselines differently (alcohol-only days vs days with neither),
+ * two cards then disagree about the same drinking days by several bpm.
+ */
+export const MIN_BASELINE_N = 3;
+
 export interface DayMetrics {
   date: string;
   hrv: number | null;

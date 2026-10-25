@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import type { NutritionLog } from '@/lib/nutrition';
 import {
-  combinedImpact, availableOutcomes, stressStandsInForHrv, isWeekend, OUTCOMES, MIN_BUCKET_N,
+  combinedImpact, availableOutcomes, stressStandsInForHrv, isWeekend, OUTCOMES, MIN_BUCKET_N, MIN_BASELINE_N,
   type DayMetrics, type OutcomeDef, type CombinedCell,
 } from '@/lib/nutrition-analysis';
 
@@ -63,7 +63,8 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
   const fmt = (v: number) => v.toFixed(outcome.decimals);
   const signed = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(outcome.decimals)}`;
   const isWorse = (delta: number) => (outcome.higherIsBetter ? delta < 0 : delta > 0);
-  const hasBaseline = result.cells.neither.value != null;
+  const baselineN = result.cells.neither.n;
+  const hasBaseline = result.cells.neither.value != null && baselineN >= MIN_BASELINE_N;
 
   if (present.length < 2) {
     return (
@@ -157,7 +158,9 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
 
       {hasBaseline && (
         <p className="text-[10px] text-muted-foreground">
-          Change in {outcome.label.toLowerCase()} versus your clean days.{' '}
+          Change in {outcome.label.toLowerCase()} versus days with <strong>neither</strong>.{' '}
+          That is a stricter group than the Alcohol and Sugar cards use — they compare against days
+          without their own intake regardless of the other — so the same days read differently here.{' '}
           <strong>{outcome.higherIsBetter ? 'Higher is better' : 'Lower is better'}</strong> for this
           metric, so red bars are the bad direction whichever way they point.
           {' '}Clean days averaged{' '}
@@ -202,11 +205,16 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
       ) : (
         <div style={{ height }} className="flex flex-col items-center justify-center gap-1.5 text-center px-6">
           <p className="text-[11px] text-muted-foreground/80 max-w-md">
-            No clean days logged, so there is nothing to measure impact against — the chart plots the
-            change from a day with neither, and without one there is no zero.
+            {baselineN === 0
+              ? 'No days logged with neither, so there is nothing to measure against.'
+              : <>Only <strong>{baselineN}</strong> day{baselineN === 1 ? '' : 's'} logged with neither
+                 alcohol nor sugar. Every bar would be measured against {baselineN === 1 ? 'that one morning' : 'those few mornings'},
+                 which is how this card and the single-intake cards end up disagreeing by several units
+                 about the very same days.</>}
           </p>
           <p className="text-[11px] text-muted-foreground/60">
-            Enter 0 for alcohol, candy and sugary drinks on any ordinary day. The values are listed below meanwhile.
+            Needs {MIN_BASELINE_N}+. Enter 0 for alcohol, candy and sugary drinks on an ordinary day —
+            the values are listed below meanwhile.
           </p>
         </div>
       )}

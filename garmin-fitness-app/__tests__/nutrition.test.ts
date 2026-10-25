@@ -5,7 +5,7 @@ import {
 } from '@/lib/nutrition';
 import {
   addDays, isWeekend, mean, stdDev, doseResponse, effectSize, rankEffects,
-  weekendSplit, ALCOHOL_BUCKETS, CANDY_BUCKETS, OUTCOMES, MIN_BUCKET_N, STANDARD_EXPOSURES,
+  weekendSplit, ALCOHOL_BUCKETS, CANDY_BUCKETS, OUTCOMES, MIN_BUCKET_N, MIN_BASELINE_N, STANDARD_EXPOSURES,
   availableOutcomes, stressStandsInForHrv, combinedImpact, stratifiedEffect,
   type DayMetrics,
 } from '@/lib/nutrition-analysis';
@@ -624,5 +624,51 @@ describe('baseline labelling', () => {
     for (const hasBaseline of [true, false]) {
       expect(labelFor(false, null, hasBaseline)).not.toBe('baseline');
     }
+  });
+});
+
+describe('baseline groups differ between cards', () => {
+  // BUG REPORT: the Combined card showed "Alcohol only -4.0 bpm" while the
+  // Alcohol card showed the SAME days as -1.0. Both were right: they measure
+  // against different reference groups, and neither card said so.
+  const m = new Map([
+    ['2026-09-06', metrics('2026-09-06', 0)],
+  ]);
+  const withRhr = (d: string, bpm: number): [string, DayMetrics] => [d, {
+    date: d, hrv: null, restingHr: bpm, sleepHours: null, sleepScore: null,
+    bodyBattery: null, stress: null,
+  }];
+  const RHR = OUTCOMES.find(o => o.key === 'restingHr')!;
+
+  const logs = [
+    // alcohol 0 but candy present — counted as baseline by the ALCOHOL card,
+    // but not by the Combined card, which requires neither.
+    log({ date: '2026-09-01', alcohol_units: 0, candy_portions: 2 }),
+    // neither — the only day both cards accept as baseline
+    log({ date: '2026-09-03', alcohol_units: 0, candy_portions: 0 }),
+  ];
+  const metricsMap = new Map([withRhr('2026-09-02', 52), withRhr('2026-09-04', 56)]);
+
+  it('the single-intake baseline ignores the other intake', () => {
+    const dr = doseResponse(logs, metricsMap, l => l.alcohol_units, ALCOHOL_BUCKETS, RHR);
+    expect(dr.buckets[0].n).toBe(2);              // both days count
+    expect(dr.buckets[0].value).toBe(54);         // mean of 52 and 56
+  });
+
+  it('the combined baseline requires neither, giving a different number', () => {
+    const r = combinedImpact(logs, metricsMap, RHR);
+    expect(r.cells.neither.n).toBe(1);            // only the 3rd
+    expect(r.cells.neither.value).toBe(56);
+  });
+
+  it('so the two baselines genuinely differ — not a bug, but must be stated', () => {
+    const dr = doseResponse(logs, metricsMap, l => l.alcohol_units, ALCOHOL_BUCKETS, RHR);
+    const r = combinedImpact(logs, metricsMap, RHR);
+    expect(dr.buckets[0].value).not.toBe(r.cells.neither.value);
+  });
+
+  it('MIN_BASELINE_N is above 1, so one morning cannot set a whole card', () => {
+    expect(MIN_BASELINE_N).toBeGreaterThan(1);
+    expect(MIN_BASELINE_N).toBeLessThanOrEqual(MIN_BUCKET_N);
   });
 });
