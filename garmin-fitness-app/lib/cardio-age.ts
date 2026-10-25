@@ -2,7 +2,7 @@ import { vo2maxRating } from '@/lib/vo2max';
 import { getAgeAsOf, type UserSettings } from '@/lib/settings';
 import type { Activity, WellnessRecord } from '@/types';
 
-import { interpolateScore, RHR_ANCHORS, ACTIVE_ANCHORS } from './longevity';
+import { interpolateScore, RHR_ANCHORS, ACTIVE_ANCHORS, INPUT_WINDOW_DAYS } from './longevity';
 
 export interface CardioFactorInput {
   age: number;
@@ -120,6 +120,10 @@ export interface CardioAgeHistoryPoint {
 
 // How stale a forward-filled reading is allowed to be before it's treated as
 // missing rather than carried forward indefinitely.
+/**
+ * Fallback reach when a window holds no reading — mirrors windowedValue()'s
+ * "use the newest one and mark it stale" behaviour.
+ */
 const LOOKBACK_DAYS = { restingHr: 30, vo2max: 120, bodyFatPct: 60, hrvRmssd: 14 } as const;
 
 const DAY_MS = 86400000;
@@ -199,6 +203,42 @@ function trailingAvg(
 // live snapshot uses for activity minutes and sleep. Points where fewer than
 // 2 biomarkers were available are dropped rather than shown as a flat,
 // activity-only-driven age that would mislead the trend.
+/**
+ * Rolling median of a sparse field at each sample date.
+ *
+ * The history previously forward-filled the single most recent reading while
+ * the headline card took a median over a window — two derivations of the same
+ * number, which disagreed: the card read 48 while the last point of its own
+ * chart read 49. This uses the SAME windows the card uses, falling back to the
+ * newest prior reading when the window is empty, so the two now agree by
+ * construction.
+ */
+function windowedMedianSeries(
+  sortedAsc: WellnessRecord[],
+  field: keyof WellnessRecord,
+  sampleDates: Date[],
+  windowDays: number,
+  fallbackLookbackDays: number,
+): (number | null)[] {
+  const points = sortedAsc
+    .map(w => ({ t: new Date(w.date).getTime(), v: w[field] as number | null }))
+    .filter((p): p is { t: number; v: number } => p.v != null);
+
+  return sampleDates.map(asOf => {
+    const asOfTime = asOf.getTime();
+    const windowStart = asOfTime - windowDays * DAY_MS;
+    const inWindow = points.filter(p => p.t > windowStart && p.t <= asOfTime).map(p => p.v);
+    if (inWindow.length > 0) {
+      const s = [...inWindow].sort((a, b) => a - b);
+      const mid = Math.floor(s.length / 2);
+      return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+    }
+    // Nothing recent — reach back for the newest earlier reading, as the card does.
+    const prior = points.filter(p => p.t <= asOfTime && p.t > asOfTime - fallbackLookbackDays * DAY_MS);
+    return prior.length ? prior[prior.length - 1].v : null;
+  });
+}
+
 export function computeCardioAgeHistory(
   wellness: WellnessRecord[],
   activities: Activity[],
@@ -217,11 +257,16 @@ export function computeCardioAgeHistory(
     sampleDates.push(new Date(t));
   }
   if (sampleDates.length === 0) return [];
+  // Weekly stepping from the first reading rarely lands on today, leaving the
+  // final point up to six days stale and disagreeing with the headline card.
+  const lastSample = sampleDates[sampleDates.length - 1];
+  if (lastDate.getTime() - lastSample.getTime() > DAY_MS) sampleDates.push(lastDate);
 
-  const restingHrSeries = forwardFillSeries(wellnessAsc, 'resting_hr', sampleDates, LOOKBACK_DAYS.restingHr);
-  const vo2maxSeries     = forwardFillSeries(wellnessAsc, 'vo2max', sampleDates, LOOKBACK_DAYS.vo2max);
-  const bodyFatSeries    = forwardFillSeries(wellnessAsc, 'body_fat_pct', sampleDates, LOOKBACK_DAYS.bodyFatPct);
-  const hrvSeries        = forwardFillSeries(wellnessAsc, 'hrv_rmssd', sampleDates, LOOKBACK_DAYS.hrvRmssd);
+  // Same windows as the headline card — see INPUT_WINDOW_DAYS.
+  const restingHrSeries = windowedMedianSeries(wellnessAsc, 'resting_hr', sampleDates, INPUT_WINDOW_DAYS.restingHr, LOOKBACK_DAYS.restingHr);
+  const vo2maxSeries    = windowedMedianSeries(wellnessAsc, 'vo2max', sampleDates, INPUT_WINDOW_DAYS.vo2max, LOOKBACK_DAYS.vo2max);
+  const bodyFatSeries   = windowedMedianSeries(wellnessAsc, 'body_fat_pct', sampleDates, INPUT_WINDOW_DAYS.bodyFat, LOOKBACK_DAYS.bodyFatPct);
+  const hrvSeries       = windowedMedianSeries(wellnessAsc, 'hrv_rmssd', sampleDates, INPUT_WINDOW_DAYS.hrv, LOOKBACK_DAYS.hrvRmssd);
 
   const sleepEntries = wellnessAsc
     .filter(w => w.sleep_score != null)

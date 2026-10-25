@@ -460,3 +460,53 @@ describe('travelEffect', () => {
     expect(travelEffect([], new Map(), HRV, 'east').delta).toBeNull();
   });
 });
+
+// ── Regression: period-filter handling ─────────────────────────────────────
+// BUG: Walking & Activity was handed allActivities while doing no windowing of
+// its own, so it plotted every walk since 2023 under a 1Y selection. The rule
+// that prevents it: a component that does its own rolling/forward-fill work
+// needs the FULL history and trims the display; everything else must be given
+// the already-filtered set. See tasks/lessons.md #2.
+describe('period trimming', () => {
+  const series = ['2024-01-01', '2025-06-01', '2026-09-01', '2026-10-01'];
+
+  const trimForDisplay = (dates: string[], from: string, minPoints = 2) => {
+    const windowed = dates.filter(d => d >= from);
+    return windowed.length >= minPoints ? windowed : dates;
+  };
+
+  it('shows only the selected window when enough points survive', () => {
+    expect(trimForDisplay(series, '2026-01-01')).toEqual(['2026-09-01', '2026-10-01']);
+  });
+
+  it('falls back to the full series rather than drawing an empty chart', () => {
+    // A 1W window over sparse data would otherwise leave one point or none.
+    expect(trimForDisplay(series, '2026-10-20')).toEqual(series);
+  });
+
+  it('is a no-op when the window covers everything', () => {
+    expect(trimForDisplay(series, '2000-01-01')).toEqual(series);
+  });
+});
+
+// ── Regression: local dates, not UTC ───────────────────────────────────────
+// BUG: daily aggregation keyed by toISOString() rolled a late-evening session
+// into the next day in Copenhagen, splitting one day's load across two and
+// distorting that week's standard deviation. See tasks/lessons.md #5.
+describe('day keys use local time', () => {
+  const localKey = (d: Date) => {
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+
+  it('keeps a late-evening local time on its own day', () => {
+    // 23:30 local on the 15th must stay the 15th, whatever UTC thinks.
+    const evening = new Date(2026, 6, 15, 23, 30, 0);
+    expect(localKey(evening)).toBe('2026-07-15');
+  });
+
+  it('keeps an early-morning local time on its own day', () => {
+    const earlyAm = new Date(2026, 6, 15, 0, 30, 0);
+    expect(localKey(earlyAm)).toBe('2026-07-15');
+  });
+});

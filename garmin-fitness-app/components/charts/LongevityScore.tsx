@@ -5,7 +5,7 @@ import { UserSettings, getAge } from '@/lib/settings';
 import { vo2maxRating } from '@/lib/vo2max';
 import {
   restingHrScore, rhrTrendBonus, muscleMassScore, sleepScore as sleepHoursScore,
-  activeMinutesScore,
+  activeMinutesScore, windowedValue, INPUT_WINDOW_DAYS,
 } from '@/lib/longevity';
 
 interface Props {
@@ -89,14 +89,22 @@ function computeComponents(
   }
 
   // 3. Muscle mass (20 pts)
-  const latestMuscle = [...sorted].reverse().find(w => w.muscle_mass_kg != null)?.muscle_mass_kg ?? null;
+  // Median over a window, not one weigh-in — a scale reading varies with
+  // hydration, and a single value made this factor jump between sessions.
+  const muscleWin = windowedValue(
+    sorted.map(w => ({ date: w.date, value: w.muscle_mass_kg ?? null })),
+    INPUT_WINDOW_DAYS.muscleMass,
+  );
+  const latestMuscle = muscleWin.value;
   if (latestMuscle != null) {
     const score = muscleMassScore(latestMuscle, sex);
     components.push({
       label: 'Muscle Mass',
       score,
       weight: 20,
-      detail: `${latestMuscle.toFixed(1)} kg`,
+      detail: `${latestMuscle.toFixed(1)} kg${
+        muscleWin.stale ? ` (single reading, ${muscleWin.ageDays}d old)`
+        : muscleWin.n > 1 ? ` (median of ${muscleWin.n})` : ''}`,
       available: true,
     });
   } else {

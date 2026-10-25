@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { computeCardioAge, computeCardioAgeHistory, rhrScore, bodyFatScore, hrvScore, activeMinutesScore } from '@/lib/cardio-age';
 import type { WellnessRecord, Activity } from '@/types';
 import type { UserSettings } from '@/lib/settings';
-import { DEFAULT_SETTINGS } from '@/lib/settings';
+import { DEFAULT_SETTINGS, getAgeAsOf } from '@/lib/settings';
 
 describe('rhrScore', () => {
   it('scores lower RHR higher', () => {
@@ -171,5 +171,71 @@ describe('computeCardioAgeHistory', () => {
     const last = history[history.length - 1];
     expect(first.chronoAge).toBe(51);
     expect(last.chronoAge).toBeGreaterThanOrEqual(first.chronoAge);
+  });
+});
+
+// ── Regression: the card and its own chart must agree ──────────────────────
+// BUG: the headline read 48 while the last point of the chart beside it read
+// 49, because the two derived their inputs differently — median over a window
+// vs forward-filling the latest reading, with different lookbacks — and the
+// weekly sampling left the final point up to six days stale.
+describe('headline and history agree', () => {
+  const p = (n: number) => String(n).padStart(2, '0');
+  const iso = (d: Date) => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const daysAgo = (n: number) => iso(new Date(Date.now() - n * 86400000));
+
+  const settings = {
+    birthYear: 1969, birthDate: '1969-03-01', sex: 'male' as const, heightCm: 180,
+    maxHR: null, thresholdHR: null, garminFtp: null, dailyStepsGoal: 10000,
+    minCyclingPower: null, homeTimezone: 'Europe/Copenhagen',
+  };
+
+  // 120 days of steady readings with one freak resting-HR spike.
+  const wellness = Array.from({ length: 120 }, (_, i) => ({
+    id: i, date: daysAgo(119 - i),
+    steps: null, resting_hr: i === 115 ? 64 : 50, hrv_rmssd: null,
+    sleep_hours: 7.4, sleep_score: 70, stress_score: null, body_battery: null,
+    weight_kg: null, vo2max: 42, fitness_age: null, body_fat_pct: 22.2,
+    muscle_mass_kg: 34.5, bone_mass_kg: null, body_water_pct: null,
+    visceral_fat: null, metabolic_age: null, locked_fields: null,
+  })) as never[];
+
+  const activities = Array.from({ length: 120 }, (_, i) => ({
+    id: i, garmin_id: `a${i}`, activity_type: 'walking', date: daysAgo(i),
+    title: 'Walk', distance_km: 5, duration_seconds: 2400, calories: 200,
+    avg_hr: 100, max_hr: 120, training_effect: null, avg_cadence: null,
+    avg_speed_kmh: null, tss: null, avg_power: null, max_power: null,
+    elevation_gain: null,
+  })) as never[];
+
+  it('ends the history on the same cardio age the card shows', () => {
+    const history = computeCardioAgeHistory(wellness, activities, settings);
+    expect(history.length).toBeGreaterThan(2);
+
+    // Derived exactly as the card derives them: medians over the same windows,
+    // and the same 28-day activity window.
+    const headline = computeCardioAge({
+      age: getAgeAsOf(settings, new Date()),
+      sex: 'male',
+      restingHr: 50, vo2max: 42, bodyFatPct: 22.2, hrvRmssd: null,
+      weeklyActiveMinutes: (28 * 2400) / 60 / 4,
+      sleepScore14dAvg: 70,
+    });
+
+    expect(history[history.length - 1].cardioAge).toBe(headline.cardioAge);
+  });
+
+  it('ends on today, not on a stale weekly bucket', () => {
+    const history = computeCardioAgeHistory(wellness, activities, settings);
+    const lastDate = new Date(history[history.length - 1].date);
+    const ageDays = (Date.now() - lastDate.getTime()) / 86400000;
+    expect(ageDays).toBeLessThan(1.5);
+  });
+
+  it('is not moved by a single freak reading', () => {
+    // The 64 bpm spike must not show up as a bump in the reconstructed series.
+    const history = computeCardioAgeHistory(wellness, activities, settings);
+    const recent = history.slice(-8).map(h => h.cardioAge);
+    expect(new Set(recent).size).toBe(1);
   });
 });

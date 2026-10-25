@@ -560,3 +560,69 @@ describe('rankEffects', () => {
     expect(rankEffects([], new Map(), STANDARD_EXPOSURES)).toEqual([]);
   });
 });
+
+// ── Regression tests backfilled for bugs that were fixed without one ────────
+// Each of these shipped as a UI change; the logic is pulled out here so the
+// bug cannot return silently. See tasks/lessons.md.
+
+describe('worst-group selection', () => {
+  // BUG: the tile sorted every group and took one end, so on a metric where
+  // everything beat the baseline it reported the SMALLEST IMPROVEMENT as the
+  // worst — sleep score +6.5 was labelled worst while +12.3 and +21.3 sat
+  // above it.
+  const worstOf = (
+    groups: { label: string; delta: number | null }[],
+    higherIsBetter: boolean,
+  ) => {
+    const isWorse = (d: number) => (higherIsBetter ? d < 0 : d > 0);
+    const harmed = groups.filter(g => g.delta != null && isWorse(g.delta));
+    return harmed.sort((a, b) => Math.abs(b.delta!) - Math.abs(a.delta!))[0] ?? null;
+  };
+
+  it('returns nothing when no group is actually worse than the baseline', () => {
+    const groups = [
+      { label: 'Alcohol only', delta: 12.3 },
+      { label: 'Sugar only', delta: 21.3 },
+      { label: 'Both', delta: 6.5 },
+    ];
+    expect(worstOf(groups, true)).toBeNull();
+  });
+
+  it('picks the biggest genuine harm, not the smallest gain', () => {
+    const groups = [
+      { label: 'Alcohol only', delta: -3 },
+      { label: 'Sugar only', delta: 10 },
+      { label: 'Both', delta: -9 },
+    ];
+    expect(worstOf(groups, true)!.label).toBe('Both');
+  });
+
+  it('reads direction from the metric — a RISE in stress is the harm', () => {
+    const groups = [
+      { label: 'Alcohol only', delta: 8 },
+      { label: 'Sugar only', delta: -2 },
+    ];
+    expect(worstOf(groups, false)!.label).toBe('Alcohol only');
+  });
+});
+
+describe('baseline labelling', () => {
+  // BUG: every row with a null delta printed "baseline", so with no clean days
+  // logged, Alcohol only / Sugar only / Both ALL claimed to be the baseline.
+  const labelFor = (isBaselineRow: boolean, delta: number | null, hasBaseline: boolean) =>
+    delta != null ? 'value' : isBaselineRow ? 'baseline' : hasBaseline ? '—' : 'no baseline';
+
+  it('labels only the baseline row as the baseline', () => {
+    expect(labelFor(true, null, true)).toBe('baseline');
+  });
+
+  it('says "no baseline" on other rows when none exists', () => {
+    expect(labelFor(false, null, false)).toBe('no baseline');
+  });
+
+  it('never calls a non-baseline row the baseline', () => {
+    for (const hasBaseline of [true, false]) {
+      expect(labelFor(false, null, hasBaseline)).not.toBe('baseline');
+    }
+  });
+});

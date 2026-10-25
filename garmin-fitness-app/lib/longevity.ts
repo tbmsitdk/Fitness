@@ -91,3 +91,75 @@ export function compositeScore(parts: { score: number; weight: number }[]): numb
   if (total === 0) return 0;
   return Math.round(parts.reduce((s, p) => s + p.score * p.weight, 0) / total);
 }
+
+// ── Stable inputs ────────────────────────────────────────────────────────────
+
+/**
+ * A representative recent value for a biomarker.
+ *
+ * Scores were being computed from a SINGLE most-recent reading. One night's
+ * resting HR moves several bpm with illness, alcohol or bad sleep — the very
+ * things being measured elsewhere in this app — so the cardiovascular age
+ * jumped around day to day and reacted to noise rather than to fitness.
+ *
+ * Takes the MEDIAN over a window, which ignores one freak reading entirely
+ * where a mean would drag towards it. When the window is empty the most recent
+ * reading is used instead and `stale` is set, so a metric recorded
+ * infrequently (a manual weigh-in) still counts but can be labelled honestly.
+ */
+export interface WindowedValue {
+  value: number | null;
+  /** How many readings the median was taken over. 0 when falling back. */
+  n: number;
+  /** True when no reading fell inside the window. */
+  stale: boolean;
+  /** Age in days of the newest reading used. */
+  ageDays: number | null;
+}
+
+export function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+export function windowedValue(
+  readings: { date: string; value: number | null }[],
+  days: number,
+  now: number = Date.now(),
+): WindowedValue {
+  const present = readings
+    .filter((r): r is { date: string; value: number } => r.value != null)
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  if (present.length === 0) return { value: null, n: 0, stale: false, ageDays: null };
+
+  const ageOf = (d: string) =>
+    Math.floor((now - new Date(`${d}T00:00:00`).getTime()) / 86_400_000);
+
+  const inWindow = present.filter(r => ageOf(r.date) < days);
+  if (inWindow.length > 0) {
+    return {
+      value: median(inWindow.map(r => r.value)),
+      n: inWindow.length,
+      stale: false,
+      ageDays: ageOf(inWindow[0].date),
+    };
+  }
+  // Nothing recent: fall back to the newest reading rather than dropping the
+  // factor, and say that it is old.
+  return { value: present[0].value, n: 0, stale: true, ageDays: ageOf(present[0].date) };
+}
+
+/**
+ * Window lengths per biomarker, set by how fast each actually moves and how
+ * noisy its daily reading is.
+ */
+export const INPUT_WINDOW_DAYS = {
+  restingHr: 14,   // daily, swings with sleep/alcohol/illness
+  hrv: 14,         // daily, the noisiest of all
+  bodyFat: 30,     // manual weigh-ins, sparse and scale-dependent
+  vo2max: 60,      // Garmin moves it slowly; a long window is still responsive
+  muscleMass: 30,  // same scale, same sparseness as body fat
+} as const;

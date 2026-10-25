@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   interpolateScore, restingHrScore, rhrTrendBonus, muscleMassScore,
-  sleepScore, activeMinutesScore, compositeScore,
+  sleepScore, activeMinutesScore, compositeScore, windowedValue, median,
 } from '@/lib/longevity';
 import {
   rhrScore, bodyFatScore, activeMinutesScore as cardioActiveScore, computeCardioAge,
@@ -201,5 +201,64 @@ describe('cardiovascular age components', () => {
     const after  = computeCardioAge({ ...base, restingHr: 51, bodyFatPct: 22 });
     expect(after.composite).toBeGreaterThan(before.composite);
     expect(after.cardioAge).toBeLessThanOrEqual(before.cardioAge);
+  });
+});
+
+describe('windowedValue — stable inputs', () => {
+  // BUG: scores used a single most-recent reading, so one bad night of resting
+  // HR moved the cardiovascular age. See tasks/lessons.md.
+  const r = (date: string, value: number | null) => ({ date, value });
+  const NOW = new Date('2026-10-25T12:00:00Z').getTime();
+
+  it('ignores a single freak reading that a mean would chase', () => {
+    // Steady 50 bpm, then one night of 62 after a bad sleep.
+    const readings = [
+      r('2026-10-24', 62), r('2026-10-23', 50), r('2026-10-22', 50),
+      r('2026-10-21', 50), r('2026-10-20', 50),
+    ];
+    const w = windowedValue(readings, 14, NOW);
+    expect(w.value).toBe(50);          // the outlier is ignored entirely
+    expect(w.n).toBe(5);
+    expect(w.stale).toBe(false);
+  });
+
+  it('tracks a real shift rather than smoothing it away', () => {
+    const readings = [
+      r('2026-10-24', 48), r('2026-10-23', 48), r('2026-10-22', 48),
+      r('2026-10-21', 49), r('2026-10-20', 49),
+    ];
+    expect(windowedValue(readings, 14, NOW).value).toBe(48);
+  });
+
+  it('falls back to the newest reading when the window is empty, and says so', () => {
+    // A manual weigh-in from two months ago still counts, but is labelled.
+    const w = windowedValue([r('2026-08-20', 22.2)], 30, NOW);
+    expect(w.value).toBe(22.2);
+    expect(w.stale).toBe(true);
+    expect(w.ageDays).toBeGreaterThan(60);
+    expect(w.n).toBe(0);
+  });
+
+  it('returns null when there is nothing at all', () => {
+    expect(windowedValue([], 14, NOW).value).toBeNull();
+    expect(windowedValue([r('2026-10-24', null)], 14, NOW).value).toBeNull();
+  });
+
+  it('excludes readings outside the window', () => {
+    const w = windowedValue([r('2026-10-24', 50), r('2026-01-01', 70)], 14, NOW);
+    expect(w.n).toBe(1);
+    expect(w.value).toBe(50);
+  });
+});
+
+describe('median', () => {
+  it('averages the middle pair when the count is even', () => {
+    expect(median([1, 2, 3, 4])).toBe(2.5);
+  });
+  it('takes the middle when odd', () => {
+    expect(median([5, 1, 3])).toBe(3);
+  });
+  it('is null for nothing', () => {
+    expect(median([])).toBeNull();
   });
 });

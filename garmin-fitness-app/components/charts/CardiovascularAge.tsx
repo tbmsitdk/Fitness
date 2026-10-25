@@ -6,6 +6,7 @@ import {
 import { format, parseISO } from 'date-fns';
 import { Activity, WellnessRecord } from '@/types';
 import { UserSettings, getAge } from '@/lib/settings';
+import { windowedValue, INPUT_WINDOW_DAYS } from '@/lib/longevity';
 import { computeCardioAge, computeCardioAgeHistory } from '@/lib/cardio-age';
 
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
@@ -45,10 +46,22 @@ function ProgressBar({ label, score, color }: { label: string; score: number; co
 }
 
 export default function CardiovascularAge({ settings, wellness, activities, cutoff }: Props) {
-  const { chrono, result } = useMemo(() => {
+  const { chrono, result, inputs } = useMemo(() => {
     const chrono = getAge(settings);
     const sorted = [...wellness].sort((a, b) => b.date.localeCompare(a.date));
-    const latestOf = <K extends keyof WellnessRecord>(key: K) => sorted.find(w => w[key] != null)?.[key] as number | undefined;
+
+    // Median over a window, NOT the single most recent reading. One night's
+    // resting HR moves several bpm with illness, alcohol or poor sleep, so a
+    // latest-value score reacted to noise rather than to fitness — and made
+    // this card jump between adjacent days. Window length per metric reflects
+    // how fast each actually moves; see INPUT_WINDOW_DAYS.
+    const windowFor = <K extends keyof WellnessRecord>(key: K, days: number) =>
+      windowedValue(sorted.map(w => ({ date: w.date, value: w[key] as number | null })), days);
+
+    const rhr     = windowFor('resting_hr',   INPUT_WINDOW_DAYS.restingHr);
+    const vo2     = windowFor('vo2max',       INPUT_WINDOW_DAYS.vo2max);
+    const bodyFat = windowFor('body_fat_pct', INPUT_WINDOW_DAYS.bodyFat);
+    const hrv     = windowFor('hrv_rmssd',    INPUT_WINDOW_DAYS.hrv);
 
     const last14 = sorted.filter(w => Date.now() - new Date(w.date).getTime() < 14 * 86400000 && w.sleep_score != null);
     const avgSleepScore = last14.length ? last14.reduce((s, w) => s + (w.sleep_score as number), 0) / last14.length : null;
@@ -59,15 +72,15 @@ export default function CardiovascularAge({ settings, wellness, activities, cuto
     const result = computeCardioAge({
       age: chrono,
       sex: settings.sex,
-      restingHr: latestOf('resting_hr') ?? null,
-      vo2max: latestOf('vo2max') ?? null,
-      bodyFatPct: latestOf('body_fat_pct') ?? null,
-      hrvRmssd: latestOf('hrv_rmssd') ?? null,
+      restingHr: rhr.value,
+      vo2max: vo2.value,
+      bodyFatPct: bodyFat.value,
+      hrvRmssd: hrv.value,
       weeklyActiveMinutes: recentMins / 4,
       sleepScore14dAvg: avgSleepScore,
     });
 
-    return { chrono, result };
+    return { chrono, result, inputs: { rhr, vo2, bodyFat, hrv } };
   }, [settings, wellness, activities]);
 
   const history = useMemo(
@@ -122,16 +135,29 @@ export default function CardiovascularAge({ settings, wellness, activities, cuto
       </div>
 
       <div className="space-y-3">
-        {result.factors.map(f => (
+        {result.factors.map(f => {
+          const win = f.key === 'rhr' ? inputs.rhr
+            : f.key === 'vo2max' ? inputs.vo2
+            : f.key === 'bodyfat' ? inputs.bodyFat
+            : f.key === 'hrv' ? inputs.hrv : null;
+          const note = win == null ? ''
+            : win.stale ? ` · single reading, ${win.ageDays}d old`
+            : win.n > 1 ? ` · median of ${win.n}d` : '';
+          return (
           <ProgressBar
             key={f.key}
-            label={`${f.label}${f.raw != null ? ` (${f.raw}${UNIT[f.key] ?? ''})` : ''}`}
+            label={`${f.label}${f.raw != null ? ` (${f.raw}${UNIT[f.key] ?? ''})` : ''}${note}`}
             score={f.score}
             color={FACTOR_COLOR[f.key] ?? '#9CA3AF'}
           />
-        ))}
+          );
+        })}
       </div>
       <p className="text-[10px] text-muted-foreground/60 italic">
+        Each biomarker is the MEDIAN over a recent window rather than a single latest reading —
+        14 days for resting HR and HRV, 30 for body composition, 60 for VO₂max — so one bad night
+        cannot move the score. Where no reading falls in the window the newest one is used and
+        labelled as such.
         Cardio age = chrono age × (1 − (score − 50) / 200). Weighted composite of VO₂max (25%), resting HR (20%),
         body fat % (15%), HRV (15%), weekly active minutes (15%), and sleep score (10%) — only factors with
         available data are included, reweighted proportionally. VO₂max and body fat % use the same age/sex-adjusted
