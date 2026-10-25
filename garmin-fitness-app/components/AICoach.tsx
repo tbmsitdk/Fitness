@@ -16,8 +16,27 @@ const QUICK = [
   'Am I recovering enough?','How is my fitness trending?',
 ];
 
+/**
+ * Renders the model's markdown-ish output.
+ *
+ * SECURITY: this writes into dangerouslySetInnerHTML, so every character that
+ * did not come from the small set of markdown rules below must be inert. The
+ * model's text is NOT trusted — activity titles reach the prompt, and anyone
+ * who can write to the API can choose those titles, so a crafted title could
+ * make the model echo a tag. Escaping happens FIRST; only then are the four
+ * markdown patterns turned back into real elements.
+ */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function Prose({ text }: { text: string }) {
-  const html = text
+  const html = escapeHtml(text)
     .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
     .replace(/^## (.*?)$/gm,'<h2>$1</h2>')
     .replace(/^- (.*?)$/gm,'<li>$1</li>')

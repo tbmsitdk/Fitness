@@ -6,7 +6,12 @@ export const dynamic = 'force-dynamic';
 
 function bearerOk(req: NextRequest) {
   const secret = process.env.SYNC_SECRET;
-  if (!secret) return true;
+  // FAIL CLOSED. This used to `return true` when SYNC_SECRET was unset, so a
+  // missing or mistyped env var in Vercel silently made the route public —
+  // and for /api/garmin-tokens that means handing out live Garmin session
+  // tokens, which is full takeover of an account holding far more than this
+  // app does. An unset secret is a misconfiguration, not permission.
+  if (!secret) return false;
   return (req.headers.get('authorization') ?? '') === `Bearer ${secret}`;
 }
 

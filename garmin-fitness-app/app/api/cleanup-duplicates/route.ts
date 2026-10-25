@@ -3,7 +3,8 @@ import { db } from '@vercel/postgres';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() { return handler(); }
+// POST only. This deletes rows, and a GET that deletes is triggerable by an
+// <img src="..."> on any page the owner visits — no CSRF token exists here.
 export async function POST() { return handler(); }
 
 async function handler() {

@@ -85,7 +85,12 @@ export function computeCardioAge(input: CardioFactorInput): CardioAgeResult {
   const factors: CardioFactor[] = [];
 
   if (input.vo2max != null) {
-    factors.push({ key: 'vo2', label: 'VO₂ Max', score: vo2maxRating(input.vo2max, age, sex).score, weight: 25, raw: input.vo2max });
+    // vo2maxRating().score is banded 20/40/60/80/100 — the whole "Good" band
+    // (38.0-42.9) scored identically while 42.9 -> 43.0 jumped 20 points. This
+    // is the heaviest factor at weight 25, so it froze the composite. The
+    // .percentile is interpolated; LongevityScore already uses it, and the two
+    // cards disagreed by 14 points on the same reading.
+    factors.push({ key: 'vo2', label: 'VO₂ Max', score: vo2maxRating(input.vo2max, age, sex).percentile, weight: 25, raw: input.vo2max });
   }
   if (input.restingHr != null) {
     factors.push({ key: 'rhr', label: 'Resting HR', score: rhrScore(input.restingHr), weight: 20, raw: input.restingHr });
@@ -103,9 +108,14 @@ export function computeCardioAge(input: CardioFactorInput): CardioAgeResult {
 
   const totalWeight = factors.reduce((s, f) => s + f.weight, 0) || 1;
   const composite = factors.reduce((s, f) => s + f.score * f.weight, 0) / totalWeight;
-  const cardioAge = Math.round(age * (1 - (composite - 50) / 200));
+  // Derive the age from the composite the user is SHOWN, not the unrounded one.
+  // Otherwise two points displaying the same "composite 83" can report
+  // different cardiovascular ages (82.99 -> 48, 83.35 -> 47), which reads as
+  // the card contradicting itself even though both are arithmetically right.
+  const shownComposite = Math.round(composite);
+  const cardioAge = Math.round(age * (1 - (shownComposite - 50) / 200));
 
-  return { cardioAge, composite: Math.round(composite), factors };
+  return { cardioAge, composite: shownComposite, factors };
 }
 
 // ── Historical time series ──────────────────────────────────────────────────

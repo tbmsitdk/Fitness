@@ -157,7 +157,11 @@ async function fetchSampleSummaries(
         ftp,
       );
       return {
-        title: act.title as string,
+        // Activity titles come from Garmin, and anyone able to POST
+        // /api/insert can choose them. They land in the model's prompt, so a
+        // title containing newlines or instruction-shaped text could steer the
+        // coaching output. Flatten to a single short line.
+        title: String(act.title ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, 80),
         date: dateStr,
         type: act.activity_type as string,
         duration_min: Math.round(Number(act.duration_seconds) / 60),

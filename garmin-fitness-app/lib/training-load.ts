@@ -19,6 +19,21 @@ export function isTrainingSession(a: Activity): boolean {
 }
 
 // Estimate TSS when not provided by Garmin
+/**
+ * Day key in LOCAL time.
+ *
+ * toISOString() returns UTC, so in Copenhagen (UTC+1/+2) an activity started
+ * between local midnight and 02:00 resolves to the PREVIOUS day. Daily TSS was
+ * being written with UTC keys and read back with local ones, so those sessions
+ * were filed under a day the reader never looked up — their load silently
+ * vanished from CTL/ATL/TSB and from every chart built on them.
+ */
+export function localDateKey(date: string | Date): string {
+  const d = new Date(date);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export function estimateTSS(activity: Activity, thresholdHR = 165): number {
   if (activity.tss != null && activity.tss > 0) return activity.tss;
   const durationHours = activity.duration_seconds / 3600;
@@ -42,7 +57,8 @@ export function computeTrainingLoad(activities: Activity[], thresholdHR = 165): 
   // Build daily TSS map
   const dailyTSS = new Map<string, number>();
   for (const a of sorted) {
-    const dateStr = new Date(a.date).toISOString().split('T')[0];
+    // Must match the local-time key used when reading back below.
+    const dateStr = localDateKey(a.date);
     const tss = estimateTSS(a, thresholdHR);
     dailyTSS.set(dateStr, (dailyTSS.get(dateStr) ?? 0) + tss);
   }
@@ -193,7 +209,7 @@ export function computePersonalBests(activities: Activity[], minCyclingPower: nu
       return pace < bestPace ? a : best;
     });
     const paceStr = formatPace(fastest.duration_seconds / fastest.distance_km);
-    bests.push({ label, value: paceStr + '/km', date: new Date(fastest.date).toISOString().split('T')[0], activity_type: 'running' });
+    bests.push({ label, value: paceStr + '/km', date: localDateKey(fastest.date), activity_type: 'running' });
   }
 
   fastestPaceBest('Fastest 1K pace',     0.9,  1.15);
@@ -205,55 +221,55 @@ export function computePersonalBests(activities: Activity[], minCyclingPower: nu
   // Longest run
   if (runs.length > 0) {
     const longest = runs.reduce((best, a) => a.distance_km > best.distance_km ? a : best);
-    bests.push({ label: 'Longest run', value: `${longest.distance_km.toFixed(1)} km`, date: new Date(longest.date).toISOString().split('T')[0], activity_type: 'running' });
+    bests.push({ label: 'Longest run', value: `${longest.distance_km.toFixed(1)} km`, date: localDateKey(longest.date), activity_type: 'running' });
   }
 
   // Longest ride
   if (rides.length > 0) {
     const longest = rides.reduce((best, a) => a.distance_km > best.distance_km ? a : best);
-    bests.push({ label: 'Longest ride', value: `${longest.distance_km.toFixed(1)} km`, date: new Date(longest.date).toISOString().split('T')[0], activity_type: 'cycling' });
+    bests.push({ label: 'Longest ride', value: `${longest.distance_km.toFixed(1)} km`, date: localDateKey(longest.date), activity_type: 'cycling' });
   }
 
   // Most elevation in a single activity
   const withElev = activities.filter(a => (a.elevation_gain ?? 0) > 0);
   if (withElev.length > 0) {
     const most = withElev.reduce((best, a) => (a.elevation_gain ?? 0) > (best.elevation_gain ?? 0) ? a : best);
-    bests.push({ label: 'Most elevation', value: `${most.elevation_gain?.toFixed(0)} m`, date: new Date(most.date).toISOString().split('T')[0], activity_type: most.activity_type });
+    bests.push({ label: 'Most elevation', value: `${most.elevation_gain?.toFixed(0)} m`, date: localDateKey(most.date), activity_type: most.activity_type });
   }
 
   // Highest single-ride avg power
   const withPower = powerRides.filter(a => (a.avg_power ?? 0) > 0);
   if (withPower.length > 0) {
     const strongest = withPower.reduce((best, a) => (a.avg_power ?? 0) > (best.avg_power ?? 0) ? a : best);
-    bests.push({ label: 'Peak avg power (ride)', value: `${strongest.avg_power} W`, date: new Date(strongest.date).toISOString().split('T')[0], activity_type: 'cycling' });
+    bests.push({ label: 'Peak avg power (ride)', value: `${strongest.avg_power} W`, date: localDateKey(strongest.date), activity_type: 'cycling' });
   }
 
   // Highest normalized power (rides ≥ 20 min — short enough efforts skew NP)
   const withNP = powerRides.filter(a => (a.normalized_power ?? 0) > 0 && a.duration_seconds >= 1200);
   if (withNP.length > 0) {
     const strongest = withNP.reduce((best, a) => (a.normalized_power ?? 0) > (best.normalized_power ?? 0) ? a : best);
-    bests.push({ label: 'Peak normalized power', value: `${strongest.normalized_power} W`, date: new Date(strongest.date).toISOString().split('T')[0], activity_type: 'cycling' });
+    bests.push({ label: 'Peak normalized power', value: `${strongest.normalized_power} W`, date: localDateKey(strongest.date), activity_type: 'cycling' });
   }
 
   // Best ~1hr effort — highest normalized power among rides 50-70 min (proxy for FTP-style effort)
   const hourRides = powerRides.filter(a => (a.normalized_power ?? 0) > 0 && a.duration_seconds >= 3000 && a.duration_seconds <= 4200);
   if (hourRides.length > 0) {
     const strongest = hourRides.reduce((best, a) => (a.normalized_power ?? 0) > (best.normalized_power ?? 0) ? a : best);
-    bests.push({ label: 'Best ~1hr power', value: `${strongest.normalized_power} W`, date: new Date(strongest.date).toISOString().split('T')[0], activity_type: 'cycling' });
+    bests.push({ label: 'Best ~1hr power', value: `${strongest.normalized_power} W`, date: localDateKey(strongest.date), activity_type: 'cycling' });
   }
 
   // Highest avg speed for a substantial ride
   const fastRides = rides.filter(a => a.distance_km >= 20 && (a.avg_speed_kmh ?? 0) > 0);
   if (fastRides.length > 0) {
     const fastest = fastRides.reduce((best, a) => (a.avg_speed_kmh ?? 0) > (best.avg_speed_kmh ?? 0) ? a : best);
-    bests.push({ label: 'Fastest avg speed (≥20km)', value: `${fastest.avg_speed_kmh?.toFixed(1)} km/h`, date: new Date(fastest.date).toISOString().split('T')[0], activity_type: 'cycling' });
+    bests.push({ label: 'Fastest avg speed (≥20km)', value: `${fastest.avg_speed_kmh?.toFixed(1)} km/h`, date: localDateKey(fastest.date), activity_type: 'cycling' });
   }
 
   // Highest calorie burn
   const withCal = activities.filter(a => (a.calories ?? 0) > 0);
   if (withCal.length > 0) {
     const max = withCal.reduce((best, a) => (a.calories ?? 0) > (best.calories ?? 0) ? a : best);
-    bests.push({ label: 'Most calories burned', value: `${max.calories} kcal`, date: new Date(max.date).toISOString().split('T')[0], activity_type: max.activity_type });
+    bests.push({ label: 'Most calories burned', value: `${max.calories} kcal`, date: localDateKey(max.date), activity_type: max.activity_type });
   }
 
   return bests;
@@ -382,7 +398,7 @@ export function computeEfficiencyFactor(activities: Activity[]): EfficiencyFacto
         ef = power / (a.avg_hr as number);
       }
       return {
-        date: new Date(a.date).toISOString().split('T')[0],
+        date: localDateKey(a.date),
         ef: Math.round(ef * 10000) / 10000,
         sport: a.activity_type,
         title: a.title || a.activity_type,

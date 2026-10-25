@@ -239,3 +239,20 @@ describe('headline and history agree', () => {
     expect(new Set(recent).size).toBe(1);
   });
 });
+
+describe('displayed numbers are self-consistent', () => {
+  // The cardio age was derived from the UNROUNDED composite while the card
+  // showed the rounded one, so two readings displaying "composite 83" could
+  // report 47 and 48 — the card appearing to contradict itself.
+  it('gives the same cardio age whenever it shows the same composite', () => {
+    const base = { age: 57, sex: 'male' as const, hrvRmssd: null, sleepScore14dAvg: 70 };
+    const seen = new Map<number, number>();
+    for (let mins = 250; mins <= 340; mins += 2) {
+      const r = computeCardioAge({ ...base, restingHr: 50, vo2max: 42, bodyFatPct: 22.2, weeklyActiveMinutes: mins });
+      const prev = seen.get(r.composite);
+      if (prev != null) expect(r.cardioAge, `composite ${r.composite}`).toBe(prev);
+      seen.set(r.composite, r.cardioAge);
+    }
+    expect(seen.size).toBeGreaterThan(1);   // the sweep did vary the composite
+  });
+});
