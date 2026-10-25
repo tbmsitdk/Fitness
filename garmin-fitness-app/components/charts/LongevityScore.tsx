@@ -3,6 +3,10 @@ import { useMemo } from 'react';
 import { WellnessRecord, Activity } from '@/types';
 import { UserSettings, getAge } from '@/lib/settings';
 import { vo2maxRating } from '@/lib/vo2max';
+import {
+  restingHrScore, rhrTrendBonus, muscleMassScore, sleepScore as sleepHoursScore,
+  activeMinutesScore,
+} from '@/lib/longevity';
 
 interface Props {
   wellness: WellnessRecord[];
@@ -51,7 +55,11 @@ function computeComponents(
   // 1. VO2max (25 pts weight)
   const latestVo2 = [...sorted].reverse().find(w => w.vo2max != null)?.vo2max ?? null;
   if (latestVo2 != null) {
-    const { score, category } = vo2maxScore(latestVo2, age, sex);
+    // vo2maxRating's `score` is banded (20/40/60/80/100) and barely moves; its
+    // `percentile` is interpolated — and "percentile" is what this row is
+    // labelled. Use that.
+    const { percentile, category } = vo2maxScore(latestVo2, age, sex);
+    const score = percentile;
     components.push({
       label: 'VO₂max Percentile',
       score,
@@ -67,22 +75,13 @@ function computeComponents(
   const rhrValues = last30.filter(w => w.resting_hr != null).map(w => w.resting_hr as number);
   if (rhrValues.length > 0) {
     const avgRhr = rhrValues.reduce((s, v) => s + v, 0) / rhrValues.length;
-    let baseScore: number;
-    if (avgRhr < 50) baseScore = 100;
-    else if (avgRhr < 55) baseScore = 85;
-    else if (avgRhr < 60) baseScore = 70;
-    else if (avgRhr < 65) baseScore = 55;
-    else if (avgRhr < 70) baseScore = 40;
-    else if (avgRhr < 75) baseScore = 25;
-    else baseScore = 10;
-    // Bonus if trend declining (improving) over last 30 days
-    const slopeBonus = rhrValues.length >= 7 && trend(rhrValues) < -0.05 ? 10 : 0;
-    const finalScore = Math.min(100, baseScore + slopeBonus);
+    const slopeBonus = rhrValues.length >= 7 ? rhrTrendBonus(trend(rhrValues)) : 0;
+    const finalScore = Math.min(100, restingHrScore(avgRhr) + slopeBonus);
     components.push({
       label: 'Resting Heart Rate',
       score: finalScore,
       weight: 25,
-      detail: `Avg ${Math.round(avgRhr)} bpm${slopeBonus > 0 ? ' (improving trend +10)' : ''}`,
+      detail: `Avg ${avgRhr.toFixed(1)} bpm${slopeBonus > 0 ? ` (improving +${slopeBonus.toFixed(1)})` : ''}`,
       available: true,
     });
   } else {
@@ -92,13 +91,7 @@ function computeComponents(
   // 3. Muscle mass (20 pts)
   const latestMuscle = [...sorted].reverse().find(w => w.muscle_mass_kg != null)?.muscle_mass_kg ?? null;
   if (latestMuscle != null) {
-    const male = sex === 'male';
-    let score: number;
-    if (male) {
-      score = latestMuscle >= 38 ? 100 : latestMuscle >= 33 ? 75 : latestMuscle >= 28 ? 50 : 25;
-    } else {
-      score = latestMuscle >= 30 ? 100 : latestMuscle >= 25 ? 75 : latestMuscle >= 20 ? 50 : 25;
-    }
+    const score = muscleMassScore(latestMuscle, sex);
     components.push({
       label: 'Muscle Mass',
       score,
@@ -114,12 +107,7 @@ function computeComponents(
   const sleepVals = last30.filter(w => w.sleep_hours != null).map(w => w.sleep_hours as number);
   if (sleepVals.length > 0) {
     const avgSleep = sleepVals.reduce((s, v) => s + v, 0) / sleepVals.length;
-    let score: number;
-    if (avgSleep >= 7 && avgSleep <= 9) score = 100;
-    else if (avgSleep > 9) score = 80;
-    else if (avgSleep >= 6) score = 70;
-    else if (avgSleep >= 5) score = 40;
-    else score = 10;
+    const score = sleepHoursScore(avgSleep);
     components.push({
       label: 'Sleep Quality',
       score,
@@ -134,11 +122,7 @@ function computeComponents(
   // 5. Weekly active minutes (15 pts)
   const totalMins = last4WeeksActs.reduce((s, a) => s + a.duration_seconds / 60, 0);
   const avgWeeklyMins = totalMins / 4;
-  let activeScore: number;
-  if (avgWeeklyMins >= 300) activeScore = 100;
-  else if (avgWeeklyMins >= 150) activeScore = 70;
-  else if (avgWeeklyMins >= 60) activeScore = 40;
-  else activeScore = 20;
+  const activeScore = activeMinutesScore(avgWeeklyMins);
   components.push({
     label: 'Weekly Active Minutes',
     score: activeScore,

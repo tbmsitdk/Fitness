@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import type { NutritionLog } from '@/lib/nutrition';
 import {
-  combinedImpact, availableOutcomes, stressStandsInForHrv, OUTCOMES, MIN_BUCKET_N,
+  combinedImpact, availableOutcomes, stressStandsInForHrv, isWeekend, OUTCOMES, MIN_BUCKET_N,
   type DayMetrics, type OutcomeDef, type CombinedCell,
 } from '@/lib/nutrition-analysis';
 
@@ -37,12 +37,22 @@ function Tile({ label, value, sub, tone }: {
 export default function NutritionCombined({ logs, metricsByDate, height = 220 }: Props) {
   const outcomes = useMemo(() => availableOutcomes(metricsByDate), [metricsByDate]);
   const hrvIsStress = useMemo(() => stressStandsInForHrv(metricsByDate), [metricsByDate]);
+  /**
+   * Weekend days bring both the drinking AND the chance to lie in, so pooling
+   * them lets a Saturday morning read as a benefit of alcohol. Restricting to
+   * one day type removes that confound at the cost of sample size.
+   */
+  const [dayType, setDayType] = useState<'all' | 'weekday' | 'weekend'>('all');
   const [requested, setRequested] = useState<string | null>(null);
   const outcome: OutcomeDef = outcomes.find(o => o.key === requested) ?? outcomes[0] ?? OUTCOMES[0];
 
+  const scopedLogs = useMemo(() => logs.filter(l =>
+    dayType === 'all' ? true : dayType === 'weekend' ? isWeekend(l.date) : !isWeekend(l.date),
+  ), [logs, dayType]);
+
   const result = useMemo(
-    () => combinedImpact(logs, metricsByDate, outcome),
-    [logs, metricsByDate, outcome],
+    () => combinedImpact(scopedLogs, metricsByDate, outcome),
+    [scopedLogs, metricsByDate, outcome],
   );
 
   const order: CombinedCell[] = [
@@ -100,6 +110,24 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
 
   return (
     <div className="space-y-3">
+
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="text-[10px] text-muted-foreground mr-1">Days:</span>
+        {([['all', 'All'], ['weekday', 'Weekdays'], ['weekend', 'Weekends']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setDayType(k)}
+            className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+              dayType === k ? 'border-primary bg-primary/10 text-foreground'
+                            : 'border-border text-muted-foreground hover:text-foreground'}`}>
+            {label}
+          </button>
+        ))}
+        {dayType === 'all' && (
+          <span className="text-[10px] text-amber-400/70 ml-1">
+            weekend lie-ins can look like a benefit — try Weekdays
+          </span>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-1">
         {outcomes.map(o => (
           <button key={o.key} onClick={() => setRequested(o.key)}

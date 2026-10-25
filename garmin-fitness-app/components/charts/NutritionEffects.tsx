@@ -2,7 +2,8 @@
 import { useMemo } from 'react';
 import type { NutritionLog } from '@/lib/nutrition';
 import {
-  rankEffects, STANDARD_EXPOSURES, MIN_BUCKET_N, type DayMetrics, type EffectSize,
+  rankEffects, STANDARD_EXPOSURES, MIN_BUCKET_N,
+  type DayMetrics, type StratifiedEffect,
 } from '@/lib/nutrition-analysis';
 
 interface Props {
@@ -20,7 +21,7 @@ function magnitude(d: number): string {
   return 'negligible';
 }
 
-function Row({ e }: { e: EffectSize }) {
+function Row({ e }: { e: StratifiedEffect }) {
   const d = e.d!;
   // Diverging bar: harm grows RIGHT of centre, benefit LEFT, for every metric.
   // A single direction forced the reader to decode each row's sign against the
@@ -56,6 +57,10 @@ function Row({ e }: { e: EffectSize }) {
       <td className="px-2 py-1.5 text-right text-[10px] text-muted-foreground whitespace-nowrap">
         {e.nExposed}/{e.nBaseline}
         {e.unreliable && <span className="text-amber-400 ml-1">⚠</span>}
+        {e.singleStratum && (
+          <span className="text-amber-400 ml-1"
+            title="Only one day type had data, so this one is not weekend-matched">wk</span>
+        )}
       </td>
     </tr>
   );
@@ -119,6 +124,10 @@ export default function NutritionEffects({ logs, metricsByDate, limit = 12 }: Pr
       )}
 
       <p className="text-[10px] text-muted-foreground/60 italic leading-relaxed">
+        <strong>Weekend-matched:</strong> each effect is measured inside weekdays and inside
+        weekends separately, then averaged, so the weekday/weekend mix cannot drive it. Without
+        that, habits that cluster at weekends inherit the weekend lie-in and alcohol appears to buy
+        an extra hour of sleep — while the sleep SCORE for the same nights falls.
         The Difference column is the real change in each metric — a falling sleep score shows as
         negative, a rising resting HR as positive — and colour says which of those is bad. The bar
         beside it diverges from the centre: <strong>right is worse, left is better</strong>, so

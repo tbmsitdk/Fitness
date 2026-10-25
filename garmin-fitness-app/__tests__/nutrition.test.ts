@@ -6,7 +6,7 @@ import {
 import {
   addDays, isWeekend, mean, stdDev, doseResponse, effectSize, rankEffects,
   weekendSplit, ALCOHOL_BUCKETS, CANDY_BUCKETS, OUTCOMES, MIN_BUCKET_N, STANDARD_EXPOSURES,
-  availableOutcomes, stressStandsInForHrv, combinedImpact,
+  availableOutcomes, stressStandsInForHrv, combinedImpact, stratifiedEffect,
   type DayMetrics,
 } from '@/lib/nutrition-analysis';
 
@@ -454,6 +454,83 @@ describe('weekendSplit', () => {
     // exactly the honest answer for this data.
     expect(s.weekday.nBaseline).toBe(1);
     expect(s.weekend.nExposed).toBe(1);
+  });
+});
+
+describe('stratifiedEffect — the weekend confound', () => {
+  const SLEEP = OUTCOMES.find(o => o.key === 'sleepHours')!;
+  const night = (d: string, hours: number): [string, DayMetrics] => [d, {
+    date: d, hrv: null, restingHr: null, sleepHours: hours, sleepScore: null,
+    bodyBattery: null, stress: null,
+  }];
+
+  it('does not credit alcohol with the weekend lie-in', () => {
+    // Drinking happens on Saturdays, which is also when the long sleeps happen.
+    // Within each day type sleep is IDENTICAL, so the true effect is zero — but
+    // a naive pooled comparison sees 9h drinking nights vs 7h sober ones.
+    const logs = [
+      // Saturdays, with alcohol -> 9h
+      log({ date: '2026-09-05', alcohol_units: 3 }),
+      log({ date: '2026-09-12', alcohol_units: 3 }),
+      log({ date: '2026-09-19', alcohol_units: 3 }),
+      // Saturdays, without -> also 9h
+      log({ date: '2026-09-26', alcohol_units: 0 }),
+      log({ date: '2026-10-03', alcohol_units: 0 }),
+      // Weekdays, without -> 7h
+      log({ date: '2026-09-07', alcohol_units: 0 }),
+      log({ date: '2026-09-08', alcohol_units: 0 }),
+      log({ date: '2026-09-09', alcohol_units: 0 }),
+      // Weekdays, with -> also 7h
+      log({ date: '2026-09-10', alcohol_units: 3 }),
+      log({ date: '2026-09-11', alcohol_units: 3 }),
+    ];
+    const m = new Map([
+      night('2026-09-06', 9), night('2026-09-13', 9), night('2026-09-20', 9),
+      night('2026-09-27', 9), night('2026-10-04', 9),
+      night('2026-09-08', 7), night('2026-09-09', 7), night('2026-09-10', 7),
+      night('2026-09-11', 7), night('2026-09-12', 7),
+    ]);
+    const isDrinking = (l: typeof logs[number]) =>
+      l.alcohol_units == null ? null : l.alcohol_units > 0;
+
+    const naive = effectSize(logs, m, 'Any alcohol', isDrinking, SLEEP);
+    const matched = stratifiedEffect(logs, m, 'Any alcohol', isDrinking, SLEEP);
+
+    // Pooled, alcohol looks like it buys extra sleep purely from the mix of
+    // day types; matched, the effect is exactly zero, which is the truth here.
+    expect(naive.delta!).toBeGreaterThan(0.3);        // the confounded answer
+    expect(matched.delta!).toBeCloseTo(0, 5);         // the honest one
+    expect(matched.singleStratum).toBe(false);
+  });
+
+  it('flags an estimate that could only be made in one day type', () => {
+    const logs = [
+      log({ date: '2026-09-05', alcohol_units: 3 }),   // Saturday
+      log({ date: '2026-09-12', alcohol_units: 0 }),   // Saturday
+    ];
+    const m = new Map([night('2026-09-06', 9), night('2026-09-13', 7)]);
+    const r = stratifiedEffect(logs, m, 'Any alcohol',
+      l => (l.alcohol_units == null ? null : l.alcohol_units > 0), SLEEP);
+    expect(r.singleStratum).toBe(true);
+    expect(r.weekdayDelta).toBeNull();
+    // Still ranked: d falls back to the pooled estimate so the row survives.
+    expect(r.delta).not.toBeNull();
+  });
+
+  it('keeps the real sample sizes — the estimate is stratified, not the data', () => {
+    const logs = [
+      log({ date: '2026-09-05', alcohol_units: 3 }),
+      log({ date: '2026-09-07', alcohol_units: 3 }),
+      log({ date: '2026-09-08', alcohol_units: 0 }),
+      log({ date: '2026-09-12', alcohol_units: 0 }),
+    ];
+    const m = new Map([
+      night('2026-09-06', 8), night('2026-09-08', 7),
+      night('2026-09-09', 7), night('2026-09-13', 8),
+    ]);
+    const r = stratifiedEffect(logs, m, 'Any alcohol',
+      l => (l.alcohol_units == null ? null : l.alcohol_units > 0), SLEEP);
+    expect(r.nExposed + r.nBaseline).toBe(4);
   });
 });
 

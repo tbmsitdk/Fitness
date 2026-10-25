@@ -294,6 +294,67 @@ export function weekendSplit(
 }
 
 /**
+ * Weekend-matched effect.
+ *
+ * Alcohol and sugar cluster on weekends, and so does the chance to lie in. A
+ * naive comparison then reports "alcohol gives you an extra hour of sleep",
+ * which is the Saturday morning talking, not the drink — visible in the raw
+ * numbers as sleep DURATION rising while sleep SCORE falls.
+ *
+ * This computes the effect separately within weekdays and within weekends and
+ * averages the two with equal weight, so the weekday/weekend MIX can no longer
+ * drive the result: only a difference that shows up inside each day type
+ * survives. Where one stratum has no usable data the other is used alone and
+ * `singleStratum` says so, because that estimate is still confounded.
+ */
+export interface StratifiedEffect extends EffectSize {
+  singleStratum: boolean;
+  weekdayDelta: number | null;
+  weekendDelta: number | null;
+}
+
+export function stratifiedEffect(
+  logs: NutritionLog[],
+  metricsByDate: Map<string, DayMetrics>,
+  exposureLabel: string,
+  isExposed: (l: NutritionLog) => boolean | null,
+  outcome: OutcomeDef,
+): StratifiedEffect {
+  const wd = effectSize(logs.filter(l => !isWeekend(l.date)), metricsByDate, exposureLabel, isExposed, outcome);
+  const we = effectSize(logs.filter(l => isWeekend(l.date)), metricsByDate, exposureLabel, isExposed, outcome);
+
+  const usable = [wd, we].filter(e => e.delta != null);
+  const pooledOverall = effectSize(logs, metricsByDate, exposureLabel, isExposed, outcome);
+
+  if (usable.length === 0) {
+    return { ...pooledOverall, singleStratum: false, weekdayDelta: null, weekendDelta: null };
+  }
+
+  const delta = mean(usable.map(e => e.delta!))!;
+  // Cohen's d needs two samples per side, which a single stratum often lacks.
+  // Falling back to the pooled d keeps the row rankable — the DELTA is still
+  // the weekend-matched one, and d is only used for ordering and magnitude.
+  const ds = usable.map(e => e.d).filter((v): v is number => v != null);
+  const d = ds.length ? mean(ds) : pooledOverall.d;
+
+  return {
+    exposureLabel,
+    outcome,
+    delta,
+    d,
+    // Sample sizes stay the real totals — the estimate is stratified, not the data.
+    nExposed: wd.nExposed + we.nExposed,
+    nBaseline: wd.nBaseline + we.nBaseline,
+    unreliable: wd.nExposed + we.nExposed < MIN_BUCKET_N
+             || wd.nBaseline + we.nBaseline < MIN_BUCKET_N,
+    worse: delta == null ? false : outcome.higherIsBetter ? delta < 0 : delta > 0,
+    singleStratum: usable.length === 1,
+    weekdayDelta: wd.delta,
+    weekendDelta: we.delta,
+  };
+}
+
+/**
  * Rank every exposure x outcome pair by absolute effect size.
  *
  * NOTE ON MULTIPLE COMPARISONS: scanning many pairs will surface some purely by
@@ -306,11 +367,13 @@ export function rankEffects(
   metricsByDate: Map<string, DayMetrics>,
   exposures: { label: string; test: (l: NutritionLog) => boolean | null }[],
   outcomes: OutcomeDef[] = OUTCOMES,
-): EffectSize[] {
-  const all: EffectSize[] = [];
+): StratifiedEffect[] {
+  const all: StratifiedEffect[] = [];
   for (const e of exposures) {
     for (const o of outcomes) {
-      all.push(effectSize(logs, metricsByDate, e.label, e.test, o));
+      // Weekend-matched by default — see stratifiedEffect. Without it the table
+      // reported weekend lie-ins as a benefit of drinking.
+      all.push(stratifiedEffect(logs, metricsByDate, e.label, e.test, o));
     }
   }
   return all

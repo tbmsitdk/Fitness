@@ -6,7 +6,7 @@ import {
 import type { NutritionLog } from '@/lib/nutrition';
 import {
   doseResponse, OUTCOMES, ALCOHOL_BUCKETS, CANDY_BUCKETS, MIN_BUCKET_N,
-  weekendSplit, addDays, OUTCOME_LAG_DAYS, availableOutcomes, stressStandsInForHrv,
+  weekendSplit, addDays, OUTCOME_LAG_DAYS, availableOutcomes, stressStandsInForHrv, isWeekend,
   type DayMetrics, type OutcomeDef,
 } from '@/lib/nutrition-analysis';
 
@@ -31,6 +31,12 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
   // a full HRV chart elsewhere in the app.
   const outcomes = useMemo(() => availableOutcomes(metricsByDate), [metricsByDate]);
   const hrvIsStress = useMemo(() => stressStandsInForHrv(metricsByDate), [metricsByDate]);
+  /**
+   * Weekend days bring both the drinking AND the chance to lie in, so pooling
+   * them lets a Saturday morning read as a benefit of alcohol. Restricting to
+   * one day type removes that confound at the cost of sample size.
+   */
+  const [dayType, setDayType] = useState<'all' | 'weekday' | 'weekend'>('all');
   const [requested, setRequested] = useState<string | null>(null);
   const outcome: OutcomeDef = outcomes.find(o => o.key === requested) ?? outcomes[0] ?? OUTCOMES[0];
   const setOutcomeKey = setRequested;
@@ -41,9 +47,13 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
     ? (l: NutritionLog) => l.alcohol_units
     : (l: NutritionLog) => l.candy_portions;
 
+  const scopedLogs = useMemo(() => logs.filter(l =>
+    dayType === 'all' ? true : dayType === 'weekend' ? isWeekend(l.date) : !isWeekend(l.date),
+  ), [logs, dayType]);
+
   const dr = useMemo(
-    () => doseResponse(logs, metricsByDate, intakeOf, buckets, outcome),
-    [logs, metricsByDate, intakeOf, buckets, outcome],
+    () => doseResponse(scopedLogs, metricsByDate, intakeOf, buckets, outcome),
+    [scopedLogs, metricsByDate, intakeOf, buckets, outcome],
   );
 
   // Does the effect survive inside weekdays and weekends separately? If it only
@@ -75,7 +85,7 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
   if (data.length < 2) {
     // A generic "not enough data" leaves the reader guessing which of three
     // different things is missing. Work out which one it actually is.
-    const recorded = logs.filter(l => intakeOf(l) != null);
+    const recorded = scopedLogs.filter(l => intakeOf(l) != null);
     const zeroDays = recorded.filter(l => intakeOf(l) === 0).length;
     const someDays = recorded.filter(l => (intakeOf(l) ?? 0) > 0).length;
     const withOutcome = recorded.filter(l =>
@@ -131,6 +141,24 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
 
   return (
     <div className="space-y-2">
+
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="text-[10px] text-muted-foreground mr-1">Days:</span>
+        {([['all', 'All'], ['weekday', 'Weekdays'], ['weekend', 'Weekends']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setDayType(k)}
+            className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+              dayType === k ? 'border-primary bg-primary/10 text-foreground'
+                            : 'border-border text-muted-foreground hover:text-foreground'}`}>
+            {label}
+          </button>
+        ))}
+        {dayType === 'all' && (
+          <span className="text-[10px] text-amber-400/70 ml-1">
+            weekend lie-ins can look like a benefit — try Weekdays
+          </span>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-1">
         {outcomes.map(o => (
           <button key={o.key} onClick={() => setOutcomeKey(o.key)}
