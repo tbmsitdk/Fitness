@@ -53,18 +53,22 @@ export default function AICoach({ activities, wellness, settings }: Props) {
   const [summary, setSummary] = useState<AISummary | null>(null);
   const [loading, setLoading] = useState(false);  // not auto-started
   const [error, setError] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    try {
-      const saved = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_MESSAGES) : null;
-      return saved ? (JSON.parse(saved) as ChatMessage[]) : [];
-    } catch { return []; }
-  });
-  const [input, setInput] = useState(() => {
-    try {
-      return typeof window !== 'undefined' ? (localStorage.getItem(STORAGE_DRAFT) ?? '') : '';
-    } catch { return ''; }
-  });
+  // Start EMPTY and load after mount. Reading localStorage in the initializer
+  // meant the server rendered an empty chat while the client's first render
+  // already had the stored messages — a hydration mismatch. AICoach is a plain
+  // static import in app/page.tsx, so it really is server-rendered.
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+
+  // Restore persisted chat after hydration, never during render.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_MESSAGES);
+      if (saved) setMessages(JSON.parse(saved) as ChatMessage[]);
+      setInput(localStorage.getItem(STORAGE_DRAFT) ?? '');
+    } catch { /* unreadable storage is not worth breaking the page over */ }
+  }, []);
   const [attachedFiles, setAttachedFiles] = useState<ChatFile[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);

@@ -1,12 +1,16 @@
 'use client';
 import { useMemo } from 'react';
 import { Activity, WellnessRecord } from '@/types';
+import { interpolateScore } from '@/lib/longevity';
 import { TrainingLoadForecast } from '@/lib/training-load';
 
 interface Props {
   activities: Activity[];
   trainingLoad: TrainingLoadForecast[];
   wellness: WellnessRecord[];
+  /** Configured threshold HR — was hardcoded to 150 here while the rest of the
+   *  app used 149 and the heatmap 165, giving one ride three TSS values. */
+  thresholdHR: number;
   compact?: boolean;
 }
 
@@ -25,14 +29,17 @@ function getACWR(trainingLoad: TrainingLoadForecast[]): Factor {
   }
   const acwr = latest.ctl > 0 ? latest.atl / latest.ctl : 1;
   let score: number; let detail: string; let advice: string;
-  if (acwr < 0.8)       { score = 30; detail = `ACWR ${acwr.toFixed(2)} — undertraining`; advice = 'Gradually increase load to stay in the optimal 0.8–1.3 range.'; }
-  else if (acwr <= 1.3) { score = 5;  detail = `ACWR ${acwr.toFixed(2)} — optimal range`; advice = 'Ideal workload balance. Maintain current training pattern.'; }
-  else if (acwr <= 1.5) { score = 55; detail = `ACWR ${acwr.toFixed(2)} — elevated load`; advice = 'Reduce intensity next 3–5 days. Sharp load spikes raise injury risk.'; }
-  else                  { score = 90; detail = `ACWR ${acwr.toFixed(2)} — danger zone`; advice = 'High injury risk. Take 2–3 easier days before resuming hard sessions.'; }
+  // Interpolated across the same band edges: as a step function, ACWR 1.30 vs
+  // 1.31 swung this factor 50 points while 1.31 -> 1.49 changed nothing.
+  score = interpolateScore(acwr, [[0.5, 45], [0.8, 30], [1.0, 5], [1.3, 5], [1.5, 55], [1.8, 90], [2.5, 100]]);
+  if (acwr < 0.8)       { detail = `ACWR ${acwr.toFixed(2)} — undertraining`; advice = 'Gradually increase load to stay in the optimal 0.8–1.3 range.'; }
+  else if (acwr <= 1.3) { detail = `ACWR ${acwr.toFixed(2)} — optimal range`; advice = 'Ideal workload balance. Maintain current training pattern.'; }
+  else if (acwr <= 1.5) { detail = `ACWR ${acwr.toFixed(2)} — elevated load`; advice = 'Reduce intensity next 3–5 days. Sharp load spikes raise injury risk.'; }
+  else                  { detail = `ACWR ${acwr.toFixed(2)} — danger zone`; advice = 'High injury risk. Take 2–3 easier days before resuming hard sessions.'; }
   return { label: 'Workload Ratio (ACWR)', score, detail, advice };
 }
 
-function getMonotony(activities: Activity[], thresholdHR = 150): Factor {
+function getMonotony(activities: Activity[], thresholdHR: number): Factor {
   const now = Date.now();
   const week = activities.filter(a => now - new Date(a.date).getTime() < 7 * 86400000);
   if (week.length < 3) {
@@ -46,17 +53,25 @@ function getMonotony(activities: Activity[], thresholdHR = 150): Factor {
     const tss = a.tss ?? hrs * Math.min(hrFrac * 0.9, 1.15) ** 2 * 100;
     byDay[d] = (byDay[d] ?? 0) + tss;
   }
-  const vals = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(now - i * 86400000).toISOString().slice(0, 10);
-    return byDay[d] ?? 0;
-  });
+  // byDay is keyed from the LOCAL date string, so the lookup must be too.
+  // Built in UTC, the whole 7-day window shifted a day back between local
+  // midnight and 02:00 CEST — today's session dropped out and a day-8 session
+  // counted instead.
+  const localKey = (t: number) => {
+    const x = new Date(t);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
+  };
+  const vals = Array.from({ length: 7 }, (_, i) => byDay[localKey(now - i * 86400000)] ?? 0);
   const mean = vals.reduce((a, b) => a + b, 0) / 7;
   const std  = Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / 7);
   const mono = std > 0 ? mean / std : 0;
   let score: number; let detail: string; let advice: string;
-  if (mono < 1.5)      { score = 5;  detail = `Monotony ${mono.toFixed(2)} — well varied`; advice = 'Good variety between hard and easy days. Keep it up.'; }
-  else if (mono < 2.0) { score = 45; detail = `Monotony ${mono.toFixed(2)} — moderate`; advice = 'Add more variation: include a rest day or a much easier session.'; }
-  else                 { score = 85; detail = `Monotony ${mono.toFixed(2)} — high risk`; advice = 'Training is too similar day-to-day. Insert easy/rest days to reduce strain.'; }
+  // Monotony 1.50 -> 1.49 used to swing this 40 points; 1.99 -> 1.51 nothing.
+  score = interpolateScore(mono, [[0.8, 5], [1.5, 45], [2.0, 85], [2.5, 100]]);
+  if (mono < 1.5)      { detail = `Monotony ${mono.toFixed(2)} — well varied`; advice = 'Good variety between hard and easy days. Keep it up.'; }
+  else if (mono < 2.0) { detail = `Monotony ${mono.toFixed(2)} — moderate`; advice = 'Add more variation: include a rest day or a much easier session.'; }
+  else                 { detail = `Monotony ${mono.toFixed(2)} — high risk`; advice = 'Training is too similar day-to-day. Insert easy/rest days to reduce strain.'; }
   return { label: 'Training Monotony', score, detail, advice };
 }
 
@@ -77,10 +92,13 @@ function getRecoveryDeficit(wellness: WellnessRecord[], activities: Activity[]):
     if (poorStress || lowBattery) deficitDays++;
   }
   let score: number; let detail: string; let advice: string;
-  if (deficitDays === 0)     { score = 5;  detail = 'No recovery-deficit training days'; advice = 'Good recovery management — you\'re training with adequate rest.'; }
-  else if (deficitDays <= 2) { score = 35; detail = `${deficitDays} day(s) trained with poor recovery`; advice = 'Moderate concern. Consider swapping hard days to match your body battery.'; }
-  else if (deficitDays <= 4) { score = 65; detail = `${deficitDays} days trained with poor recovery`; advice = 'Often training when under-recovered. Prioritise sleep and rest days.'; }
-  else                       { score = 90; detail = `${deficitDays} days trained with poor recovery`; advice = 'Consistently training while depleted. High burnout and injury risk.'; }
+  // Whole days, so the steps are real — but interpolating still smooths the
+  // jump from the 4th to the 5th deficit day (65 -> 90).
+  score = interpolateScore(deficitDays, [[0, 5], [2, 35], [4, 65], [6, 90], [7, 100]]);
+  if (deficitDays === 0)     { detail = 'No recovery-deficit training days'; advice = 'Good recovery management — you\'re training with adequate rest.'; }
+  else if (deficitDays <= 2) { detail = `${deficitDays} day(s) trained with poor recovery`; advice = 'Moderate concern. Consider swapping hard days to match your body battery.'; }
+  else if (deficitDays <= 4) { detail = `${deficitDays} days trained with poor recovery`; advice = 'Often training when under-recovered. Prioritise sleep and rest days.'; }
+  else                       { detail = `${deficitDays} days trained with poor recovery`; advice = 'Consistently training while depleted. High burnout and injury risk.'; }
   return { label: 'Recovery Deficit', score, detail, advice };
 }
 
@@ -94,9 +112,8 @@ function riskLevel(score: number) {
   return RISK_LEVELS.find(r => score < r.max) ?? RISK_LEVELS.at(-1)!;
 }
 
-export default function InjuryRiskScore({ activities, trainingLoad, wellness, compact = false }: Props) {
+export default function InjuryRiskScore({ activities, trainingLoad, wellness, thresholdHR, compact = false }: Props) {
   const factors = useMemo((): Factor[] => {
-    const thresholdHR = 150; // rough default
     return [
       getACWR(trainingLoad),
       getMonotony(activities, thresholdHR),

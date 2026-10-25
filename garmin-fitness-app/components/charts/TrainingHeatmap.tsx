@@ -35,10 +35,17 @@ interface Props {
   /** Estimated TSS from manually-logged routine days, keyed YYYY-MM-DD.
    *  Merged in so logged strength/mobility work shows up as training too. */
   extraTssByDate?: Map<string, number>;
+  /**
+   * Configured threshold HR. Omitting it fell back to estimateTSS's own
+   * default of 165, while the rest of the app uses getThresholdHR(settings)
+   * — 149 by default. The same ride scored 54.2 TSS here and 66.5 everywhere
+   * else, enough to cross this heatmap's own 60-TSS colour boundary.
+   */
+  thresholdHR?: number;
   height?: number;
 }
 
-export default function TrainingHeatmap({ activities, extraTssByDate }: Props) {
+export default function TrainingHeatmap({ activities, extraTssByDate, thresholdHR }: Props) {
   // Build year list from data
   const years = useMemo(() => {
     const ys = new Set(activities.map(a => new Date(a.date).getFullYear()));
@@ -58,7 +65,7 @@ export default function TrainingHeatmap({ activities, extraTssByDate }: Props) {
       if (!isTrainingSession(a)) continue;
       const key = new Date(a.date).toISOString().split('T')[0];
       const ex = map.get(key) ?? { tss: 0, acts: [] };
-      ex.tss += estimateTSS(a);
+      ex.tss += estimateTSS(a, thresholdHR);
       ex.acts.push({
         type: a.activity_type,
         title: a.title || a.activity_type,

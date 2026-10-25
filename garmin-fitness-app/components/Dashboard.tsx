@@ -365,10 +365,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             </ExpandableCard>
           </div>
           <ExpandableCard title="Injury Risk">
-            {() => <InjuryRiskScore activities={allActivities} trainingLoad={trainingLoad} wellness={sortedWellness} />}
+            {() => <InjuryRiskScore activities={allActivities} trainingLoad={trainingLoad} wellness={sortedWellness} thresholdHR={thresholdHR} />}
           </ExpandableCard>
           <ExpandableCard title="Training Heatmap">
-            {() => <TrainingHeatmap activities={allActivities} extraTssByDate={exerciseTssByDate} />}
+            {() => <TrainingHeatmap activities={allActivities} extraTssByDate={exerciseTssByDate} thresholdHR={thresholdHR} />}
           </ExpandableCard>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="Monthly Consistency">
@@ -614,7 +614,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           <SectionHeading>Explore</SectionHeading>
           {/* Correlation explorer — finds statistical relationships across your own metrics */}
           <ExpandableCard title="Correlation Explorer">
-            {() => <CorrelationExplorer wellness={allWellness} activities={allActivities} trainingLoad={trainingLoad} />}
+            {() => /* Period-filtered. It does no windowing of its own, so with full history it
+                   ignored the range selector for 10 of 12 series — and sat them in one
+                   table beside period-sliced training load, mixing n≈30 rows with
+                   n≈1000 rows as if comparable. */
+                <CorrelationExplorer wellness={sortedWellness} activities={activities} trainingLoad={trainingLoad} />}
           </ExpandableCard>
         </div>
       )}

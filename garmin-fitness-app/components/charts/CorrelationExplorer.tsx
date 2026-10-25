@@ -79,7 +79,12 @@ export default function CorrelationExplorer({ wellness, activities, trainingLoad
   }, [correlations, search]);
 
   if (series.length < 2) {
-    return <p className="text-xs text-muted-foreground italic py-6 text-center">Not enough overlapping daily data yet to explore correlations.</p>;
+    return (
+      <p className="text-xs text-muted-foreground italic py-6 text-center max-w-md mx-auto">
+        Not enough overlapping daily data in the selected period — a correlation needs at least 20
+        days per metric. Widen the range at the top of the page.
+      </p>
+    );
   }
 
   if (correlations.length === 0) {

@@ -83,7 +83,12 @@ export default function SleepPerformanceChart({ activities, wellness, height = 2
     const pts: { sleep: number; ef: number; date: string; title: string }[] = [];
 
     for (const a of filtered) {
-      const actDate = new Date(a.date).toISOString().split('T')[0];
+      // LOCAL date. With toISOString() an activity started after local
+      // midnight resolved to the previous day, so subtracting one more day
+      // paired the session with the night BEFORE last — the wrong night's
+      // sleep, and a tooltip showing the wrong date. wellMap is keyed from
+      // the raw local date string, so this must match it.
+      const actDate = a.date.slice(0, 10);
       const prevDate = format(subDays(parseISO(actDate), 1), 'yyyy-MM-dd');
       const w = wellMap.get(prevDate);
       if (!w) continue;
