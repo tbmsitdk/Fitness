@@ -126,3 +126,23 @@ incident where per-second data never landed while the sync reported success.
 repo-root-relative, so app-level steps need `working-directory:
 garmin-fitness-app`. Never keep a second copy of a workflow — a duplicate that
 silently does nothing is worse than no copy at all.
+
+## 12. The gate is a script, not a promise
+
+Correctness and security both run as one command — `npm run verify`
+(scripts/verify.sh): TypeScript, tests, production build, dependency audit,
+literal-secret scan, and a check that every `dangerouslySetInnerHTML` escapes
+its input first. CI runs the SAME script on every push and PR, so a green local
+run means something.
+
+It was written after a full audit found an XSS sink, four auth checks that
+failed open, a CSRF-able delete and a critical advisory — none of which the
+existing checks would have caught, and all of which depended on someone
+remembering to look.
+
+**Waivers:** allowed, but they must name the package, give the reason, and
+carry a review date, in the script itself. `next` and `postcss` are currently
+waived — no fix exists inside Next 14, neither is reachable here (no
+middleware, no next/image, no rewrites, no i18n, Vercel-hosted), and postcss
+runs only at build time. Anything not explicitly waived still fails the build.
+A permanently-red gate gets ignored, which is worse than no gate.

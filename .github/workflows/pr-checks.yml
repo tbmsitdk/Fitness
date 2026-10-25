@@ -26,8 +26,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: TypeScript typecheck
-        run: npm run typecheck
-
-      - name: Run tests
-        run: npm test
+      # One gate, same script the developer runs locally: typecheck, tests,
+      # production build, dependency audit, secret scan, XSS-sink check.
+      # Keeping CI and local identical means a green local run means something.
+      - name: Verify (typecheck, tests, build, security)
+        run: npm run verify

@@ -9,7 +9,9 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify": "bash scripts/verify.sh",
+    "audit": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
