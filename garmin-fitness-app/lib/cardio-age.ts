@@ -2,6 +2,8 @@ import { vo2maxRating } from '@/lib/vo2max';
 import { getAgeAsOf, type UserSettings } from '@/lib/settings';
 import type { Activity, WellnessRecord } from '@/types';
 
+import { interpolateScore, RHR_ANCHORS, ACTIVE_ANCHORS } from './longevity';
+
 export interface CardioFactorInput {
   age: number;
   sex: 'male' | 'female';
@@ -27,12 +29,16 @@ export interface CardioAgeResult {
   factors: CardioFactor[];
 }
 
+/**
+ * Resting heart rate.
+ *
+ * Was a step function with a cliff at exactly 50 bpm — 49.9 scored 100 and
+ * 50.0 scored 80, so a tenth of a beat was worth twenty points while a genuine
+ * ten-beat improvement inside a band was worth nothing. Shares anchors with the
+ * Longevity card so the two never disagree about what a pulse is worth.
+ */
 export function rhrScore(rhr: number): number {
-  if (rhr < 50) return 100;
-  if (rhr < 60) return 80;
-  if (rhr < 70) return 60;
-  if (rhr < 80) return 40;
-  return 20;
+  return interpolateScore(rhr, RHR_ANCHORS);
 }
 
 // Age/sex-adjusted body fat % rating — same ACE/ACSM bands used by the Body
@@ -43,11 +49,16 @@ export function bodyFatScore(pct: number, age: number, sex: 'male' | 'female'): 
   const [excellent, good, average, poor] = male
     ? age < 40 ? [8, 14, 18, 24] : age < 60 ? [11, 17, 22, 28] : [13, 20, 25, 30]
     : age < 40 ? [16, 21, 25, 32] : age < 60 ? [18, 24, 29, 35] : [19, 26, 31, 37];
-  if (pct <= excellent) return 100;
-  if (pct <= good)      return 80;
-  if (pct <= average)   return 60;
-  if (pct <= poor)      return 40;
-  return 20;
+  // Interpolated between the band edges rather than stepped: at 22.0% vs 22.2%
+  // the old version differed by twenty points.
+  return interpolateScore(pct, [
+    [excellent - 4, 100],
+    [excellent, 100],
+    [good, 80],
+    [average, 60],
+    [poor, 40],
+    [poor + 6, 20],
+  ]);
 }
 
 // Approximate age-expected HRV (RMSSD, ms) — HRV declines fairly steadily with
@@ -60,11 +71,9 @@ export function hrvScore(rmssd: number, age: number): number {
   return Math.max(0, Math.min(100, 50 + pctDiff * 1.5));
 }
 
+/** Shares anchors with the Longevity card — same metric, same meaning. */
 export function activeMinutesScore(weeklyMinutes: number): number {
-  if (weeklyMinutes >= 300) return 100;
-  if (weeklyMinutes >= 150) return 70;
-  if (weeklyMinutes >= 60)  return 40;
-  return 20;
+  return interpolateScore(weeklyMinutes, ACTIVE_ANCHORS);
 }
 
 // Weighted composite of up to 6 biomarkers. Only factors with available data

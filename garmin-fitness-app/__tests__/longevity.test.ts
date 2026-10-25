@@ -3,6 +3,9 @@ import {
   interpolateScore, restingHrScore, rhrTrendBonus, muscleMassScore,
   sleepScore, activeMinutesScore, compositeScore,
 } from '@/lib/longevity';
+import {
+  rhrScore, bodyFatScore, activeMinutesScore as cardioActiveScore, computeCardioAge,
+} from '@/lib/cardio-age';
 
 describe('interpolateScore', () => {
   const anchors: [number, number][] = [[0, 0], [10, 50], [20, 100]];
@@ -157,5 +160,46 @@ describe('the whole score responds to real change', () => {
 
   it('falls when inputs get worse', () => {
     expect(build(60, 32, 6.0, 120)).toBeLessThan(build(52, 35, 7.5, 260));
+  });
+});
+
+
+describe('cardiovascular age components', () => {
+  it('has no cliff at 50 bpm — 0.1 bpm used to be worth 20 points', () => {
+    expect(Math.abs(rhrScore(49.9) - rhrScore(50.1))).toBeLessThan(1);
+  });
+
+  it('scores resting HR identically to the Longevity card', () => {
+    // Same metric on two cards must not disagree about what it is worth.
+    for (const bpm of [48, 52, 57, 63, 71]) {
+      expect(rhrScore(bpm), `${bpm} bpm`).toBe(restingHrScore(bpm));
+    }
+  });
+
+  it('has no cliff across a body-fat band edge', () => {
+    // 22.0% scored 60 and 22.2% scored 40 for a 57-year-old male.
+    const a = bodyFatScore(22.0, 57, 'male');
+    const b = bodyFatScore(22.2, 57, 'male');
+    expect(Math.abs(a - b)).toBeLessThan(2);
+  });
+
+  it('still rewards less body fat, and respects age and sex bands', () => {
+    expect(bodyFatScore(14, 57, 'male')).toBeGreaterThan(bodyFatScore(26, 57, 'male'));
+    expect(bodyFatScore(22, 35, 'male')).toBeLessThan(bodyFatScore(22, 57, 'male'));
+  });
+
+  it('shares its active-minutes anchors with the Longevity card', () => {
+    for (const m of [80, 150, 237, 320]) {
+      expect(cardioActiveScore(m), `${m} min`).toBe(activeMinutesScore(m));
+    }
+  });
+
+  it('moves the cardio age when a factor genuinely improves', () => {
+    const base = { age: 57, sex: 'male' as const, vo2max: 42, hrvRmssd: null,
+                   weeklyActiveMinutes: 237, sleepScore14dAvg: 67 };
+    const before = computeCardioAge({ ...base, restingHr: 54, bodyFatPct: 24 });
+    const after  = computeCardioAge({ ...base, restingHr: 51, bodyFatPct: 22 });
+    expect(after.composite).toBeGreaterThan(before.composite);
+    expect(after.cardioAge).toBeLessThanOrEqual(before.cardioAge);
   });
 });

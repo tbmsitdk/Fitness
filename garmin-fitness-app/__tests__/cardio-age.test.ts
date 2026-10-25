@@ -6,9 +6,12 @@ import { DEFAULT_SETTINGS } from '@/lib/settings';
 
 describe('rhrScore', () => {
   it('scores lower RHR higher', () => {
+    // Anchor values are unchanged; the scale between them is now continuous,
+    // so a mid-band value no longer collapses to the band floor.
     expect(rhrScore(45)).toBe(100);
-    expect(rhrScore(55)).toBe(80);
-    expect(rhrScore(85)).toBe(20);
+    expect(rhrScore(55)).toBe(85);
+    expect(rhrScore(85)).toBe(10);
+    expect(rhrScore(52)).toBeGreaterThan(rhrScore(58));
   });
 });
 
@@ -37,9 +40,11 @@ describe('hrvScore', () => {
 describe('activeMinutesScore', () => {
   it('rewards higher weekly volume', () => {
     expect(activeMinutesScore(350)).toBe(100);
-    expect(activeMinutesScore(200)).toBe(70);
-    expect(activeMinutesScore(100)).toBe(40);
-    expect(activeMinutesScore(10)).toBe(20);
+    expect(activeMinutesScore(150)).toBe(70);   // anchor unchanged
+    expect(activeMinutesScore(60)).toBe(40);    // anchor unchanged
+    // Between anchors the score now rises rather than sitting at the floor.
+    expect(activeMinutesScore(200)).toBeGreaterThan(70);
+    expect(activeMinutesScore(200)).toBeLessThan(100);
   });
 });
 
