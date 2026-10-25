@@ -58,18 +58,18 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
   ), [logs, metricsByDate, intakeOf, outcome]);
 
   /**
-   * Bars show HARM, not the raw metric: the change from the baseline band,
-   * flipped so UP IS ALWAYS WORSE whatever direction the metric runs. A drop
-   * in sleep score and a rise in resting HR are both damage, and plotting raw
-   * values forced the reader to recall each metric's direction.
+   * Bars show the REAL change in the metric — sleep score up is up, resting HR
+   * up is up. Sign-flipping to make every bar mean "harm" was mathematically
+   * tidy but read as the metric itself, so a falling sleep score appeared to
+   * rise. Colour carries good/bad instead, and the axis names the direction.
    */
   const data = dr.buckets
     .filter(b => b.n > 0)
     .map((b, i) => ({
       ...b,
-      harm: i === 0 ? 0
+      change: i === 0 ? 0
         : b.delta == null ? null
-        : Number((outcome.higherIsBetter ? -b.delta : b.delta).toFixed(outcome.decimals)),
+        : Number(b.delta.toFixed(outcome.decimals)),
     }));
 
   if (data.length < 2) {
@@ -146,7 +146,9 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
 
       {baseline != null && (
         <p className="text-[10px] text-muted-foreground">
-          How much <strong>worse</strong> than days with none — taller is worse.
+          Change in {outcome.label.toLowerCase()} versus days with none.{' '}
+          <strong>{outcome.higherIsBetter ? 'Higher is better' : 'Lower is better'}</strong> for this
+          metric, so red bars are the bad direction whichever way they point.
           {' '}Days with none averaged{' '}
           <span className="font-mono text-foreground">
             {baseline.toFixed(outcome.decimals)}{outcome.unit ? ` ${outcome.unit}` : ''}
@@ -162,28 +164,30 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
             <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false}
               width={52}
               tickFormatter={(v: number) => (v > 0 ? `+${v}` : String(v))}
-              label={{ value: 'worse →', angle: -90, position: 'insideLeft',
-                       fill: 'hsl(240 5% 55%)', fontSize: 9, offset: 12 }} />
+              label={{ value: outcome.higherIsBetter ? '↑ better' : '↑ worse', angle: -90,
+                       position: 'insideLeft', fill: 'hsl(240 5% 55%)', fontSize: 9, offset: 12 }} />
             {/* Zero is the "None" band; bars rise into harm, fall into benefit. */}
             <ReferenceLine y={0} stroke={NEUTRAL} strokeDasharray="4 4"
               label={{ value: 'none', position: 'insideTopRight', fill: NEUTRAL, fontSize: 9 }} />
             <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }}
               formatter={(_v: number, _n, item) => {
                 const p = item.payload as typeof data[number];
-                const dir = p.harm == null || p.harm === 0 ? 'baseline' : p.harm > 0 ? 'worse' : 'better';
+                const dir = p.delta == null ? 'baseline'
+                  : (outcome.higherIsBetter ? p.delta < 0 : p.delta > 0) ? 'worse' : 'better';
                 const actual = p.value != null
                   ? `${p.value.toFixed(outcome.decimals)}${outcome.unit ? ' ' + outcome.unit : ''}` : '—';
                 const d = p.delta == null ? '' : ` (${p.delta > 0 ? '+' : ''}${p.delta.toFixed(outcome.decimals)})`;
                 return [`${actual}${d} · ${dir} · n=${p.n}${p.unreliable ? ' ⚠' : ''}`, outcome.label];
               }} />
-            <Bar dataKey="harm" radius={[3, 3, 0, 0]}>
+            <Bar dataKey="change" radius={[3, 3, 0, 0]}>
               {/* A thin bucket keeps its HARM colour and is faded instead of
                   greyed. Replacing the colour made the worst bar the palest
                   one, inverting the visual order the chart exists to show —
                   the ⚠ in the table and tooltip carries the uncertainty. */}
               {data.map(b => (
                 <Cell key={b.label}
-                  fill={b.harm == null || b.harm === 0 ? NEUTRAL : b.harm > 0 ? BAD : GOOD}
+                  fill={b.delta == null || b.change === 0 ? NEUTRAL
+                    : (outcome.higherIsBetter ? b.delta < 0 : b.delta > 0) ? BAD : GOOD}
                   fillOpacity={b.unreliable ? 0.45 : 1} />
               ))}
             </Bar>
@@ -245,9 +249,9 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
       )}
 
       <p className="text-[10px] text-muted-foreground/60 italic leading-relaxed">
-        Bars show the change from days with none, sign-flipped so <strong>up is always worse</strong>
-        whatever direction the metric runs — a drop in sleep score and a rise in resting HR both rise
-        here. The numbers under the chart are the real values.
+        Bars show the actual change in the metric versus days with none, so a falling sleep score
+        falls and a rising resting HR rises. Colour, not direction, says whether that is good:
+        red is the unfavourable way for whichever metric is selected.
         Measured the morning after, so tonight&apos;s intake is compared against tomorrow&apos;s
         numbers. Only days you actually logged are counted; a blank day is never treated as zero.
         This is your own data over time, which is decent personal evidence — but it shows

@@ -4,8 +4,8 @@ import { Check, Loader2, Plus, Trash2, Plane } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDataVersion, useRefreshAfter } from '@/lib/data-refresh';
 import {
-  TIMEZONE_PRESETS, TRAVEL_MODES, TRAVEL_PURPOSES, zonesCrossed, shiftDirection,
-  expectedAdaptationDays, describeTrip, utcOffsetOn, type TravelLog as Trip,
+  DESTINATION_ZONES, TRAVEL_MODES, TRAVEL_PURPOSES, zonesCrossed, shiftDirection,
+  expectedAdaptationDays, describeTrip, utcOffsetOn, tripZones, type TravelLog as Trip,
 } from '@/lib/travel';
 import { loadSettings, DEFAULT_SETTINGS } from '@/lib/settings';
 
@@ -21,8 +21,7 @@ interface Draft {
   depart_date: string;
   arrive_date: string;
   return_date: string;
-  home_utc_offset: string;
-  dest_utc_offset: string;
+  dest_timezone: string;
   travel_mode: string;
   purpose: string;
   notes: string;
@@ -38,8 +37,7 @@ const emptyDraft = (homeZone: string, on = todayStr()): Draft => ({
   depart_date: on,
   arrive_date: on,
   return_date: '',
-  home_utc_offset: String(utcOffsetOn(homeZone, on) ?? 1),
-  dest_utc_offset: '',
+  dest_timezone: '',
   travel_mode: 'flight',
   purpose: '',
   notes: '',
@@ -81,13 +79,6 @@ export default function TravelLog() {
       // Most trips arrive the day they depart; keep them in step until the user
       // says otherwise, rather than making them fill the same date twice.
       if (k === 'depart_date' && d.arrive_date === d.depart_date) next.arrive_date = v as string;
-      // Home offset follows the departure date: the same home base is +1 or +2
-      // depending on the season, and logging a summer trip at +1 would overstate
-      // every eastward shift by an hour.
-      if (k === 'depart_date' && !d.id) {
-        const resolved = utcOffsetOn(homeZone, v as string);
-        if (resolved != null) next.home_utc_offset = String(resolved);
-      }
       return next;
     });
     setSaved(false);
@@ -105,8 +96,13 @@ export default function TravelLog() {
           depart_date: draft.depart_date,
           arrive_date: draft.arrive_date || draft.depart_date,
           return_date: draft.return_date || null,
-          home_utc_offset: Number(draft.home_utc_offset),
-          dest_utc_offset: Number(draft.dest_utc_offset),
+          // Resolved on the ARRIVAL date so both sides agree about daylight
+          // saving; the zone names are stored too, so a later read re-resolves
+          // rather than trusting a number frozen at entry time.
+          home_utc_offset: utcOffsetOn(homeZone, draft.arrive_date || draft.depart_date) ?? 1,
+          dest_utc_offset: utcOffsetOn(draft.dest_timezone, draft.arrive_date || draft.depart_date) ?? 0,
+          home_timezone: homeZone,
+          dest_timezone: draft.dest_timezone,
           travel_mode: draft.travel_mode || null,
           purpose: draft.purpose || null,
           notes: draft.notes,
@@ -147,25 +143,16 @@ export default function TravelLog() {
   // Live preview of the circadian consequence, so the offsets can be sanity
   // checked before saving rather than discovered as a wrong chart later.
   const preview = useMemo(() => {
-    const home = Number(draft.home_utc_offset);
-    const dest = Number(draft.dest_utc_offset);
-    if (!Number.isFinite(home) || !Number.isFinite(dest) || draft.dest_utc_offset === '') return null;
+    if (!draft.dest_timezone) return null;
+    const on = draft.arrive_date || draft.depart_date;
+    const home = utcOffsetOn(homeZone, on);
+    const dest = utcOffsetOn(draft.dest_timezone, on);
+    if (home == null || dest == null) return null;
     const z = zonesCrossed(home, dest);
-    return { zones: z, direction: shiftDirection(z), days: expectedAdaptationDays(z) };
-  }, [draft.home_utc_offset, draft.dest_utc_offset]);
+    return { zones: z, direction: shiftDirection(z), days: expectedAdaptationDays(z), home, dest };
+  }, [draft.dest_timezone, draft.arrive_date, draft.depart_date, homeZone]);
 
-  const canSave = draft.destination.trim() !== '' && draft.depart_date !== '' && draft.dest_utc_offset !== '';
-
-  const tzSelect = (k: 'home_utc_offset' | 'dest_utc_offset') => (
-    <select value={draft[k]} onChange={e => set(k, e.target.value)} className={`${inputCls} w-full`}>
-      <option value="">Select…</option>
-      {TIMEZONE_PRESETS.map(t => (
-        <option key={`${t.label}-${t.offset}`} value={String(t.offset)}>
-          UTC{t.offset >= 0 ? '+' : ''}{t.offset} · {t.label}
-        </option>
-      ))}
-    </select>
-  );
+  const canSave = draft.destination.trim() !== '' && draft.depart_date !== '' && draft.dest_timezone !== '';
 
   return (
     <div className="space-y-4">
@@ -186,9 +173,10 @@ export default function TravelLog() {
         </div>
 
         <p className="text-[10px] text-muted-foreground">
-          Home base: <span className="font-mono text-foreground">{homeZone.replace('_', ' ')}</span>
-          {' '}— change it in Settings. The home offset below follows your departure date, so summer
-          time is already accounted for; override it only if you departed from somewhere else.
+          Home base: <span className="font-mono text-foreground">{homeZone.replace(/_/g, ' ')}</span>
+          {' '}— change it in Settings. Both timezones are resolved on the arrival date, so summer
+          time is handled per zone: Copenhagen and Frankfurt read as the same zone all year, while a
+          trip to New York shifts by an hour in the weeks when only one side has changed over.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -197,13 +185,15 @@ export default function TravelLog() {
             <input type="text" placeholder="e.g. Tokyo" value={draft.destination}
               onChange={e => set('destination', e.target.value)} className={`${inputCls} w-full mt-0.5`} />
           </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Home timezone</label>
-            <div className="mt-0.5">{tzSelect('home_utc_offset')}</div>
-          </div>
-          <div>
+          <div className="sm:col-span-2">
             <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Destination timezone</label>
-            <div className="mt-0.5">{tzSelect('dest_utc_offset')}</div>
+            <select value={draft.dest_timezone} onChange={e => set('dest_timezone', e.target.value)}
+              className={`${inputCls} w-full mt-0.5`}>
+              <option value="">Select…</option>
+              {DESTINATION_ZONES.map(t => (
+                <option key={t.zone} value={t.zone}>{t.label}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -254,7 +244,13 @@ export default function TravelLog() {
           <div className="rounded border border-border bg-secondary/40 px-2.5 py-2">
             {preview.direction === 'none' ? (
               <p className="text-[11px] text-muted-foreground">
-                No timezone change — travel strain only, no body-clock shift. Still worth logging.
+                No timezone change on this date — travel strain only, no body-clock shift.
+                Still worth logging.
+                {preview.home != null && (
+                  <span className="text-muted-foreground/60">
+                    {' '}(both UTC{preview.home >= 0 ? '+' : ''}{preview.home})
+                  </span>
+                )}
               </p>
             ) : (
               <p className="text-[11px] text-muted-foreground">
@@ -305,7 +301,7 @@ export default function TravelLog() {
             </thead>
             <tbody>
               {trips.map(t => {
-                const z = zonesCrossed(t.home_utc_offset, t.dest_utc_offset);
+                const z = tripZones(t);
                 const dir = shiftDirection(z);
                 return (
                   <tr key={t.id} className="border-t border-border/50">
@@ -330,8 +326,7 @@ export default function TravelLog() {
                         depart_date: t.depart_date,
                         arrive_date: t.arrive_date,
                         return_date: t.return_date ?? '',
-                        home_utc_offset: String(t.home_utc_offset),
-                        dest_utc_offset: String(t.dest_utc_offset),
+                        dest_timezone: t.dest_timezone ?? '',
                         travel_mode: t.travel_mode ?? 'flight',
                         purpose: t.purpose ?? '',
                         notes: t.notes ?? '',

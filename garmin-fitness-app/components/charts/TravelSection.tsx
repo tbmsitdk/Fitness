@@ -5,7 +5,7 @@ import { format, parseISO } from 'date-fns';
 import { Activity, WellnessRecord } from '@/types';
 import { useDataVersion } from '@/lib/data-refresh';
 import {
-  circadianEvents, tripDates, zonesCrossed, shiftDirection, addDays, daysBetween,
+  circadianEvents, tripDates, tripZones, shiftDirection, addDays, daysBetween,
   type TravelLog,
 } from '@/lib/travel';
 import { travelKpis, tripImpacts } from '@/lib/travel-analysis';
@@ -92,7 +92,7 @@ export default function TravelSection({ allWellness, allActivities, cutoff }: Pr
     const days = Array.from({ length: span }, (_, i) => addDays(periodStart, i));
     const byDate = new Map<string, { dir: string; dest: string }>();
     for (const t of trips ?? []) {
-      const z = zonesCrossed(t.home_utc_offset, t.dest_utc_offset);
+      const z = tripZones(t);
       const dir = shiftDirection(z);
       for (const d of tripDates(t, today)) byDate.set(d, { dir, dest: t.destination });
     }

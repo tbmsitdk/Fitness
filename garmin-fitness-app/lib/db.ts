@@ -182,6 +182,11 @@ export async function initializeDatabase() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `;
+  // IANA zone names. Offsets alone are only right for half the year, and a
+  // home side resolving DST against a static destination made same-zone trips
+  // read as one zone apart — see lib/travel.ts resolvedOffsets().
+  await sql`ALTER TABLE travel_logs ADD COLUMN IF NOT EXISTS home_timezone VARCHAR(64)`;
+  await sql`ALTER TABLE travel_logs ADD COLUMN IF NOT EXISTS dest_timezone VARCHAR(64)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_travel_depart ON travel_logs(depart_date)`;
 
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date)`;

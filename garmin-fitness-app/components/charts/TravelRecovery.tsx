@@ -85,6 +85,13 @@ export default function TravelRecovery({ events, metricsByDate, height = 240 }: 
         ))}
       </div>
 
+      <p className="text-[10px] text-muted-foreground">
+        Change in {outcome.label.toLowerCase()} versus your own pre-trip average.{' '}
+        <strong>{outcome.higherIsBetter ? 'Higher is better' : 'Lower is better'}</strong> for this
+        metric, so a line {outcome.higherIsBetter ? 'below' : 'above'} the baseline after arrival is
+        the unfavourable direction.
+      </p>
+
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={data} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(240 3.7% 13%)" vertical={false} />

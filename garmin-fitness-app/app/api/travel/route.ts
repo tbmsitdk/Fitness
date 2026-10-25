@@ -25,7 +25,8 @@ export async function GET() {
     await client.connect();
     const { rows } = await client.query(
       `SELECT id, destination, depart_date::text, arrive_date::text, return_date::text,
-              home_utc_offset, dest_utc_offset, travel_mode, purpose, notes
+              home_utc_offset, dest_utc_offset, home_timezone, dest_timezone,
+              travel_mode, purpose, notes
        FROM travel_logs
        ORDER BY depart_date DESC`
     );
@@ -65,6 +66,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'return_date cannot precede depart_date' }, { status: 400 });
     }
 
+    // Zone names are free text from a fixed list; validate shape, not contents.
+    const zone = (v: unknown) =>
+      typeof v === 'string' && /^[A-Za-z]+\/[A-Za-z0-9_+\-/]+$/.test(v) ? v.slice(0, 64) : null;
+    const homeZone = zone(b?.home_timezone);
+    const destZone = zone(b?.dest_timezone);
+
     const mode = typeof b?.travel_mode === 'string' && b.travel_mode ? b.travel_mode.slice(0, 20) : null;
     const purpose = typeof b?.purpose === 'string' && b.purpose ? b.purpose.slice(0, 20) : null;
     const notes = typeof b?.notes === 'string' && b.notes.trim() ? b.notes.trim().slice(0, 500) : null;
@@ -73,18 +80,21 @@ export async function POST(req: NextRequest) {
     if (b?.id != null) {
       await client.query(
         `UPDATE travel_logs SET destination=$1, depart_date=$2, arrive_date=$3, return_date=$4,
-                home_utc_offset=$5, dest_utc_offset=$6, travel_mode=$7, purpose=$8, notes=$9,
-                updated_at=NOW()
-         WHERE id=$10`,
-        [destination, depart, arrive, ret, home, dest, mode, purpose, notes, Number(b.id)]
+                home_utc_offset=$5, dest_utc_offset=$6, home_timezone=$7, dest_timezone=$8,
+                travel_mode=$9, purpose=$10, notes=$11, updated_at=NOW()
+         WHERE id=$12`,
+        [destination, depart, arrive, ret, home, dest, homeZone, destZone,
+         mode, purpose, notes, Number(b.id)]
       );
     } else {
       await client.query(
         `INSERT INTO travel_logs
            (destination, depart_date, arrive_date, return_date,
-            home_utc_offset, dest_utc_offset, travel_mode, purpose, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [destination, depart, arrive, ret, home, dest, mode, purpose, notes]
+            home_utc_offset, dest_utc_offset, home_timezone, dest_timezone,
+            travel_mode, purpose, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [destination, depart, arrive, ret, home, dest, homeZone, destZone,
+         mode, purpose, notes]
       );
     }
     return NextResponse.json({ ok: true }, { headers: NO_STORE });

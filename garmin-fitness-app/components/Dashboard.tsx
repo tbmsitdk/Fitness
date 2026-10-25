@@ -88,7 +88,12 @@ function periodLabel(cutoff: Date): string {
   if (days <= 95)  return '90d';
   if (days <= 185) return '6M';
   if (days <= 370) return '1Y';
+  // YTD is checked before the multi-year bands: it is always under a year, so a
+  // later check would never be reached.
   if (cutoff.getFullYear() === new Date().getFullYear()) return 'YTD';
+  if (days <= 735)  return '2Y';
+  if (days <= 1100) return '3Y';
+  if (days <= 1830) return '5Y';
   return 'All';
 }
 

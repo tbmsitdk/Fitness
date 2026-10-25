@@ -84,17 +84,14 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
   const worst = harmed.sort((a, b) => Math.abs(b.delta!) - Math.abs(a.delta!))[0] ?? null;
 
   /**
-   * Bars show HARM, not the raw metric: the change from clean days, flipped so
-   * that UP IS ALWAYS WORSE whatever direction the underlying metric runs.
-   * A drop in sleep score and a rise in resting HR are both damage, and
-   * plotting raw values made the reader work that out per metric.
+   * Bars show the REAL change in the metric. Sign-flipping everything to mean
+   * "harm" read as the metric itself, so a falling sleep score appeared to
+   * rise. Colour carries good/bad; the axis names the direction.
    */
-  const harmOf = (delta: number | null) =>
-    delta == null ? null : Number((outcome.higherIsBetter ? -delta : delta).toFixed(outcome.decimals));
-
   const data = present.map(c => ({
     label: c.label,
-    harm: c.key === 'neither' ? 0 : harmOf(c.delta),
+    change: c.key === 'neither' ? 0
+      : c.delta == null ? null : Number(c.delta.toFixed(outcome.decimals)),
     value: c.value,
     n: c.n,
     delta: c.delta,
@@ -132,7 +129,9 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
 
       {hasBaseline && (
         <p className="text-[10px] text-muted-foreground">
-          How much <strong>worse</strong> than your clean days — taller is worse.
+          Change in {outcome.label.toLowerCase()} versus your clean days.{' '}
+          <strong>{outcome.higherIsBetter ? 'Higher is better' : 'Lower is better'}</strong> for this
+          metric, so red bars are the bad direction whichever way they point.
           {' '}Clean days averaged{' '}
           <span className="font-mono text-foreground">
             {fmt(result.cells.neither.value!)}{outcome.unit ? ` ${outcome.unit}` : ''}
@@ -148,24 +147,25 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
             <YAxis tick={{ fontSize: 10, fill: 'hsl(240 5% 64.9%)' }} tickLine={false} axisLine={false}
               width={52}
               tickFormatter={(v: number) => (v > 0 ? `+${v}` : String(v))}
-              label={{ value: 'worse →', angle: -90, position: 'insideLeft',
-                       fill: 'hsl(240 5% 55%)', fontSize: 9, offset: 12 }} />
+              label={{ value: outcome.higherIsBetter ? '↑ better' : '↑ worse', angle: -90,
+                       position: 'insideLeft', fill: 'hsl(240 5% 55%)', fontSize: 9, offset: 12 }} />
             {/* Zero is a clean day; bars rise into harm and fall into benefit. */}
             <ReferenceLine y={0} stroke={BASE} strokeDasharray="4 4"
               label={{ value: 'clean days', position: 'insideTopRight', fill: BASE, fontSize: 9 }} />
             <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: 'hsl(0 0% 98%)', marginBottom: 4 }}
               formatter={(_v: number, _n, item) => {
                 const p = item.payload as typeof data[number];
-                const dir = p.harm == null || p.harm === 0 ? 'baseline' : p.harm > 0 ? 'worse' : 'better';
+                const dir = p.delta == null ? 'baseline' : isWorse(p.delta) ? 'worse' : 'better';
                 const actual = p.value != null ? `${fmt(p.value)}${outcome.unit ? ' ' + outcome.unit : ''}` : '—';
                 const d = p.delta == null ? '' : ` (${signed(p.delta)})`;
                 return [`${actual}${d} · ${dir} · n=${p.n}${p.unreliable ? ' ⚠' : ''}`, outcome.label];
               }} />
-            <Bar dataKey="harm" radius={[3, 3, 0, 0]}>
+            <Bar dataKey="change" radius={[3, 3, 0, 0]}>
               {/* Thin groups fade rather than turning grey — see NutritionImpact. */}
               {data.map(d => (
                 <Cell key={d.label}
-                  fill={d.harm == null || d.harm === 0 ? BASE : d.harm > 0 ? WORSE : BETTER}
+                  fill={d.delta == null || d.change === 0 ? BASE
+                    : isWorse(d.delta) ? WORSE : BETTER}
                   fillOpacity={d.unreliable ? 0.45 : 1} />
               ))}
             </Bar>
@@ -228,9 +228,8 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
       )}
 
       <p className="text-[10px] text-muted-foreground/60 italic leading-relaxed">
-        Bars show the change from your clean days with the sign flipped so <strong>up is always
-        worse</strong>, whatever direction the metric itself runs — a drop in sleep score and a rise
-        in resting HR both rise here. The numbers under the chart are the real values.
+        Bars show the actual change in the metric versus your clean days, so a falling sleep score
+        falls and a rising resting HR rises. Colour, not direction, says whether that is good.
         Sugar here means candy or sugary drinks; crisps are savoury and tracked separately.
         Measured the morning after. The four groups are compared against your own clean days, and
         the combination is judged against what the two single effects would predict if they simply

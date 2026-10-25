@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   zonesCrossed, shiftDirection, expectedAdaptationDays, circadianEvents, utcOffsetOn, HOME_TIMEZONES,
+  resolvedOffsets, tripZones, DESTINATION_ZONES,
   tripDates, tripLength, daysBetween, addDays, coerceTravelLog, describeTrip,
   type TravelLog,
 } from '@/lib/travel';
@@ -118,6 +119,68 @@ describe('expectedAdaptationDays', () => {
 
   it('is zero without a timezone change', () => {
     expect(expectedAdaptationDays(0)).toBe(0);
+  });
+});
+
+describe('daylight saving, per zone', () => {
+  const euTrip = (dates: { depart: string; arrive: string }): TravelLog => ({
+    destination: 'Frankfurt',
+    depart_date: dates.depart, arrive_date: dates.arrive, return_date: null,
+    // Deliberately WRONG stored offsets, as written by the old static picker.
+    home_utc_offset: 2, dest_utc_offset: 1,
+    home_timezone: 'Europe/Copenhagen', dest_timezone: 'Europe/Berlin',
+    travel_mode: 'flight', purpose: 'work', notes: null,
+  });
+
+  it('reads a same-zone European trip as zero in summer AND winter', () => {
+    // The reported bug: Copenhagen -> Frankfurt showed "1 west" because the
+    // home side resolved CEST while the destination stayed on standard time.
+    expect(tripZones(euTrip({ depart: '2026-10-23', arrive: '2026-10-23' }))).toBe(0);
+    expect(tripZones(euTrip({ depart: '2026-01-15', arrive: '2026-01-15' }))).toBe(0);
+    expect(tripZones(euTrip({ depart: '2026-07-15', arrive: '2026-07-15' }))).toBe(0);
+  });
+
+  it('prefers the zone names over stored offsets', () => {
+    const t = euTrip({ depart: '2026-10-23', arrive: '2026-10-23' });
+    const { home, dest } = resolvedOffsets(t);
+    expect(home).toBe(2);   // CEST, not the stored 2 by luck
+    expect(dest).toBe(2);   // resolved, NOT the stored 1
+  });
+
+  it('falls back to stored offsets for trips saved before zones existed', () => {
+    const legacy: TravelLog = {
+      ...euTrip({ depart: '2026-10-23', arrive: '2026-10-23' }),
+      home_timezone: null, dest_timezone: null,
+    };
+    expect(resolvedOffsets(legacy)).toEqual({ home: 2, dest: 1 });
+  });
+
+  it('handles the weeks when Europe and the US are out of step', () => {
+    // Europe ends DST 25 Oct 2026; the US not until 1 Nov. In that gap
+    // Copenhagen is +1 while New York is still -4, so the shift is 5 — not the
+    // 6 it is for most of the year.
+    const toNY = (on: string): TravelLog => ({
+      destination: 'New York', depart_date: on, arrive_date: on, return_date: null,
+      home_utc_offset: 0, dest_utc_offset: 0,
+      home_timezone: 'Europe/Copenhagen', dest_timezone: 'America/New_York',
+      travel_mode: 'flight', purpose: 'work', notes: null,
+    });
+    expect(tripZones(toNY('2026-09-28'))).toBe(-6);  // both on summer time
+    expect(tripZones(toNY('2026-10-28'))).toBe(-5);  // EU back, US not yet
+    expect(tripZones(toNY('2026-12-01'))).toBe(-6);  // both on standard time
+  });
+
+  it('offers only resolvable zones as destinations', () => {
+    for (const d of DESTINATION_ZONES) {
+      expect(utcOffsetOn(d.zone, '2026-07-15'), d.zone).not.toBeNull();
+      expect(utcOffsetOn(d.zone, '2026-01-15'), d.zone).not.toBeNull();
+    }
+  });
+
+  it('covers a southern-hemisphere zone, where DST runs the other way', () => {
+    // Sydney is on summer time in January and standard time in July.
+    expect(utcOffsetOn('Australia/Sydney', '2026-01-15')).toBe(11);
+    expect(utcOffsetOn('Australia/Sydney', '2026-07-15')).toBe(10);
   });
 });
 

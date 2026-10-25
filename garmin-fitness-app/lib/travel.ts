@@ -28,10 +28,16 @@ export interface TravelLog {
   arrive_date: string;
   /** Day you were home again. Null while a trip is still open. */
   return_date: string | null;
-  /** UTC offset in hours at home, e.g. 1 for Copenhagen winter. */
+  /**
+   * UTC offsets, resolved when the trip was saved. Kept for rows written before
+   * zones were stored; where a zone name exists it wins, because an offset is
+   * only correct for one half of the year.
+   */
   home_utc_offset: number;
-  /** UTC offset in hours at the destination. */
   dest_utc_offset: number;
+  /** IANA zone names. Preferred over the offsets above — see resolvedZones(). */
+  home_timezone?: string | null;
+  dest_timezone?: string | null;
   /** 'flight' | 'car' | 'train' | 'other' — travel strain independent of zones. */
   travel_mode: string | null;
   /** 'work' | 'leisure' — a strong confounder worth separating. */
@@ -43,14 +49,48 @@ export const TRAVEL_MODES = ['flight', 'car', 'train', 'other'] as const;
 export const TRAVEL_PURPOSES = ['work', 'leisure'] as const;
 
 /**
- * Common destinations with their standard UTC offsets, so the form never asks
- * anyone to work out a number they will get wrong.
+ * Destinations as IANA ZONE NAMES, not fixed offsets.
  *
- * NOTE: these are STANDARD offsets and ignore daylight saving. During summer a
- * given city may be an hour off this table. The error is at most one zone and
- * affects both endpoints similarly, so the DIFFERENCE — which is what the
- * analysis uses — is usually right. The form lets you override by hand.
+ * Static offsets were wrong in a way that was easy to miss: the home side
+ * resolved daylight saving for the trip date while the destination did not, so
+ * a Copenhagen -> Frankfurt trip in October — both on CEST, zero zones apart —
+ * came out as one zone west. Resolving both sides on the same date makes same
+ * zone trips read as zero all year.
  */
+export const DESTINATION_ZONES: { label: string; zone: string }[] = [
+  { label: 'Copenhagen', zone: 'Europe/Copenhagen' },
+  { label: 'Oslo', zone: 'Europe/Oslo' },
+  { label: 'Stockholm', zone: 'Europe/Stockholm' },
+  { label: 'Berlin / Frankfurt / Munich', zone: 'Europe/Berlin' },
+  { label: 'Paris', zone: 'Europe/Paris' },
+  { label: 'Amsterdam / Brussels', zone: 'Europe/Amsterdam' },
+  { label: 'Madrid / Seville / Barcelona', zone: 'Europe/Madrid' },
+  { label: 'Rome / Milan', zone: 'Europe/Rome' },
+  { label: 'London / Dublin / Lisbon', zone: 'Europe/London' },
+  { label: 'Helsinki / Athens', zone: 'Europe/Helsinki' },
+  { label: 'Istanbul', zone: 'Europe/Istanbul' },
+  { label: 'Moscow', zone: 'Europe/Moscow' },
+  { label: 'Nairobi', zone: 'Africa/Nairobi' },
+  { label: 'Johannesburg / Cape Town', zone: 'Africa/Johannesburg' },
+  { label: 'Dubai', zone: 'Asia/Dubai' },
+  { label: 'Delhi / Mumbai', zone: 'Asia/Kolkata' },
+  { label: 'Bangkok / Jakarta', zone: 'Asia/Bangkok' },
+  { label: 'Singapore / Hong Kong / Beijing', zone: 'Asia/Singapore' },
+  { label: 'Tokyo', zone: 'Asia/Tokyo' },
+  { label: 'Seoul', zone: 'Asia/Seoul' },
+  { label: 'Perth', zone: 'Australia/Perth' },
+  { label: 'Sydney / Melbourne', zone: 'Australia/Sydney' },
+  { label: 'Auckland', zone: 'Pacific/Auckland' },
+  { label: 'São Paulo', zone: 'America/Sao_Paulo' },
+  { label: 'Buenos Aires', zone: 'America/Argentina/Buenos_Aires' },
+  { label: 'New York / Toronto / Miami', zone: 'America/New_York' },
+  { label: 'Chicago / Nashville / Mexico City', zone: 'America/Chicago' },
+  { label: 'Denver', zone: 'America/Denver' },
+  { label: 'Los Angeles / Vancouver / Seattle', zone: 'America/Los_Angeles' },
+  { label: 'Honolulu', zone: 'Pacific/Honolulu' },
+];
+
+/** @deprecated Static offsets — kept only so old callers still compile. */
 export const TIMEZONE_PRESETS: { label: string; offset: number }[] = [
   { label: 'Copenhagen / Oslo / Stockholm / Berlin / Paris', offset: 1 },
   { label: 'London / Lisbon / Dublin', offset: 0 },
@@ -121,6 +161,28 @@ export const HOME_TIMEZONES: { label: string; zone: string }[] = [
   { label: 'Los Angeles', zone: 'America/Los_Angeles' },
 ];
 
+/**
+ * The offsets to actually use for a trip, resolved on the ARRIVAL date so both
+ * sides agree about daylight saving. Falls back to the stored numbers for trips
+ * saved before zones were recorded.
+ */
+export function resolvedOffsets(trip: TravelLog): { home: number; dest: number } {
+  const on = trip.arrive_date || trip.depart_date;
+  const home = trip.home_timezone ? utcOffsetOn(trip.home_timezone, on) : null;
+  const dest = trip.dest_timezone ? utcOffsetOn(trip.dest_timezone, on) : null;
+  return {
+    home: home ?? trip.home_utc_offset,
+    dest: dest ?? trip.dest_utc_offset,
+  };
+}
+
+/** Signed zones for a trip: positive east. Use this rather than zonesCrossed()
+ *  on raw columns, so stored offsets never bypass the zone resolution. */
+export function tripZones(trip: TravelLog): number {
+  const { home, dest } = resolvedOffsets(trip);
+  return zonesCrossed(home, dest);
+}
+
 export type ShiftDirection = 'east' | 'west' | 'none';
 
 /**
@@ -176,7 +238,7 @@ export interface CircadianEvent {
 }
 
 export function circadianEvents(trip: TravelLog): CircadianEvent[] {
-  const out = zonesCrossed(trip.home_utc_offset, trip.dest_utc_offset);
+  const out = tripZones(trip);
   const events: CircadianEvent[] = [{
     date: trip.arrive_date,
     zones: out,
@@ -241,6 +303,8 @@ export function coerceTravelLog(row: Record<string, unknown>): TravelLog {
     return_date: date(row.return_date),
     home_utc_offset: Number(row.home_utc_offset ?? 0),
     dest_utc_offset: Number(row.dest_utc_offset ?? 0),
+    home_timezone: row.home_timezone != null ? String(row.home_timezone) : null,
+    dest_timezone: row.dest_timezone != null ? String(row.dest_timezone) : null,
     travel_mode: row.travel_mode != null ? String(row.travel_mode) : null,
     purpose: row.purpose != null ? String(row.purpose) : null,
     notes: row.notes != null ? String(row.notes) : null,
@@ -249,7 +313,7 @@ export function coerceTravelLog(row: Record<string, unknown>): TravelLog {
 
 /** Human summary for a trip, e.g. "Tokyo · 8 zones east · 9 days". */
 export function describeTrip(trip: TravelLog, today: string): string {
-  const z = zonesCrossed(trip.home_utc_offset, trip.dest_utc_offset);
+  const z = tripZones(trip);
   const dir = shiftDirection(z);
   const zonePart = dir === 'none'
     ? 'no timezone change'

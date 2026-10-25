@@ -119,9 +119,10 @@ export default function NutritionEffects({ logs, metricsByDate, limit = 12 }: Pr
       )}
 
       <p className="text-[10px] text-muted-foreground/60 italic leading-relaxed">
-        Bars diverge from the centre: <strong>right is worse, left is better</strong>, for every
-        metric — a drop in sleep score and a rise in resting HR are both damage despite the opposite
-        signs in the Difference column.
+        The Difference column is the real change in each metric — a falling sleep score shows as
+        negative, a rising resting HR as positive — and colour says which of those is bad. The bar
+        beside it diverges from the centre: <strong>right is worse, left is better</strong>, so
+        severity can be compared across metrics that move in opposite directions.
         Ranked by effect size (Cohen&apos;s d), which makes metrics on different scales comparable —
         10 ms of HRV and 3 bpm of resting HR are not otherwise. Differences are measured the
         morning after.{' '}
