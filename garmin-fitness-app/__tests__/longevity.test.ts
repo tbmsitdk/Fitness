@@ -262,3 +262,37 @@ describe('median', () => {
     expect(median([])).toBeNull();
   });
 });
+
+describe('windowedValue accepts the date shapes the database actually returns', () => {
+  // BUG: tests used bare 'YYYY-MM-DD' while the wellness route returns full
+  // ISO timestamps. Appending a time to those produced an Invalid Date, so
+  // every reading counted as outside the window, the median never ran, and
+  // the card read "single reading, NaNd old".
+  const NOW = new Date('2026-10-31T12:00:00Z').getTime();
+
+  it('handles a full ISO timestamp, not just a bare date', () => {
+    const readings = [
+      { date: '2026-10-30T00:00:00.000Z', value: 50 },
+      { date: '2026-10-29T00:00:00.000Z', value: 52 },
+      { date: '2026-10-28T00:00:00.000Z', value: 50 },
+    ];
+    const w = windowedValue(readings, 14, NOW);
+    expect(w.value).toBe(50);
+    expect(w.n).toBe(3);
+    expect(w.stale).toBe(false);
+    expect(Number.isNaN(w.ageDays as number)).toBe(false);
+  });
+
+  it('gives the same answer for both date shapes', () => {
+    const bare = [{ date: '2026-10-30', value: 50 }, { date: '2026-10-29', value: 54 }];
+    const stamped = bare.map(r => ({ ...r, date: `${r.date}T00:00:00.000Z` }));
+    expect(windowedValue(stamped, 14, NOW)).toEqual(windowedValue(bare, 14, NOW));
+  });
+
+  it('never reports a NaN age', () => {
+    for (const d of ['2026-10-30', '2026-10-30T00:00:00.000Z', '2026-10-30T23:59:59+02:00']) {
+      const w = windowedValue([{ date: d, value: 50 }], 14, NOW);
+      expect(Number.isNaN(w.ageDays as number), d).toBe(false);
+    }
+  });
+});

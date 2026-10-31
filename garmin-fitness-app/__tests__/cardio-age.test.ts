@@ -232,6 +232,24 @@ describe('headline and history agree', () => {
     expect(ageDays).toBeLessThan(1.5);
   });
 
+  it('agrees with the headline when dates are ISO timestamps, as the DB returns them', () => {
+    // The history parses timestamps correctly while windowedValue (used by the
+    // card) briefly did not, so the two drifted apart on real data while every
+    // bare-date test passed. Re-run the agreement check in the real shape.
+    const stamped = (wellness as unknown as { date: string }[]).map(w => ({
+      ...w, date: `${w.date}T00:00:00.000Z`,
+    })) as never[];
+    const history = computeCardioAgeHistory(stamped, activities, settings);
+    const headline = computeCardioAge({
+      age: getAgeAsOf(settings, new Date()),
+      sex: 'male',
+      restingHr: 50, vo2max: 42, bodyFatPct: 22.2, hrvRmssd: null,
+      weeklyActiveMinutes: (28 * 2400) / 60 / 4,
+      sleepScore14dAvg: 70,
+    });
+    expect(history[history.length - 1].cardioAge).toBe(headline.cardioAge);
+  });
+
   it('is not moved by a single freak reading', () => {
     // The 64 bpm spike must not show up as a bump in the reconstructed series.
     const history = computeCardioAgeHistory(wellness, activities, settings);

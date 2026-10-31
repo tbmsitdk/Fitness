@@ -135,8 +135,14 @@ export function windowedValue(
 
   if (present.length === 0) return { value: null, n: 0, stale: false, ageDays: null };
 
+  // Dates arrive in two shapes: a bare 'YYYY-MM-DD' from a DATE column, or a
+  // full ISO timestamp when the driver hands back a Date. Appending a time to
+  // the second form produced '…T00:00:00.000ZT00:00:00' -> Invalid Date ->
+  // NaN, and since `NaN < days` is false EVERY reading counted as outside the
+  // window. The function then fell back to a single value and reported
+  // "NaNd old", so the median never actually ran on real data.
   const ageOf = (d: string) =>
-    Math.floor((now - new Date(`${d}T00:00:00`).getTime()) / 86_400_000);
+    Math.floor((now - new Date(`${String(d).slice(0, 10)}T00:00:00`).getTime()) / 86_400_000);
 
   const inWindow = present.filter(r => ageOf(r.date) < days);
   if (inWindow.length > 0) {

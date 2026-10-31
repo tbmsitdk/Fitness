@@ -146,3 +146,20 @@ waived — no fix exists inside Next 14, neither is reachable here (no
 middleware, no next/image, no rewrites, no i18n, Vercel-hosted), and postcss
 runs only at build time. Anything not explicitly waived still fails the build.
 A permanently-red gate gets ignored, which is worse than no gate.
+
+## 13. Test with the date shape the database actually returns
+
+`windowedValue()` built a timestamp as `` `${date}T00:00:00` ``. That works for
+a bare `YYYY-MM-DD`, which is what every test used — and produces
+`…T00:00:00.000ZT00:00:00` → `Invalid Date` → `NaN` for the full ISO strings
+the wellness route really returns.
+
+Because `NaN < days` is false, **every reading counted as outside the window**.
+The function fell back to a single value and the card read *"single reading,
+NaNd old"*. The median fix shipped the day before had therefore never run on
+real data — while the history series, which parsed dates differently, computed
+proper medians, so the card and its own chart drifted apart again.
+
+**Rule:** a date helper must accept both shapes, and at least one test must use
+the shape the DB returns. `String(d).slice(0, 10)` before constructing. The
+visible `NaN` was lucky; a silently-wrong window would have been worse.
