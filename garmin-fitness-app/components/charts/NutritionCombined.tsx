@@ -92,6 +92,22 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
   // baseline it labelled the smallest IMPROVEMENT as "worst": sleep score
   // +6.5 was being reported as the worst group.
   const harmed = present.filter(c => c.delta != null && isWorse(c.delta));
+
+  /**
+   * "Compounding" only makes sense when the pair actually costs something.
+   * With a thin, unlucky baseline every group can beat it — three green bars
+   * — and the card then announced "compounding ... keeping them apart matters
+   * more than moderating either one" over data showing nothing but
+   * improvement. The maths is unchanged; the verdict now reflects whether the
+   * combination is harmful or merely less beneficial than the parts predict.
+   */
+  const bothDelta = result.cells.both.delta;
+  const bothIsHarmful = bothDelta != null && isWorse(bothDelta);
+  const combinationVerdict = result.interactionLabel == null ? null
+    : result.interactionLabel === 'additive' ? 'additive'
+    : result.interactionLabel === 'compounding'
+      ? (bothIsHarmful ? 'compounding' : 'less benefit')
+      : (bothIsHarmful ? 'less than additive' : 'more benefit');
   const worst = harmed.sort((a, b) => Math.abs(b.delta!) - Math.abs(a.delta!))[0] ?? null;
 
   /**
@@ -152,7 +168,7 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
             ? `${signed(worst.delta!)} ${outcome.unit} vs clean`
             : hasBaseline ? 'no group worse than clean days' : 'needs clean days to compare'}
           tone={worst ? 'bad' : undefined} />
-        <Tile label="Combination" value={result.interactionLabel ?? '—'}
+        <Tile label="Combination" value={combinationVerdict ?? '—'}
           sub={result.interaction != null ? `${signed(result.interaction)} vs the two added up` : 'needs all four groups'} />
       </div>
 
@@ -239,11 +255,15 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
 
       {result.interactionLabel && (
         <p className="text-[10px] text-muted-foreground/80 leading-relaxed">
-          {result.interactionLabel === 'compounding'
-            ? <>Together the result is <strong>worse than the two separately predict</strong> — {signed(result.interaction!)} {outcome.unit} away from what adding the single effects would give. If that holds up, keeping them apart matters more than moderating either one.</>
-            : result.interactionLabel === 'additive'
+          {result.interactionLabel === 'additive'
             ? <>The combination lands about where the two separately predict — they appear to act independently rather than amplifying each other.</>
-            : <>Together the result is <strong>better than the two separately predict</strong>. That usually means one is doing most of the work, or the groups overlap in some other way.</>}
+            : result.interactionLabel === 'compounding'
+              ? (bothIsHarmful
+                  ? <>Together the result is <strong>worse than the two separately predict</strong> — {signed(result.interaction!)} {outcome.unit} beyond what adding the single effects would give. If that holds up, keeping them apart matters more than moderating either one.</>
+                  : <>Every group here is <strong>better</strong> than your clean days, so nothing is being harmed — the combination simply delivers <strong>less of that benefit</strong> than the two separately would predict ({signed(result.interaction!)} {outcome.unit}). With a {result.cells.neither.n}-day baseline this is more likely an unlucky set of clean days than a real effect.</>)
+              : (bothIsHarmful
+                  ? <>Together the result is <strong>less bad than the two separately predict</strong>. That usually means one is doing most of the damage, or the groups overlap in some other way.</>
+                  : <>The combination is <strong>better</strong> than the two separately predict. On this few days that is more likely noise than a real synergy.</>)}
         </p>
       )}
 

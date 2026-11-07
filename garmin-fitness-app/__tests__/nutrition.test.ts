@@ -672,3 +672,35 @@ describe('baseline groups differ between cards', () => {
     expect(MIN_BASELINE_N).toBeLessThanOrEqual(MIN_BUCKET_N);
   });
 });
+
+describe('combination verdict matches whether the pair actually harms', () => {
+  // BUG REPORT: three green "better than clean days" bars sat beside a
+  // "compounding — worse than the two separately predict, keeping them apart
+  // matters" verdict. The arithmetic was right; the wording asserted damage
+  // over data showing only improvement, which read as a colouring error.
+  const RHR = OUTCOMES.find(o => o.key === 'restingHr')!;
+  const isWorse = (d: number) => (RHR.higherIsBetter ? d < 0 : d > 0);
+
+  // The real numbers from the report.
+  const deltas = { alcoholOnly: -1.1, sugarOnly: -1.7, both: -0.9 };
+  const interaction = deltas.both - (deltas.alcoholOnly + deltas.sugarOnly);
+
+  it('still classifies the interaction as compounding — the maths is unchanged', () => {
+    // For a lower-is-better metric, a positive interaction means the pair
+    // landed further from the baseline than additive would predict.
+    expect(interaction).toBeCloseTo(1.9, 5);
+  });
+
+  it('but the pair is NOT harmful — every group beat the baseline', () => {
+    expect(isWorse(deltas.both)).toBe(false);
+    expect(isWorse(deltas.alcoholOnly)).toBe(false);
+    expect(isWorse(deltas.sugarOnly)).toBe(false);
+  });
+
+  it('so the verdict must say "less benefit", not "compounding"', () => {
+    const verdict = (label: string, bothHarmful: boolean) =>
+      label === 'compounding' ? (bothHarmful ? 'compounding' : 'less benefit') : label;
+    expect(verdict('compounding', isWorse(deltas.both))).toBe('less benefit');
+    expect(verdict('compounding', true)).toBe('compounding');
+  });
+});
