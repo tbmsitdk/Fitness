@@ -124,6 +124,8 @@ export default function NutritionEffects({ logs, metricsByDate, limit = 12 }: Pr
       )}
 
       <p className="text-[10px] text-muted-foreground/60 italic leading-relaxed">
+        <strong>Method:</strong> compared against days without THAT habit, with the others
+        ignored — the same baseline as the Alcohol and Sugar cards, but measured differently.{' '}
         <strong>Weekend-matched:</strong> each effect is measured inside weekdays and inside
         weekends separately, then averaged, so the weekday/weekend mix cannot drive it. Without
         that, habits that cluster at weekends inherit the weekend lie-in and alcohol appears to buy

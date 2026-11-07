@@ -530,3 +530,74 @@ export function combinedImpact(
              || Object.values(cells).some(c => c.n === 0),
   };
 }
+
+// ── Is the "neither" baseline representative? ────────────────────────────────
+
+/**
+ * The combined card measures everything against days with NEITHER alcohol nor
+ * sugar. That group is the smallest on the page, and when it is also unlucky
+ * the whole card inverts: with 4 such days averaging 43.8 body battery against
+ * 59.5 for all 15 alcohol-free days, every group "beat" the baseline and
+ * alcohol appeared beneficial — while the Alcohol card, using the larger
+ * baseline, showed it clearly harmful.
+ *
+ * Both were arithmetically right. This detects the disagreement so the card
+ * can say which number to trust instead of leaving two contradictory readings
+ * side by side.
+ */
+export interface BaselineCheck {
+  neither: { n: number; value: number | null };
+  /** Days with no alcohol, whatever the sugar — the Alcohol card's baseline. */
+  noAlcohol: { n: number; value: number | null };
+  /** Signed gap, neither minus noAlcohol. */
+  gap: number | null;
+  /**
+   * True when switching to the wider baseline would REVERSE whether drinking
+   * days look better or worse. That is the case worth warning about: not a
+   * difference of degree, but of direction.
+   */
+  conflicts: boolean;
+}
+
+export function baselineCheck(
+  logs: NutritionLog[],
+  metricsByDate: Map<string, DayMetrics>,
+  outcome: OutcomeDef,
+): BaselineCheck {
+  const valueOn = (l: NutritionLog) =>
+    metricsByDate.get(addDays(l.date, OUTCOME_LAG_DAYS))?.[outcome.key] ?? null;
+
+  const sugarOf = (l: NutritionLog) => {
+    const known = l.candy_portions != null || l.sugary_drinks != null;
+    return known ? (l.candy_portions ?? 0) > 0 || (l.sugary_drinks ?? 0) > 0 : null;
+  };
+
+  const collect = (pred: (l: NutritionLog) => boolean | null) => {
+    const vals: number[] = [];
+    for (const l of logs) {
+      if (pred(l) !== true) continue;
+      const v = valueOn(l);
+      if (v != null) vals.push(v);
+    }
+    return { n: vals.length, value: vals.length ? mean(vals) : null };
+  };
+
+  const neither = collect(l =>
+    l.alcohol_units == null || sugarOf(l) == null ? null
+      : l.alcohol_units === 0 && sugarOf(l) === false);
+  const noAlcohol = collect(l => (l.alcohol_units == null ? null : l.alcohol_units === 0));
+  const drinking = collect(l => (l.alcohol_units == null ? null : l.alcohol_units > 0));
+
+  const gap = neither.value != null && noAlcohol.value != null
+    ? Math.round((neither.value - noAlcohol.value) * 10) / 10 : null;
+
+  // Would the wider baseline flip the verdict on drinking days?
+  let conflicts = false;
+  if (drinking.value != null && neither.value != null && noAlcohol.value != null) {
+    const worseThan = (a: number, b: number) =>
+      outcome.higherIsBetter ? a < b : a > b;
+    conflicts = worseThan(drinking.value, neither.value) !== worseThan(drinking.value, noAlcohol.value);
+  }
+
+  return { neither, noAlcohol, gap, conflicts };
+}

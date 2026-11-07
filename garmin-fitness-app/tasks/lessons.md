@@ -180,3 +180,34 @@ and the only symptom was a confident wrong answer in prose.
 `SELECT *` and let the coerce function define what is read — a hand-maintained
 column list in three places will drift the first time a column is added, and
 the drift is silent. Same failure mode as lesson 6, one layer down.
+
+## 15. State the baseline, or two correct cards will contradict each other
+
+On body battery the Combined card showed "Alcohol only **+10.9** — better",
+while the Alcohol card showed every drinking band **worse**. Same days, same
+metric, opposite conclusions, and both arithmetically right.
+
+The cards measure against different reference groups:
+
+| Card | Baseline | Days |
+|---|---|---|
+| Alcohol / Sugar | no intake of THAT one, other ignored | 15 → 59.5 |
+| Combined | NEITHER intake | 4 → 43.8 |
+
+The 4 "neither" days happened to be a bad set, 15.7 points below the wider
+alcohol-free average, so everything beat them and the sign flipped.
+
+`baselineCheck()` now detects specifically when switching to the wider baseline
+would REVERSE the verdict — a difference of direction, not of degree — and the
+card says which figure to trust.
+
+A second mismatch found in the same review: "What Moves the Needle" is
+weekend-MATCHED (strata measured separately, then averaged) while the impact
+cards POOL days within the selected filter. Same baseline, different estimator,
+so the same habit legitimately shows two numbers. Every card now states its
+method.
+
+**Rule:** any card showing a difference must say what it is a difference FROM,
+and how the days were combined. Where two cards can disagree by construction,
+detect it and name the more reliable one rather than leaving the reader to
+reconcile them.

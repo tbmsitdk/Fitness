@@ -5,7 +5,8 @@ import {
 } from 'recharts';
 import type { NutritionLog } from '@/lib/nutrition';
 import {
-  combinedImpact, availableOutcomes, stressStandsInForHrv, isWeekend, OUTCOMES, MIN_BUCKET_N, MIN_BASELINE_N,
+  combinedImpact, availableOutcomes, stressStandsInForHrv, isWeekend, baselineCheck,
+  OUTCOMES, MIN_BUCKET_N, MIN_BASELINE_N,
   type DayMetrics, type OutcomeDef, type CombinedCell,
 } from '@/lib/nutrition-analysis';
 
@@ -55,6 +56,12 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
     [scopedLogs, metricsByDate, outcome],
   );
 
+  // Does the wider "no alcohol" baseline reverse this card's verdict?
+  const check = useMemo(
+    () => baselineCheck(scopedLogs, metricsByDate, outcome),
+    [scopedLogs, metricsByDate, outcome],
+  );
+
   const order: CombinedCell[] = [
     result.cells.neither, result.cells.alcoholOnly, result.cells.sugarOnly, result.cells.both,
   ];
@@ -74,7 +81,27 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
           This splits days four ways — neither, alcohol only, sugar only, both — so it needs days
           in at least two of them. Right now {present.length === 0 ? 'no day falls' : 'only one group falls'} into a group.
         </p>
-        {result.unclassified > 0 && (
+        {check.conflicts && check.neither.value != null && check.noAlcohol.value != null && (
+        <div className="rounded border border-amber-500/30 bg-amber-500/5 px-2.5 py-2">
+          <p className="text-[11px] text-amber-400/90 leading-relaxed">
+            <strong>This card disagrees with the Alcohol card, and the Alcohol card is the
+            better read.</strong>{' '}
+            Its {check.neither.n} &ldquo;neither&rdquo; days averaged{' '}
+            <span className="font-mono">{fmt(check.neither.value)}</span>, but all{' '}
+            {check.noAlcohol.n} days without alcohol averaged{' '}
+            <span className="font-mono">{fmt(check.noAlcohol.value)}</span> — a gap of{' '}
+            <span className="font-mono">{signed(check.gap!)}</span>. The small group is unusually
+            {check.gap! < 0 ? ' low' : ' high'}, so everything here is measured against an
+            unrepresentative day and the direction flips.
+          </p>
+          <p className="text-[11px] text-muted-foreground/70 mt-1">
+            Logging more days with 0 across the board is what fixes this — the comparison is only
+            as good as the group it compares to.
+          </p>
+        </div>
+      )}
+
+      {result.unclassified > 0 && (
           <p className="text-[11px] text-muted-foreground/60 max-w-md">
             <strong>{result.unclassified}</strong> day{result.unclassified === 1 ? '' : 's'} could
             not be placed because only one of the two was recorded. A day with alcohol entered but
@@ -284,6 +311,9 @@ export default function NutritionCombined({ logs, metricsByDate, height = 220 }:
       )}
 
       <p className="text-[10px] text-muted-foreground/60 italic leading-relaxed">
+        <strong>Method:</strong> compared against days with NEITHER intake — a stricter and
+        therefore smaller group than the single-intake cards use, which is why the same days can
+        read differently here. Days are pooled within the selected day type, not weekend-matched.
         Bars show the actual change in the metric versus your clean days, so a falling sleep score
         falls and a rising resting HR rises. Colour, not direction, says whether that is good.
         Sugar here means candy or sugary drinks; crisps are savoury and tracked separately.

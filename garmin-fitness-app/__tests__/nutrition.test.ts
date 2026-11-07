@@ -6,7 +6,7 @@ import {
 import {
   addDays, isWeekend, mean, stdDev, doseResponse, effectSize, rankEffects,
   weekendSplit, ALCOHOL_BUCKETS, CANDY_BUCKETS, OUTCOMES, MIN_BUCKET_N, MIN_BASELINE_N, STANDARD_EXPOSURES,
-  availableOutcomes, stressStandsInForHrv, combinedImpact, stratifiedEffect,
+  availableOutcomes, stressStandsInForHrv, combinedImpact, stratifiedEffect, baselineCheck,
   type DayMetrics,
 } from '@/lib/nutrition-analysis';
 
@@ -702,5 +702,66 @@ describe('combination verdict matches whether the pair actually harms', () => {
       label === 'compounding' ? (bothHarmful ? 'compounding' : 'less benefit') : label;
     expect(verdict('compounding', isWorse(deltas.both))).toBe('less benefit');
     expect(verdict('compounding', true)).toBe('compounding');
+  });
+});
+
+describe('baselineCheck — when the two cards disagree', () => {
+  // REPORTED: on body battery the Combined card showed "Alcohol only +10.9"
+  // (better) while the Alcohol card showed every drinking band WORSE. Both
+  // were right: the Combined baseline was 4 "neither" days averaging 43.8,
+  // against 15 alcohol-free days averaging 59.5.
+  const BB = OUTCOMES.find(o => o.key === 'bodyBattery')!;
+  const day = (d: string, bb: number): [string, DayMetrics] => [d, {
+    date: d, hrv: null, restingHr: null, sleepHours: null, sleepScore: null,
+    bodyBattery: bb, stress: null,
+  }];
+
+  // 2 neither days (low), 2 sugar-only days (high), 2 drinking days (middling).
+  const logs = [
+    log({ date: '2026-09-01', alcohol_units: 0, candy_portions: 0 }),
+    log({ date: '2026-09-03', alcohol_units: 0, candy_portions: 0 }),
+    log({ date: '2026-09-05', alcohol_units: 0, candy_portions: 3 }),
+    log({ date: '2026-09-07', alcohol_units: 0, candy_portions: 3 }),
+    log({ date: '2026-09-09', alcohol_units: 3, candy_portions: 0 }),
+    log({ date: '2026-09-11', alcohol_units: 3, candy_portions: 0 }),
+  ];
+  const m = new Map([
+    day('2026-09-02', 40), day('2026-09-04', 40),   // neither -> 40
+    day('2026-09-06', 80), day('2026-09-08', 80),   // sugar only -> 80
+    day('2026-09-10', 50), day('2026-09-12', 50),   // drinking -> 50
+  ]);
+
+  it('spots that the wider baseline reverses the verdict on drinking', () => {
+    const c = baselineCheck(logs, m, BB);
+    expect(c.neither.value).toBe(40);      // the narrow baseline
+    expect(c.noAlcohol.value).toBe(60);    // 40 and 80 averaged
+    expect(c.gap).toBe(-20);
+    // Drinking at 50 beats 40 but loses to 60 — the direction flips.
+    expect(c.conflicts).toBe(true);
+  });
+
+  it('does not cry wolf when the two baselines agree', () => {
+    const agreeing = new Map([
+      day('2026-09-02', 60), day('2026-09-04', 60),   // neither -> 60
+      day('2026-09-06', 60), day('2026-09-08', 60),   // sugar only -> 60
+      day('2026-09-10', 50), day('2026-09-12', 50),   // drinking -> 50, worse than both
+    ]);
+    const c = baselineCheck(logs, agreeing, BB);
+    expect(c.conflicts).toBe(false);
+  });
+
+  it('reads direction from the metric — a rise in stress is the harm', () => {
+    const STRESS = OUTCOMES.find(o => o.key === 'stress')!;
+    const stressDay = (d: string, v: number): [string, DayMetrics] => [d, {
+      date: d, hrv: null, restingHr: null, sleepHours: null, sleepScore: null,
+      bodyBattery: null, stress: v,
+    }];
+    // Drinking at 50 is WORSE than neither (40) but BETTER than no-alcohol (60).
+    const m2 = new Map([
+      stressDay('2026-09-02', 40), stressDay('2026-09-04', 40),
+      stressDay('2026-09-06', 80), stressDay('2026-09-08', 80),
+      stressDay('2026-09-10', 50), stressDay('2026-09-12', 50),
+    ]);
+    expect(baselineCheck(logs, m2, STRESS).conflicts).toBe(true);
   });
 });

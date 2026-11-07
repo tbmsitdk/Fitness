@@ -284,6 +284,11 @@ export default function NutritionImpact({ logs, metricsByDate, exposure, height 
       )}
 
       <p className="text-[10px] text-muted-foreground/60 italic leading-relaxed">
+        <strong>Method:</strong> compared against days with none of THIS intake, with the other
+        ignored; days pooled within the selected day type. &ldquo;What Moves the Needle&rdquo; uses
+        the same baseline but is weekend-MATCHED (weekday and weekend measured separately, then
+        averaged), so its figure for the same habit will differ — that is the method, not a
+        disagreement.
         Bars show the actual change in the metric versus days with none, so a falling sleep score
         falls and a rising resting HR rises. Colour, not direction, says whether that is good:
         red is the unfavourable way for whichever metric is selected.
