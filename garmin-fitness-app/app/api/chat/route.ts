@@ -201,9 +201,12 @@ export async function POST(request: NextRequest) {
                  to_char(last_food_time, 'HH24:MI') AS last_food_time,
                  caffeine_after_14, meal_quality, notes
           FROM nutrition_logs WHERE date >= ${cutoff.slice(0, 10)} ORDER BY date`,
-      sql`SELECT id, destination, depart_date::text, arrive_date::text, return_date::text,
-                 home_utc_offset, dest_utc_offset, travel_mode, purpose, notes
-          FROM travel_logs ORDER BY depart_date`,
+      // SELECT * deliberately: three hand-written column lists had drifted, and
+      // this one still predated multi-stop support — so the coach saw a
+      // Delhi-only trip and called the flight home 4.5 zones west instead of 7,
+      // never having received the Singapore stop or the zone names.
+      // coerceTravelLog decides what is actually read.
+      sql`SELECT * FROM travel_logs ORDER BY depart_date`,
     ]);
     const exerciseLogs = exerciseResult.rows.map(coerceExerciseLog);
     const nutritionLogs = nutritionResult.rows.map(coerceNutritionLog);

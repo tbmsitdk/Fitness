@@ -603,3 +603,47 @@ describe('multi-stop trips', () => {
     expect(e[1].zones).toBe(4.5);          // Berlin -> Delhi
   });
 });
+
+// ── Regression: the AI coach must see the same trip the dashboard does ─────
+// The coach reported the Singapore -> Copenhagen flight as "4.5 zones
+// westward". That is exactly the figure for a DELHI-only trip, because the AI
+// routes had their own hand-written SELECT that still predated multi-stop
+// support and the timezone columns — so the coach never received the Singapore
+// stop. The dashboard, reading the full row, said 7.
+describe('a trip row missing its newer columns degrades predictably', () => {
+  const full: TravelLog = {
+    destination: 'Delhi',
+    depart_date: '2026-11-01', arrive_date: '2026-11-02', return_date: '2026-11-07',
+    home_utc_offset: 1, dest_utc_offset: 5.5,
+    home_timezone: 'Europe/Copenhagen', dest_timezone: 'Asia/Kolkata',
+    stops: [
+      { destination: 'Delhi',     timezone: 'Asia/Kolkata',   arrive_date: '2026-11-02' },
+      { destination: 'Singapore', timezone: 'Asia/Singapore', arrive_date: '2026-11-04' },
+    ],
+    travel_mode: 'flight', purpose: 'work', notes: null,
+  };
+
+  it('reports the flight home as 7 west when the stops are present', () => {
+    const events = circadianEvents(full);
+    const home = events.find(e => e.leg === 'homebound')!;
+    expect(home.zones).toBe(-7);
+  });
+
+  it('reproduces the wrong 4.5 when stops are dropped — the coach bug exactly', () => {
+    const withoutStops: TravelLog = { ...full, stops: null };
+    const home = circadianEvents(withoutStops).find(e => e.leg === 'homebound')!;
+    expect(home.zones).toBe(-4.5);
+  });
+
+  it('coerceTravelLog keeps stops when the row has them', () => {
+    const row = {
+      id: 1, destination: 'Delhi', depart_date: '2026-11-01', arrive_date: '2026-11-02',
+      return_date: '2026-11-07', home_utc_offset: '1', dest_utc_offset: '5.5',
+      home_timezone: 'Europe/Copenhagen', dest_timezone: 'Asia/Kolkata',
+      stops: full.stops, travel_mode: 'flight', purpose: 'work', notes: null,
+    };
+    const t = coerceTravelLog(row);
+    expect(t.stops).toHaveLength(2);
+    expect(circadianEvents(t).find(e => e.leg === 'homebound')!.zones).toBe(-7);
+  });
+});

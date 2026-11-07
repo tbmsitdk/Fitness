@@ -163,3 +163,20 @@ proper medians, so the card and its own chart drifted apart again.
 **Rule:** a date helper must accept both shapes, and at least one test must use
 the shape the DB returns. `String(d).slice(0, 10)` before constructing. The
 visible `NaN` was lucky; a silently-wrong window would have been worse.
+
+## 14. One table, one read path
+
+The AI coach told the user their Singapore → Copenhagen flight was "4.5 zones
+westward". The dashboard said 7. The coach was reading a different query: the
+chat and summary routes each had their own hand-written `SELECT` for
+`travel_logs`, and both still listed the pre-multi-stop column set — no
+`stops`, no `home_timezone`, no `dest_timezone`. So the coach saw a Delhi-only
+trip and computed the leg home from Delhi.
+
+Nothing failed. The query succeeded, the numbers were internally consistent,
+and the only symptom was a confident wrong answer in prose.
+
+**Rule:** a table gets ONE read path. Where several routes must query it, use
+`SELECT *` and let the coerce function define what is read — a hand-maintained
+column list in three places will drift the first time a column is added, and
+the drift is silent. Same failure mode as lesson 6, one layer down.
