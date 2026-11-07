@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   zonesCrossed, shiftDirection, expectedAdaptationDays, circadianEvents, utcOffsetOn, HOME_TIMEZONES,
-  resolvedOffsets, tripZones, DESTINATION_ZONES,
+  resolvedOffsets, tripZones, tripStops, totalZonesCrossed, DESTINATION_ZONES,
   tripDates, tripLength, daysBetween, addDays, coerceTravelLog, describeTrip,
   type TravelLog,
 } from '@/lib/travel';
@@ -508,5 +508,98 @@ describe('day keys use local time', () => {
   it('keeps an early-morning local time on its own day', () => {
     const earlyAm = new Date(2026, 6, 15, 0, 30, 0);
     expect(localKey(earlyAm)).toBe('2026-07-15');
+  });
+});
+
+// ── Multi-stop itineraries ────────────────────────────────────────────────
+// Copenhagen → Delhi → Singapore → home is THREE circadian shifts on three
+// dates. Modelled as a single out-and-back it understated the displacement
+// (9 zones instead of 14) and dated the whole cost to the first arrival.
+describe('multi-stop trips', () => {
+  const delhiSingapore: TravelLog = {
+    destination: 'Delhi',
+    depart_date: '2026-11-02', arrive_date: '2026-11-02', return_date: '2026-11-07',
+    home_utc_offset: 1, dest_utc_offset: 5.5,
+    home_timezone: 'Europe/Copenhagen', dest_timezone: 'Asia/Kolkata',
+    stops: [
+      { destination: 'Delhi',     timezone: 'Asia/Kolkata',   arrive_date: '2026-11-02' },
+      { destination: 'Singapore', timezone: 'Asia/Singapore', arrive_date: '2026-11-04' },
+    ],
+    travel_mode: 'flight', purpose: 'work', notes: null,
+  };
+
+  it('produces one circadian event per hop, including the flight home', () => {
+    const e = circadianEvents(delhiSingapore);
+    expect(e).toHaveLength(3);
+    expect(e.map(x => x.leg)).toEqual(['outbound', 'onward', 'homebound']);
+    expect(e.map(x => x.destination)).toEqual(['Delhi', 'Singapore', 'Home']);
+  });
+
+  it('dates each shift to the day that flight landed', () => {
+    const e = circadianEvents(delhiSingapore);
+    expect(e.map(x => x.date)).toEqual(['2026-11-02', '2026-11-04', '2026-11-07']);
+  });
+
+  it('measures each hop from the PREVIOUS stop, not from home', () => {
+    const e = circadianEvents(delhiSingapore);
+    expect(e[0].zones).toBe(4.5);   // Copenhagen +1 -> Delhi +5.5
+    expect(e[1].zones).toBe(2.5);   // Delhi +5.5 -> Singapore +8, NOT +7 from home
+    expect(e[2].zones).toBe(-7);    // Singapore +8 -> Copenhagen +1
+  });
+
+  it('totals every hop', () => {
+    // 4.5 + 2.5 + 7 = 14. The single-destination model counted 9.
+    expect(totalZonesCrossed(delhiSingapore)).toBe(14);
+  });
+
+  it('still handles an ordinary single-stop trip identically', () => {
+    const simple: TravelLog = { ...delhiSingapore, stops: null };
+    const e = circadianEvents(simple);
+    expect(e).toHaveLength(2);
+    expect(e.map(x => x.leg)).toEqual(['outbound', 'homebound']);
+    expect(e[0].zones).toBe(4.5);
+    expect(totalZonesCrossed(simple)).toBe(9);
+  });
+
+  it('rebuilds a stop from the legacy columns for trips saved before this', () => {
+    const legacy: TravelLog = { ...delhiSingapore, stops: null };
+    const stops = tripStops(legacy);
+    expect(stops).toHaveLength(1);
+    expect(stops[0]).toEqual({
+      destination: 'Delhi', timezone: 'Asia/Kolkata', arrive_date: '2026-11-02',
+    });
+  });
+
+  it('sorts stops by arrival date rather than trusting insertion order', () => {
+    const jumbled: TravelLog = {
+      ...delhiSingapore,
+      stops: [
+        { destination: 'Singapore', timezone: 'Asia/Singapore', arrive_date: '2026-11-04' },
+        { destination: 'Delhi',     timezone: 'Asia/Kolkata',   arrive_date: '2026-11-02' },
+      ],
+    };
+    expect(tripStops(jumbled).map(s => s.destination)).toEqual(['Delhi', 'Singapore']);
+    expect(circadianEvents(jumbled)[1].zones).toBe(2.5);
+  });
+
+  it('omits the homebound hop while the trip is still open', () => {
+    const open: TravelLog = { ...delhiSingapore, return_date: null };
+    const e = circadianEvents(open);
+    expect(e).toHaveLength(2);
+    expect(e.some(x => x.leg === 'homebound')).toBe(false);
+  });
+
+  it('counts a same-zone hop as zero without dropping the stop', () => {
+    const viaBerlin: TravelLog = {
+      ...delhiSingapore,
+      stops: [
+        { destination: 'Berlin', timezone: 'Europe/Berlin',  arrive_date: '2026-11-02' },
+        { destination: 'Delhi',  timezone: 'Asia/Kolkata',   arrive_date: '2026-11-03' },
+      ],
+    };
+    const e = circadianEvents(viaBerlin);
+    expect(e[0].zones).toBe(0);            // Copenhagen -> Berlin, same zone
+    expect(e[0].direction).toBe('none');
+    expect(e[1].zones).toBe(4.5);          // Berlin -> Delhi
   });
 });

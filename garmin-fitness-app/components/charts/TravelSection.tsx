@@ -5,7 +5,7 @@ import { format, parseISO } from 'date-fns';
 import { Activity, WellnessRecord } from '@/types';
 import { useDataVersion } from '@/lib/data-refresh';
 import {
-  circadianEvents, tripDates, tripZones, shiftDirection, addDays, daysBetween,
+  circadianEvents, tripDates, tripStops, shiftDirection, addDays, daysBetween, zonesCrossed, utcOffsetOn,
   type TravelLog,
 } from '@/lib/travel';
 import { travelKpis, tripImpacts } from '@/lib/travel-analysis';
@@ -92,9 +92,16 @@ export default function TravelSection({ allWellness, allActivities, cutoff }: Pr
     const days = Array.from({ length: span }, (_, i) => addDays(periodStart, i));
     const byDate = new Map<string, { dir: string; dest: string }>();
     for (const t of trips ?? []) {
-      const z = tripZones(t);
-      const dir = shiftDirection(z);
-      for (const d of tripDates(t, today)) byDate.set(d, { dir, dest: t.destination });
+      // Colour each day by the stop the user was AT, so a multi-stop trip
+      // shows its legs rather than one flat block for the first destination.
+      const stops = tripStops(t);
+      const home = utcOffsetOn(t.home_timezone ?? '', t.depart_date) ?? t.home_utc_offset;
+      for (const d of tripDates(t, today)) {
+        const at = [...stops].reverse().find(st => st.arrive_date <= d) ?? stops[0];
+        const off = at?.timezone ? utcOffsetOn(at.timezone, d) : null;
+        const dir = shiftDirection(zonesCrossed(home, off ?? home));
+        byDate.set(d, { dir, dest: at?.destination ?? t.destination });
+      }
     }
     return { days, byDate };
   }, [trips, periodStart, today]);

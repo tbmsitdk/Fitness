@@ -187,6 +187,12 @@ export async function initializeDatabase() {
   // read as one zone apart — see lib/travel.ts resolvedOffsets().
   await sql`ALTER TABLE travel_logs ADD COLUMN IF NOT EXISTS home_timezone VARCHAR(64)`;
   await sql`ALTER TABLE travel_logs ADD COLUMN IF NOT EXISTS dest_timezone VARCHAR(64)`;
+  // Multi-stop itineraries: [{destination, timezone, arrive_date}, ...] in
+  // order. Copenhagen -> Delhi -> Singapore -> home is three circadian shifts,
+  // and recording it as one out-and-back both understated the displacement and
+  // dated the cost wrongly. Null on older rows, which tripStops() rebuilds
+  // from the single-destination columns.
+  await sql`ALTER TABLE travel_logs ADD COLUMN IF NOT EXISTS stops JSONB`;
   await sql`CREATE INDEX IF NOT EXISTS idx_travel_depart ON travel_logs(depart_date)`;
 
   await sql`CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date)`;

@@ -26,7 +26,7 @@ export async function GET() {
     const { rows } = await client.query(
       `SELECT id, destination, depart_date::text, arrive_date::text, return_date::text,
               home_utc_offset, dest_utc_offset, home_timezone, dest_timezone,
-              travel_mode, purpose, notes
+              stops, travel_mode, purpose, notes
        FROM travel_logs
        ORDER BY depart_date DESC`
     );
@@ -72,6 +72,23 @@ export async function POST(req: NextRequest) {
     const homeZone = zone(b?.home_timezone);
     const destZone = zone(b?.dest_timezone);
 
+    // Stops are validated element by element — a malformed entry is dropped
+    // rather than stored, since tripStops() would otherwise emit a shift to an
+    // unresolvable zone. Capped so one request cannot store an unbounded array.
+    const stops = Array.isArray(b?.stops)
+      ? b.stops
+          .filter((x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object')
+          .map((x: Record<string, unknown>) => ({
+            destination: String(x.destination ?? '').trim().slice(0, 120),
+            timezone: zone(x.timezone) ?? '',
+            arrive_date: isDate(x.arrive_date) ? x.arrive_date : '',
+          }))
+          .filter((x: { destination: string; timezone: string; arrive_date: string }) =>
+            x.destination !== '' && x.timezone !== '' && x.arrive_date !== '')
+          .slice(0, 20)
+      : null;
+    const stopsJson = stops && stops.length > 0 ? JSON.stringify(stops) : null;
+
     const mode = typeof b?.travel_mode === 'string' && b.travel_mode ? b.travel_mode.slice(0, 20) : null;
     const purpose = typeof b?.purpose === 'string' && b.purpose ? b.purpose.slice(0, 20) : null;
     const notes = typeof b?.notes === 'string' && b.notes.trim() ? b.notes.trim().slice(0, 500) : null;
@@ -81,20 +98,20 @@ export async function POST(req: NextRequest) {
       await client.query(
         `UPDATE travel_logs SET destination=$1, depart_date=$2, arrive_date=$3, return_date=$4,
                 home_utc_offset=$5, dest_utc_offset=$6, home_timezone=$7, dest_timezone=$8,
-                travel_mode=$9, purpose=$10, notes=$11, updated_at=NOW()
-         WHERE id=$12`,
+                stops=$9, travel_mode=$10, purpose=$11, notes=$12, updated_at=NOW()
+         WHERE id=$13`,
         [destination, depart, arrive, ret, home, dest, homeZone, destZone,
-         mode, purpose, notes, Number(b.id)]
+         stopsJson, mode, purpose, notes, Number(b.id)]
       );
     } else {
       await client.query(
         `INSERT INTO travel_logs
            (destination, depart_date, arrive_date, return_date,
             home_utc_offset, dest_utc_offset, home_timezone, dest_timezone,
-            travel_mode, purpose, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            stops, travel_mode, purpose, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [destination, depart, arrive, ret, home, dest, homeZone, destZone,
-         mode, purpose, notes]
+         stopsJson, mode, purpose, notes]
       );
     }
     return NextResponse.json({ ok: true }, { headers: NO_STORE });

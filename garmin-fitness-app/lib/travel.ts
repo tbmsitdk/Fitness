@@ -19,8 +19,27 @@
  *   events in opposite directions, and the homebound one is routinely ignored.
  */
 
+/**
+ * One stay within a trip. A trip is a SEQUENCE of these — Copenhagen → Delhi →
+ * Singapore → home is three circadian shifts, not one, and treating it as a
+ * single out-and-back both understates the total displacement and attributes
+ * the whole recovery cost to the wrong dates.
+ */
+export interface TripStop {
+  destination: string;
+  /** IANA zone, resolved on the arrival date so DST is handled per zone. */
+  timezone: string;
+  /** Day you arrived at THIS stop. */
+  arrive_date: string;
+}
+
 export interface TravelLog {
   id?: number;
+  /**
+   * First stop's destination. Retained because the column is NOT NULL and
+   * because trips written before multi-stop support have only this; `stops`
+   * wins when present. Read through tripStops(), never directly.
+   */
   destination: string;
   /** Day you left home. */
   depart_date: string;
@@ -38,6 +57,12 @@ export interface TravelLog {
   /** IANA zone names. Preferred over the offsets above — see resolvedZones(). */
   home_timezone?: string | null;
   dest_timezone?: string | null;
+  /**
+   * Every stop in order, including the first. Null on trips saved before
+   * multi-stop support, which tripStops() then reconstructs from the legacy
+   * destination/arrive_date/dest_timezone fields.
+   */
+  stops?: TripStop[] | null;
   /** 'flight' | 'car' | 'train' | 'other' — travel strain independent of zones. */
   travel_mode: string | null;
   /** 'work' | 'leisure' — a strong confounder worth separating. */
@@ -232,36 +257,79 @@ export interface CircadianEvent {
   zones: number;             // signed; + east
   direction: ShiftDirection;
   adaptationDays: number;
-  leg: 'outbound' | 'homebound';
+  /** 'onward' is a hop between two away stops, e.g. Delhi -> Singapore. */
+  leg: 'outbound' | 'onward' | 'homebound';
   destination: string;
   purpose: string | null;
 }
 
-export function circadianEvents(trip: TravelLog): CircadianEvent[] {
-  const out = tripZones(trip);
-  const events: CircadianEvent[] = [{
-    date: trip.arrive_date,
-    zones: out,
-    direction: shiftDirection(out),
-    adaptationDays: expectedAdaptationDays(out),
-    leg: 'outbound',
-    destination: trip.destination,
-    purpose: trip.purpose,
-  }];
+/**
+ * The trip's stops in order, oldest first.
+ *
+ * Falls back to a single stop built from the legacy columns, so a trip saved
+ * before multi-stop support behaves exactly as it did. Stops are sorted by
+ * arrival date rather than trusting insertion order — an out-of-order entry
+ * would otherwise produce negative-length stays and nonsense shifts.
+ */
+export function tripStops(trip: TravelLog): TripStop[] {
+  const stops = Array.isArray(trip.stops) && trip.stops.length > 0
+    ? trip.stops.filter(s => s && s.destination && s.arrive_date)
+    : [{
+        destination: trip.destination,
+        timezone: trip.dest_timezone ?? '',
+        arrive_date: trip.arrive_date,
+      }];
+  return [...stops].sort((a, b) => a.arrive_date.localeCompare(b.arrive_date));
+}
 
-  if (trip.return_date) {
-    const back = -out;
-    events.push({
-      date: trip.return_date,
-      zones: back,
-      direction: shiftDirection(back),
-      adaptationDays: expectedAdaptationDays(back),
-      leg: 'homebound',
-      destination: 'Home',
-      purpose: trip.purpose,
-    });
+/** Offset at a stop on its own arrival date, falling back to the stored one. */
+function stopOffset(stop: TripStop, trip: TravelLog): number {
+  const resolved = stop.timezone ? utcOffsetOn(stop.timezone, stop.arrive_date) : null;
+  return resolved ?? trip.dest_utc_offset;
+}
+
+/** Signed zones for every hop, including the flight home. */
+export function tripHops(trip: TravelLog): { from: number; to: number; date: string; destination: string }[] {
+  const { home } = resolvedOffsets(trip);
+  const stops = tripStops(trip);
+  const hops: { from: number; to: number; date: string; destination: string }[] = [];
+
+  let current = home;
+  for (const stop of stops) {
+    const to = stopOffset(stop, trip);
+    hops.push({ from: current, to, date: stop.arrive_date, destination: stop.destination });
+    current = to;
   }
-  return events;
+  if (trip.return_date) {
+    hops.push({ from: current, to: home, date: trip.return_date, destination: 'Home' });
+  }
+  return hops;
+}
+
+/** Total zones crossed over the whole itinerary, counting every hop. */
+export function totalZonesCrossed(trip: TravelLog): number {
+  return tripHops(trip).reduce((s, h) => s + Math.abs(zonesCrossed(h.from, h.to)), 0);
+}
+
+export function circadianEvents(trip: TravelLog): CircadianEvent[] {
+  // One event per hop. A three-stop trip is three separate shifts on three
+  // different dates — the recovery cost of the Delhi→Singapore leg belongs to
+  // the day that flight landed, not to the day the trip began.
+  const hops = tripHops(trip);
+  return hops.map((h, i) => {
+    const zones = zonesCrossed(h.from, h.to);
+    const isLast = i === hops.length - 1;
+    const homebound = isLast && trip.return_date != null && h.destination === 'Home';
+    return {
+      date: h.date,
+      zones,
+      direction: shiftDirection(zones),
+      adaptationDays: expectedAdaptationDays(zones),
+      leg: homebound ? 'homebound' : i === 0 ? 'outbound' : 'onward',
+      destination: h.destination,
+      purpose: trip.purpose,
+    };
+  });
 }
 
 const DAY_MS = 86_400_000;
@@ -303,6 +371,7 @@ export function coerceTravelLog(row: Record<string, unknown>): TravelLog {
     return_date: date(row.return_date),
     home_utc_offset: Number(row.home_utc_offset ?? 0),
     dest_utc_offset: Number(row.dest_utc_offset ?? 0),
+    stops: Array.isArray(row.stops) ? (row.stops as TripStop[]) : null,
     home_timezone: row.home_timezone != null ? String(row.home_timezone) : null,
     dest_timezone: row.dest_timezone != null ? String(row.dest_timezone) : null,
     travel_mode: row.travel_mode != null ? String(row.travel_mode) : null,

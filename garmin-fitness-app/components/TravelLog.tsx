@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useDataVersion, useRefreshAfter } from '@/lib/data-refresh';
 import {
   DESTINATION_ZONES, TRAVEL_MODES, TRAVEL_PURPOSES, zonesCrossed, shiftDirection,
-  expectedAdaptationDays, describeTrip, utcOffsetOn, tripZones, type TravelLog as Trip,
+  expectedAdaptationDays, describeTrip, utcOffsetOn, tripStops, totalZonesCrossed, type TravelLog as Trip,
 } from '@/lib/travel';
 import { loadSettings, DEFAULT_SETTINGS } from '@/lib/settings';
 
@@ -15,13 +15,18 @@ const todayStr = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
+interface DraftStop {
+  destination: string;
+  timezone: string;
+  arrive_date: string;
+}
+
 interface Draft {
   id?: number;
-  destination: string;
   depart_date: string;
-  arrive_date: string;
   return_date: string;
-  dest_timezone: string;
+  /** Ordered stops. One entry is an ordinary out-and-back trip. */
+  stops: DraftStop[];
   travel_mode: string;
   purpose: string;
   notes: string;
@@ -33,15 +38,22 @@ interface Draft {
  * January one at +1, rather than both at a hardcoded number.
  */
 const emptyDraft = (homeZone: string, on = todayStr()): Draft => ({
-  destination: '',
   depart_date: on,
-  arrive_date: on,
   return_date: '',
-  dest_timezone: '',
+  stops: [{ destination: '', timezone: '', arrive_date: on }],
   travel_mode: 'flight',
   purpose: '',
   notes: '',
 });
+
+/** Local-date arithmetic for defaulting a new stop's arrival. */
+function addDaysStr(date: string, n: number): string {
+  const d = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return date;
+  d.setDate(d.getDate() + n);
+  const p = (x: number) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
 const inputCls =
   'rounded border border-border bg-secondary px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring';
@@ -76,9 +88,12 @@ export default function TravelLog() {
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => {
     setDraft(d => {
       const next = { ...d, [k]: v };
-      // Most trips arrive the day they depart; keep them in step until the user
-      // says otherwise, rather than making them fill the same date twice.
-      if (k === 'depart_date' && d.arrive_date === d.depart_date) next.arrive_date = v as string;
+      // Most trips reach the first stop the day they leave; keep them in step
+      // until the user says otherwise, rather than asking for the same date
+      // twice. Later stops are never touched — they have their own dates.
+      if (k === 'depart_date' && d.stops[0]?.arrive_date === d.depart_date) {
+        next.stops = d.stops.map((st, i) => (i === 0 ? { ...st, arrive_date: v as string } : st));
+      }
       return next;
     });
     setSaved(false);
@@ -92,17 +107,17 @@ export default function TravelLog() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: draft.id,
-          destination: draft.destination,
+          // First stop fills the legacy single-destination columns, which are
+          // NOT NULL and are what older readers fall back to.
+          destination: draft.stops[0]?.destination ?? '',
           depart_date: draft.depart_date,
-          arrive_date: draft.arrive_date || draft.depart_date,
+          arrive_date: draft.stops[0]?.arrive_date || draft.depart_date,
           return_date: draft.return_date || null,
-          // Resolved on the ARRIVAL date so both sides agree about daylight
-          // saving; the zone names are stored too, so a later read re-resolves
-          // rather than trusting a number frozen at entry time.
-          home_utc_offset: utcOffsetOn(homeZone, draft.arrive_date || draft.depart_date) ?? 1,
-          dest_utc_offset: utcOffsetOn(draft.dest_timezone, draft.arrive_date || draft.depart_date) ?? 0,
+          home_utc_offset: utcOffsetOn(homeZone, draft.depart_date) ?? 1,
+          dest_utc_offset: utcOffsetOn(draft.stops[0]?.timezone ?? '', draft.stops[0]?.arrive_date ?? draft.depart_date) ?? 0,
           home_timezone: homeZone,
-          dest_timezone: draft.dest_timezone,
+          dest_timezone: draft.stops[0]?.timezone ?? '',
+          stops: draft.stops.filter(st => st.destination.trim() && st.timezone && st.arrive_date),
           travel_mode: draft.travel_mode || null,
           purpose: draft.purpose || null,
           notes: draft.notes,
@@ -142,17 +157,46 @@ export default function TravelLog() {
 
   // Live preview of the circadian consequence, so the offsets can be sanity
   // checked before saving rather than discovered as a wrong chart later.
+  /** Every hop in the itinerary, including the flight home. */
   const preview = useMemo(() => {
-    if (!draft.dest_timezone) return null;
-    const on = draft.arrive_date || draft.depart_date;
-    const home = utcOffsetOn(homeZone, on);
-    const dest = utcOffsetOn(draft.dest_timezone, on);
-    if (home == null || dest == null) return null;
-    const z = zonesCrossed(home, dest);
-    return { zones: z, direction: shiftDirection(z), days: expectedAdaptationDays(z), home, dest };
-  }, [draft.dest_timezone, draft.arrive_date, draft.depart_date, homeZone]);
+    const valid = draft.stops.filter(st => st.timezone && st.arrive_date);
+    if (valid.length === 0) return null;
+    const home = utcOffsetOn(homeZone, draft.depart_date);
+    if (home == null) return null;
 
-  const canSave = draft.destination.trim() !== '' && draft.depart_date !== '' && draft.dest_timezone !== '';
+    const hops: { label: string; date: string; zones: number; days: number }[] = [];
+    let current = home;
+    for (const st of valid) {
+      const to = utcOffsetOn(st.timezone, st.arrive_date);
+      if (to == null) continue;
+      const z = zonesCrossed(current, to);
+      hops.push({ label: st.destination || st.timezone.split('/').pop()!.replace(/_/g, ' '),
+                  date: st.arrive_date, zones: z, days: expectedAdaptationDays(z) });
+      current = to;
+    }
+    if (draft.return_date) {
+      const z = zonesCrossed(current, home);
+      hops.push({ label: 'Home', date: draft.return_date, zones: z, days: expectedAdaptationDays(z) });
+    }
+    const total = hops.reduce((sum, h) => sum + Math.abs(h.zones), 0);
+    return { hops, total };
+  }, [draft.stops, draft.depart_date, draft.return_date, homeZone]);
+
+  const canSave = draft.depart_date !== ''
+    && draft.stops.some(st => st.destination.trim() !== '' && st.timezone !== '' && st.arrive_date !== '');
+
+  const setStop = (i: number, patch: Partial<DraftStop>) =>
+    setDraft(d => ({ ...d, stops: d.stops.map((st, j) => (j === i ? { ...st, ...patch } : st)) }));
+  const addStop = () => setDraft(d => ({
+    ...d,
+    // Default the new stop to the day after the previous arrival — the common
+    // case is a short hop, and a date earlier than the previous stop would
+    // produce a negative-length stay.
+    stops: [...d.stops, { destination: '', timezone: '',
+      arrive_date: addDaysStr(d.stops[d.stops.length - 1]?.arrive_date || d.depart_date, 1) }],
+  }));
+  const removeStop = (i: number) =>
+    setDraft(d => ({ ...d, stops: d.stops.length > 1 ? d.stops.filter((_, j) => j !== i) : d.stops }));
 
   return (
     <div className="space-y-4">
@@ -179,34 +223,52 @@ export default function TravelLog() {
           trip to New York shifts by an hour in the weeks when only one side has changed over.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Destination</label>
-            <input type="text" placeholder="e.g. Tokyo" value={draft.destination}
-              onChange={e => set('destination', e.target.value)} className={`${inputCls} w-full mt-0.5`} />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Destination timezone</label>
-            <select value={draft.dest_timezone} onChange={e => set('dest_timezone', e.target.value)}
-              className={`${inputCls} w-full mt-0.5`}>
-              <option value="">Select…</option>
-              {DESTINATION_ZONES.map(t => (
-                <option key={t.zone} value={t.zone}>{t.label}</option>
-              ))}
-            </select>
-          </div>
+        {/* Stops, in order. Each is its own circadian shift. */}
+        <div className="space-y-2">
+          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Stops <span className="normal-case">— add one per place you slept, in order</span>
+          </label>
+          {draft.stops.map((st, i) => (
+            <div key={i} className="grid grid-cols-1 sm:grid-cols-[1.2fr_2fr_1fr_auto] gap-2 items-end">
+              <div>
+                {i === 0 && <span className="text-[10px] text-muted-foreground/60">Destination</span>}
+                <input type="text" placeholder={i === 0 ? 'e.g. Delhi' : 'e.g. Singapore'}
+                  value={st.destination} onChange={e => setStop(i, { destination: e.target.value })}
+                  className={`${inputCls} w-full`} />
+              </div>
+              <div>
+                {i === 0 && <span className="text-[10px] text-muted-foreground/60">Timezone</span>}
+                <select value={st.timezone} onChange={e => setStop(i, { timezone: e.target.value })}
+                  className={`${inputCls} w-full`}>
+                  <option value="">Select…</option>
+                  {DESTINATION_ZONES.map(t => (
+                    <option key={t.zone} value={t.zone}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                {i === 0 && <span className="text-[10px] text-muted-foreground/60">Arrived</span>}
+                <input type="date" value={st.arrive_date} max={todayStr()}
+                  onChange={e => setStop(i, { arrive_date: e.target.value })}
+                  className={`${inputCls} w-full font-mono`} />
+              </div>
+              <button type="button" onClick={() => removeStop(i)} disabled={draft.stops.length === 1}
+                title={draft.stops.length === 1 ? 'A trip needs at least one stop' : 'Remove this stop'}
+                className="px-2 py-1.5 text-muted-foreground hover:text-red-400 disabled:opacity-30 disabled:hover:text-muted-foreground">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+          <Button size="sm" variant="ghost" onClick={addStop} className="text-[11px]">
+            <Plus className="w-3 h-3 mr-1" />Add stop
+          </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Departed home</label>
             <input type="date" value={draft.depart_date} max={todayStr()}
               onChange={e => set('depart_date', e.target.value)} className={`${inputCls} w-full mt-0.5 font-mono`} />
-          </div>
-          <div>
-            <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Arrived there</label>
-            <input type="date" value={draft.arrive_date} max={todayStr()}
-              onChange={e => set('arrive_date', e.target.value)} className={`${inputCls} w-full mt-0.5 font-mono`} />
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -240,36 +302,42 @@ export default function TravelLog() {
           </div>
         </div>
 
-        {preview && (
-          <div className="rounded border border-border bg-secondary/40 px-2.5 py-2">
-            {preview.direction === 'none' ? (
-              <p className="text-[11px] text-muted-foreground">
-                No timezone change on this date — travel strain only, no body-clock shift.
-                Still worth logging.
-                {preview.home != null && (
-                  <span className="text-muted-foreground/60">
-                    {' '}(both UTC{preview.home >= 0 ? '+' : ''}{preview.home})
-                  </span>
-                )}
-              </p>
-            ) : (
-              <p className="text-[11px] text-muted-foreground">
-                <span className="font-mono text-foreground">
-                  {Math.abs(preview.zones)} zone{Math.abs(preview.zones) === 1 ? '' : 's'} {preview.direction}
-                </span>
-                {' · '}typically ~{preview.days} day{preview.days === 1 ? '' : 's'} to adapt
-                {preview.direction === 'east'
-                  ? ' — eastward advances the clock, the harder direction.'
-                  : ' — westward delays the clock, which the body tolerates better.'}
-                {' '}You will shift back the other way on the return.
-              </p>
-            )}
+        {preview && preview.hops.length > 0 && (
+          <div className="rounded border border-border bg-secondary/40 px-2.5 py-2 space-y-1">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Body-clock shifts on this itinerary
+            </p>
+            {preview.hops.map((h, i) => {
+              const dir = h.zones > 0 ? 'east' : h.zones < 0 ? 'west' : 'none';
+              return (
+                <p key={i} className="text-[11px] text-muted-foreground">
+                  <span className="font-mono text-foreground/70">{h.date}</span>{' '}
+                  → <span className="text-foreground">{h.label}</span>{' · '}
+                  {dir === 'none' ? (
+                    <span>no timezone change — travel strain only</span>
+                  ) : (
+                    <>
+                      <span className="font-mono text-foreground">
+                        {Math.abs(h.zones)} zone{Math.abs(h.zones) === 1 ? '' : 's'} {dir}
+                      </span>
+                      {' · '}~{h.days}d to adapt
+                      {dir === 'east' ? ' (advancing the clock, the harder way)' : ''}
+                    </>
+                  )}
+                </p>
+              );
+            })}
+            <p className="text-[11px] text-muted-foreground/70 pt-0.5">
+              {preview.total} zone{preview.total === 1 ? '' : 's'} crossed in total across{' '}
+              {preview.hops.length} shift{preview.hops.length === 1 ? '' : 's'}.
+              {!draft.return_date && ' Add a return date to include the flight home.'}
+            </p>
           </div>
         )}
 
         <div className="flex gap-2">
           <Button size="sm" onClick={() => save()} disabled={saving || !canSave}
-            title={canSave ? 'Save trip' : 'Destination, departure date and destination timezone are required'}>
+            title={canSave ? 'Save trip' : 'A departure date and at least one complete stop are required'}>
             {saving ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Plus className="w-3.5 h-3.5 mr-1.5" />}
             {draft.id ? 'Update trip' : 'Add trip'}
           </Button>
@@ -301,32 +369,42 @@ export default function TravelLog() {
             </thead>
             <tbody>
               {trips.map(t => {
-                const z = tripZones(t);
-                const dir = shiftDirection(z);
+                const stops = tripStops(t);
+                const total = totalZonesCrossed(t);
                 return (
                   <tr key={t.id} className="border-t border-border/50">
                     <td className="px-2 py-1.5 text-[11px]">
-                      {t.destination}
+                      {stops.map(st => st.destination).join(' → ')}
                       {!t.return_date && <span className="ml-1.5 text-[10px] text-amber-400">still away</span>}
                     </td>
                     <td className="px-2 py-1.5 text-[11px] text-muted-foreground font-mono whitespace-nowrap">
                       {t.depart_date} → {t.return_date ?? '…'}
                     </td>
                     <td className="px-2 py-1.5 text-[11px] font-mono text-right whitespace-nowrap">
-                      {dir === 'none' ? <span className="text-muted-foreground">same zone</span>
-                        : <span className={dir === 'east' ? 'text-amber-400' : 'text-blue-400'}>
-                            {Math.abs(z)} {dir}
+                      {/* Total across every hop — a Delhi/Singapore trip crosses
+                          far more than the single out-and-back figure implied. */}
+                      {total === 0 ? <span className="text-muted-foreground">same zone</span>
+                        : <span className="text-foreground">
+                            {total} zone{total === 1 ? '' : 's'}
+                            {stops.length > 1 && (
+                              <span className="text-muted-foreground"> · {stops.length} stops</span>
+                            )}
                           </span>}
                     </td>
                     <td className="px-2 py-1.5 text-[11px] text-muted-foreground">{t.purpose ?? '—'}</td>
                     <td className="px-2 py-1.5 text-right whitespace-nowrap">
                       <button onClick={() => setDraft({
                         id: t.id,
-                        destination: t.destination,
                         depart_date: t.depart_date,
-                        arrive_date: t.arrive_date,
                         return_date: t.return_date ?? '',
-                        dest_timezone: t.dest_timezone ?? '',
+                        // tripStops rebuilds a single stop from the legacy
+                        // columns for trips saved before multi-stop support,
+                        // so editing an old trip works without migration.
+                        stops: tripStops(t).map(st => ({
+                          destination: st.destination,
+                          timezone: st.timezone,
+                          arrive_date: st.arrive_date,
+                        })),
                         travel_mode: t.travel_mode ?? 'flight',
                         purpose: t.purpose ?? '',
                         notes: t.notes ?? '',
