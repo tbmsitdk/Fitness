@@ -400,8 +400,7 @@ def main():
             return False
 
     token_loaded = False
-
-    # 1. Try DB (has the most recently refreshed tokens)
+    token_source = None  # 'db' or 'secret' — needed for the retry below
     try:
         r = requests.get(
             f"{APP_URL}/api/garmin-tokens",
@@ -414,6 +413,7 @@ def main():
                 if _extract_tokens(db_token):
                     print("  ✓ Tokens loaded from DB (most recent)")
                     token_loaded = True
+                    token_source = "db"
                 else:
                     print("  ⚠  DB tokens corrupt, falling back to secret")
     except Exception as exc:
@@ -430,6 +430,7 @@ def main():
             print("    Re-run the Regenerate Garmin Tokens workflow to refresh.")
             sys.exit(1)
         print("  ✓ Tokens loaded from GitHub Secret")
+        token_source = "secret"
 
     # ── Login (loads tokens + fetches profile via SSO, not OAuth exchange)
     # garminconnect 0.3.x uses its own SSO client — no garth, no rate-limited
@@ -469,10 +470,32 @@ def main():
                 print(f"  ⚠  {kind} on login (attempt {attempt+1}/{len(_LOGIN_WAITS)+1}), retrying in {wait}s…")
                 time.sleep(wait)
             else:
+                # The DB copy is preferred on load, so a stale one there made
+                # the run fail even after GARMIN_TOKENS had been refreshed —
+                # and the message below told the user to update exactly the
+                # secret that was already being ignored. Try the other source
+                # before giving up.
+                if token_source == "db" and os.environ.get("GARMIN_TOKENS", ""):
+                    print(f"  ⚠  Login failed with the DB tokens ({exc})")
+                    print("    Retrying with GARMIN_TOKENS from the GitHub secret…")
+                    if _extract_tokens(os.environ["GARMIN_TOKENS"]):
+                        token_source = "secret"
+                        try:
+                            api.login(tokenstore=TOKEN_DIR)
+                            print(f"  ✓ Logged in as: {api.display_name} (secret tokens)")
+                            print("    The DB copy was stale; it will be overwritten below.")
+                            break
+                        except Exception as exc2:
+                            exc = exc2
+                    else:
+                        print("    GARMIN_TOKENS could not be extracted either.")
+
                 print(f"  ✗ Login failed: {exc}")
-                print("    Token store is likely in the old 0.2.x format.")
-                print("    Go to GitHub Actions → 'Regenerate Garmin Tokens' → Run workflow,")
-                print("    submit the SMS code at <APP_URL>/garmin-setup, then update GARMIN_TOKENS.")
+                print("    Both token sources were rejected by Garmin, so they have expired.")
+                print("    Fix: GitHub Actions → 'Regenerate Garmin Tokens' → Run workflow,")
+                print("    then submit the SMS code at <APP_URL>/garmin-setup while it runs.")
+                print("    That workflow writes the new tokens to the DB, which this script")
+                print("    prefers — updating the GARMIN_TOKENS secret alone is NOT enough.")
                 sys.exit(1)
 
     # ── Body composition from Garmin smart scale
