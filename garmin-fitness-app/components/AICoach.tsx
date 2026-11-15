@@ -1,12 +1,13 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { Activity, WellnessRecord, AISummary, ChatMessage, ChatFile } from '@/types';
-import { Bot, Send, RefreshCw, AlertTriangle, TrendingUp, Shield, Heart, Paperclip, X, FileText, Trash2 } from 'lucide-react';
+import { Bot, Send, RefreshCw, AlertTriangle, TrendingUp, Shield, Heart, Paperclip, X, FileText, Trash2, Lightbulb } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { UserSettings } from '@/lib/settings';
+import { COACH_MODEL } from '@/lib/models';
 
 interface Props { activities: Activity[]; wellness: WellnessRecord[]; settings?: UserSettings; }
 
@@ -42,6 +43,22 @@ function Prose({ text }: { text: string }) {
     .replace(/^- (.*?)$/gm,'<li>$1</li>')
     .replace(/\n\n/g,'</p><p>');
   return <div className="ai-prose text-sm" dangerouslySetInnerHTML={{ __html: `<p>${html}</p>` }} />;
+}
+
+/**
+ * The model's own summary of how it got to its answer, collapsed by default.
+ * Rendered as plain text (React escapes it) — never through Prose.
+ */
+function Reasoning({ text, live }: { text?: string; live?: boolean }) {
+  if (!text) return null;
+  return (
+    <details className="mb-2 rounded-md border border-border/60 bg-background/40 text-xs" open={live}>
+      <summary className="cursor-pointer select-none px-2 py-1.5 text-muted-foreground flex items-center gap-1.5">
+        <Lightbulb className="w-3 h-3" />{live ? 'Thinking…' : 'How I got here'}
+      </summary>
+      <p className="px-2 pb-2 whitespace-pre-wrap text-muted-foreground leading-relaxed">{text}</p>
+    </details>
+  );
 }
 
 const STORAGE_MESSAGES = 'ai-coach-messages-v1';
@@ -128,7 +145,9 @@ export default function AICoach({ activities, wellness, settings }: Props) {
     setMessages([...updated, { role: 'assistant', content: '' }]);
     setInput(''); setAttachedFiles([]); setChatLoading(true);
     try {
-      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: updated, settings }) });
+      // Reasoning is display-only: the server never needs it back.
+      const outgoing = updated.map(({ role, content, files }) => ({ role, content, files }));
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: outgoing, settings }) });
       if (!res.ok || !res.body) throw new Error('Chat failed');
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
       while (true) {
@@ -138,10 +157,24 @@ export default function AICoach({ activities, wellness, settings }: Props) {
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           const d = line.slice(6); if (d === '[DONE]') break;
-          try { const { text: chunk } = JSON.parse(d); if (chunk) setMessages(prev => { const m = [...prev]; m[m.length-1] = { role: 'assistant', content: m[m.length-1].content + chunk }; return m; }); } catch { /* skip */ }
+          let evt: { text?: string; thinking?: string; error?: string };
+          try { evt = JSON.parse(d); } catch { continue; }
+          if (evt.error) throw new Error(evt.error);
+          if (evt.text || evt.thinking) setMessages(prev => {
+            const m = [...prev]; const last = m[m.length-1];
+            m[m.length-1] = {
+              ...last,
+              content:   last.content + (evt.text ?? ''),
+              reasoning: evt.thinking ? (last.reasoning ?? '') + evt.thinking : last.reasoning,
+            };
+            return m;
+          });
         }
       }
-    } catch { setMessages(prev => { const m = [...prev]; m[m.length-1] = { role: 'assistant', content: 'Something went wrong. Please try again.' }; return m; }); }
+    } catch (e) {
+      const why = e instanceof Error && e.message && e.message !== 'Chat failed' ? ` (${e.message})` : '';
+      setMessages(prev => { const m = [...prev]; m[m.length-1] = { role: 'assistant', content: `Something went wrong${why}. Please try again.` }; return m; });
+    }
     finally { setChatLoading(false); }
   }
 
@@ -166,7 +199,7 @@ export default function AICoach({ activities, wellness, settings }: Props) {
             <div className="flex items-center gap-2">
               <Bot className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm font-medium">AI Fitness Coach</span>
-              <Badge variant="outline">claude-fable-5</Badge>
+              <Badge variant="outline">{summary?.model ?? COACH_MODEL}</Badge>
             </div>
             {summary && (
               <Button variant="ghost" size="sm" onClick={() => fetchSummary(true)} disabled={loading}>
@@ -193,7 +226,7 @@ export default function AICoach({ activities, wellness, settings }: Props) {
           {loading ? (
             <Card><CardContent className="py-10 text-center space-y-2">
               <div className="w-4 h-4 border border-border border-t-foreground rounded-full animate-spin mx-auto" />
-              <p className="text-xs text-muted-foreground">Analysing your full dashboard data…</p>
+              <p className="text-xs text-muted-foreground">Reading your full history, day by day — this can take a couple of minutes…</p>
             </CardContent></Card>
           ) : error ? (
             <Card className="border-red-500/20 bg-red-500/5"><CardContent className="py-4 flex gap-3 items-start">
@@ -204,7 +237,7 @@ export default function AICoach({ activities, wellness, settings }: Props) {
             </CardContent></Card>
           ) : summary && (
             <>
-              <Card><CardContent className="pt-4"><Prose text={summary.summary} />
+              <Card><CardContent className="pt-4"><Reasoning text={summary.reasoning} /><Prose text={summary.summary} />
                 {summary.cached && <p className="text-[10px] text-muted-foreground mt-3 pt-3 border-t border-border">Cached · {new Date(summary.generated_at).toLocaleString()} · 24h TTL</p>}
               </CardContent></Card>
 
@@ -313,7 +346,12 @@ export default function AICoach({ activities, wellness, settings }: Props) {
                   )}
                   {(m.content || m.role === 'assistant') && (
                     <div className="px-3 py-2">
-                      {m.role === 'assistant' ? <Prose text={m.content || (chatLoading && i === messages.length-1 ? '▋' : '')} /> : m.content}
+                      {m.role === 'assistant' ? (
+                        <>
+                          <Reasoning text={m.reasoning} live={chatLoading && i === messages.length-1 && !m.content} />
+                          <Prose text={m.content || (chatLoading && i === messages.length-1 ? '▋' : '')} />
+                        </>
+                      ) : m.content}
                     </div>
                   )}
                 </div>

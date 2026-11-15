@@ -10,7 +10,8 @@ import { coerceTravelLog } from '@/lib/travel';
 import { coerceExerciseLog } from '@/lib/exercises';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// Fable 5.2 always thinks before it answers; 60s was cutting replies off.
+export const maxDuration = 300;
 
 // ── Per-second sample summarisation ─────────────────────────────────────────
 
@@ -245,7 +246,10 @@ export async function POST(request: NextRequest) {
             nutritionLogs,
             travelLogs,
           )) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: chunk })}\n\n`));
+            // Reasoning and answer travel as separate fields so the client can
+            // show one as a collapsed note and the other as the reply.
+            const payload = chunk.type === 'thinking' ? { thinking: chunk.text } : { text: chunk.text };
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
           }
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();

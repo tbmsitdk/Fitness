@@ -94,6 +94,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   files?: ChatFile[];  // optional attachments (images or PDFs)
+  /** Summary of the model's reasoning for an assistant reply. Display only — never sent back. */
+  reasoning?: string;
 }
 
 export interface AISummary {
@@ -103,6 +105,10 @@ export interface AISummary {
   longevity_insights: string[];
   generated_at: string;
   cached?: boolean;
+  /** Summary of the reasoning behind the report, when the model returned one. */
+  reasoning?: string;
+  /** The model that actually produced it (differs from the requested one after a fallback). */
+  model?: string;
 }
 
 export interface ParsedGarminData {

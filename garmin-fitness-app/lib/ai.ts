@@ -17,15 +17,20 @@ import {
   rankEffects, STANDARD_EXPOSURES, OUTCOMES, type DayMetrics,
 } from '@/lib/nutrition-analysis';
 import type { UserSettings } from '@/lib/settings';
+import { COACH_MODEL } from '@/lib/models';
+import { COACHING_REPORT_SCHEMA, readReply, parseCoachingReport } from '@/lib/coach-report';
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Fable 5 for coaching quality. Routes that call this must set `export const
-// maxDuration = 60` — large-model responses can take 30-60s on big payloads
-// and the Vercel default function timeout is shorter.
-const MODEL = 'claude-fable-5';
+// Routes that call this must set `export const maxDuration` generously: Fable
+// 5.2 always thinks, and a report over raw daily rows can take a few minutes.
+const MODEL = COACH_MODEL;
+
+// Server-side refusal fallback: if a safety classifier declines a request, the
+// API re-runs it on a fallback model inside the same call instead of failing.
+const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 
 const SYSTEM_PROMPT = `You are an elite personal fitness coach and longevity advisor with expertise in exercise physiology, sports medicine, and preventive health. You analyse real training and health data from Garmin devices and provide evidence-based, highly personalised guidance.
 
@@ -614,90 +619,56 @@ export async function generateWeeklySummary(
   exerciseLogs?: ExerciseLog[],
   nutritionLogs?: NutritionLog[],
   travelLogs?: TravelLog[],
+  /** Raw daily rows as a prompt section (lib/raw-data.ts). Optional. */
+  rawDataSection?: string,
+  /** What the coach has on file from earlier sessions (lib/coach-memory.ts). Optional. */
+  memorySection?: string,
 ): Promise<AISummary> {
   const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs, travelLogs);
 
-  // Forced tool call guarantees schema-valid JSON — no fence-stripping or
-  // regex extraction, which broke when the model wrapped output in ```json.
-  const response = await client.messages.create({
+  const rawPart = rawDataSection
+    ? `\n\n${rawDataSection}\n\nThe aggregates above were computed by the app. The raw rows are the ground truth: use them to check the aggregates, and to look for patterns no aggregate covers (weekday effects, lagged effects, runs of bad days, what preceded the best and worst weeks). Where the rows contradict an aggregate, say so.`
+    : '';
+  const memoryPart = memorySection ? `\n\n${memorySection}` : '';
+
+  // Structured outputs, not a forced tool call: Fable 5.2 rejects forced
+  // tool_choice with a 400, and the schema guarantees the JSON parses.
+  // Streamed so a long think cannot hit an HTTP timeout.
+  const response = await client.beta.messages.stream({
     model: MODEL,
-    max_tokens: 3000,
+    max_tokens: 16000,
+    betas: [FALLBACK_BETA],
+    fallbacks: 'default',
+    thinking: { type: 'adaptive', display: 'summarized' },
+    output_config: {
+      effort: 'medium',
+      format: { type: 'json_schema', schema: COACHING_REPORT_SCHEMA },
+    },
     system: SYSTEM_PROMPT,
-    tools: [{
-      name: 'coaching_report',
-      description: 'Record the structured coaching report',
-      input_schema: {
-        type: 'object',
-        properties: {
-          summary: {
-            type: 'string',
-            description: '3-4 paragraph narrative: current fitness status, training load sustainability, health status, and overall trajectory',
-          },
-          recommendations: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Six items prefixed TRAINING/HEALTH: this week, next 4 weeks, sport-specific, sleep, body composition, recovery — each with specific target numbers',
-          },
-          injury_risks: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Specific risk flags with the metric values that triggered them; empty if none',
-          },
-          longevity_insights: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'VO2max percentile for age/sex, muscle mass & strength training, sleep/recovery as longevity levers',
-          },
-        },
-        required: ['summary', 'recommendations', 'injury_risks', 'longevity_insights'],
-      },
-    }],
-    // `auto`, NOT a forced tool call. Fable 5.2 / 5.1 and Sonnet 5.5 reject
-    // tool_choice "tool"/"any" with a 400, so forcing it pins us to older
-    // models. The prompt names the tool instead; the guards below cover the
-    // case where the model answers in prose anyway.
-    tool_choice: { type: 'auto' },
     messages: [{
       role: 'user',
       content: `Analyse my complete fitness and health data below and produce a comprehensive coaching report.
 
-You MUST respond by calling the coaching_report tool. Do not reply with prose.
-
 Data:
-${JSON.stringify(context, null, 2)}
+${JSON.stringify(context, null, 2)}${rawPart}${memoryPart}
 
 Be specific. Cite exact numbers. Give actionable targets not vague advice.`,
     }],
-  });
+  }).finalMessage();
 
-  const toolBlock = response.content.find(
-    (b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use'
-  );
-  // With tool_choice "auto" the model CAN answer in prose. Silently returning
-  // an empty report would render a blank coaching card as if it had succeeded,
-  // so fail loudly instead — the caller turns this into a 500.
-  if (!toolBlock) {
-    const text = response.content
-      .filter((b): b is Anthropic.Messages.TextBlock => b.type === 'text')
-      .map(b => b.text)
-      .join(' ')
-      .slice(0, 200);
-    throw new Error(
-      `Coach did not call coaching_report (stop_reason: ${response.stop_reason})` +
-      (text ? `; replied with text instead: "${text}"` : ''),
-    );
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parsed = toolBlock.input as any;
-
+  const reply = readReply(response);
   return {
-    summary:            typeof parsed.summary === 'string' ? parsed.summary : '',
-    recommendations:    Array.isArray(parsed.recommendations)    ? parsed.recommendations    : [],
-    injury_risks:       Array.isArray(parsed.injury_risks)       ? parsed.injury_risks       : [],
-    longevity_insights: Array.isArray(parsed.longevity_insights) ? parsed.longevity_insights : [],
-    generated_at:       new Date().toISOString(),
+    ...parseCoachingReport(reply.text),
+    reasoning:    reply.reasoning || undefined,
+    model:        response.model,
+    generated_at: new Date().toISOString(),
   };
 }
+
+/** One piece of a streamed chat reply. */
+export type ChatChunk =
+  | { type: 'text'; text: string }
+  | { type: 'thinking'; text: string };
 
 export async function* streamChat(
   messages: Array<{ role: 'user' | 'assistant'; content: string; files?: { name: string; mediaType: string; data: string }[] }>,
@@ -711,7 +682,9 @@ export async function* streamChat(
   exerciseLogs?: ExerciseLog[],
   nutritionLogs?: NutritionLog[],
   travelLogs?: TravelLog[],
-): AsyncGenerator<string> {
+  /** What the coach has on file from earlier sessions (lib/coach-memory.ts). Optional. */
+  memorySection?: string,
+): AsyncGenerator<ChatChunk> {
   const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs, travelLogs);
 
   // NOTE: this block contains USER-CONTROLLED text (activity titles). It is
@@ -727,7 +700,7 @@ ${JSON.stringify(sampleSummaries, null, 2)}
     : '';
 
   const dataContext = `## Your Complete Fitness & Health Profile
-${JSON.stringify(context, null, 2)}${samplesSection}`;
+${JSON.stringify(context, null, 2)}${samplesSection}${memorySection ? `\n\n${memorySection}` : ''}`;
 
   // Build Anthropic message format — support text-only and text+file content
   const anthropicMessages = messages.map(m => {
@@ -754,16 +727,36 @@ ${JSON.stringify(context, null, 2)}${samplesSection}`;
     return { role: m.role as 'user', content: contentBlocks };
   });
 
-  const stream = await client.messages.stream({
+  // The data block is identical across the turns of one conversation, so it is
+  // cached: follow-up questions read it at a fraction of the input price.
+  const stream = client.beta.messages.stream({
     model: MODEL,
-    max_tokens: 1500,
-    system: SYSTEM_PROMPT + '\n\n' + dataContext,
+    max_tokens: 16000,
+    betas: [FALLBACK_BETA],
+    fallbacks: 'default',
+    thinking: { type: 'adaptive', display: 'summarized' },
+    output_config: { effort: 'medium' },
+    system: [
+      { type: 'text', text: SYSTEM_PROMPT },
+      { type: 'text', text: dataContext, cache_control: { type: 'ephemeral' } },
+    ],
     messages: anthropicMessages,
   });
 
   for await (const chunk of stream) {
-    if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-      yield chunk.delta.text;
+    if (chunk.type !== 'content_block_delta') continue;
+    if (chunk.delta.type === 'text_delta') {
+      yield { type: 'text', text: chunk.delta.text };
+    } else if (chunk.delta.type === 'thinking_delta') {
+      yield { type: 'thinking', text: chunk.delta.thinking };
     }
+  }
+
+  const final = await stream.finalMessage();
+  if (final.stop_reason === 'refusal') {
+    throw new Error('The model declined this request.');
+  }
+  if (final.stop_reason === 'max_tokens') {
+    throw new Error('The reply was cut off before it finished.');
   }
 }

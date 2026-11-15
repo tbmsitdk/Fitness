@@ -8,9 +8,17 @@ import { coerceTravelLog } from '@/lib/travel';
 import { coerceExerciseLog } from '@/lib/exercises';
 import { AISummary } from '@/types';
 import type { UserSettings } from '@/lib/settings';
+import { buildRawTablesWithin, rawDataPromptSection } from '@/lib/raw-data';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// The report now reads raw daily rows as well as the aggregates, and Fable 5.2
+// always thinks first. Streaming inside generateWeeklySummary keeps the
+// connection alive; this is the ceiling for the whole function.
+export const maxDuration = 300;
+
+// Ceiling for the raw rows sent with the report (~4 chars per token). The
+// history is trimmed by date, oldest first, until it fits.
+const RAW_DATA_TOKEN_BUDGET = 200_000;
 
 const CACHE_KEY = 'ai-weekly-summary';
 const CACHE_TTL = 60 * 60 * 24; // 24 hours
@@ -20,7 +28,8 @@ async function buildSummary(userSettings?: UserSettings) {
   const actCutoff  = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
   const wellCutoff = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
 
-  const [actResult, wellResult, ftpResult, exerciseResult, nutritionResult, travelResult] = await Promise.all([
+  const [actResult, wellResult, ftpResult, exerciseResult, nutritionResult, travelResult,
+         allActResult, allWellResult, allExerciseResult, allNutritionResult] = await Promise.all([
     sql`SELECT * FROM activities WHERE date >= ${actCutoff} ORDER BY date`,
     sql`SELECT * FROM wellness WHERE date >= ${wellCutoff} ORDER BY date`,
     sql`SELECT ftp_watts FROM ftp_entries ORDER BY date DESC LIMIT 1`,
@@ -37,6 +46,18 @@ async function buildSummary(userSettings?: UserSettings) {
       // never having received the Singapore stop or the zone names.
       // coerceTravelLog decides what is actually read.
       sql`SELECT * FROM travel_logs ORDER BY depart_date`,
+    // Full history for the raw-data tables. The 90-day queries above feed the
+    // aggregates, which are tuned to that window; these feed the rows the
+    // model reads directly.
+    sql`SELECT * FROM activities ORDER BY date`,
+    sql`SELECT * FROM wellness ORDER BY date`,
+    sql`SELECT id, date::text, exercise_key, sets, reps, duration_seconds, load_kg,
+               vital_capacity_l, inspiratory_strength, expiratory_strength, notes
+        FROM exercise_logs ORDER BY date`,
+    sql`SELECT id, date::text, alcohol_units, candy_portions, savoury_snacks, sugary_drinks,
+               to_char(last_food_time, 'HH24:MI') AS last_food_time,
+               caffeine_after_14, meal_quality, notes
+        FROM nutrition_logs ORDER BY date`,
   ]);
 
   const activities = actResult.rows.map(coerceActivity);
@@ -50,7 +71,23 @@ async function buildSummary(userSettings?: UserSettings) {
     throw Object.assign(new Error('No activity data found. Please upload your Garmin export first.'), { status: 404 });
   }
 
-  return generateWeeklySummary(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs, travelLogs);
+  const raw = buildRawTablesWithin({
+    activities:    allActResult.rows.map(coerceActivity),
+    wellness:      allWellResult.rows.map(coerceWellness),
+    exerciseLogs:  allExerciseResult.rows.map(coerceExerciseLog),
+    nutritionLogs: allNutritionResult.rows.map(coerceNutritionLog),
+    travelLogs,
+  }, RAW_DATA_TOKEN_BUDGET);
+  const windowNote = raw.windowDays === null
+    ? 'These tables hold the complete history.'
+    : `These tables hold the last ${raw.windowDays} days only; older rows were left out to fit. Do not read the start of the tables as the start of the history.`;
+  const rawDataSection = `${rawDataPromptSection(raw.tables)}\n\n${windowNote}`;
+  console.log('[ai-summary] raw data', { windowDays: raw.windowDays, approxTokens: raw.tokens });
+
+  return generateWeeklySummary(
+    activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs, travelLogs,
+    rawDataSection,
+  );
 }
 
 // POST — called from AICoach with optional settings

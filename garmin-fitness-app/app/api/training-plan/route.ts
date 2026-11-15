@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { PLAN_MODEL } from '@/lib/models';
 
 export interface TrainingSession {
   day: string;
@@ -31,6 +32,47 @@ interface RequestBody {
 }
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+export const maxDuration = 120;
+
+const TRAINING_PLAN_SCHEMA = {
+  type: 'object',
+  properties: {
+    goal: { type: 'string' },
+    ftp_input: { type: 'number' },
+    weeks: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          week: { type: 'integer' },
+          theme: { type: 'string' },
+          tss_target: { type: 'number' },
+          sessions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                day: { type: 'string' },
+                type: { type: 'string' },
+                duration_min: { type: 'number' },
+                description: { type: 'string' },
+                tss_estimate: { type: 'number' },
+              },
+              required: ['day', 'type', 'duration_min', 'description', 'tss_estimate'],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ['week', 'theme', 'tss_target', 'sessions'],
+        additionalProperties: false,
+      },
+    },
+    key_principles: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['goal', 'ftp_input', 'weeks', 'key_principles'],
+  additionalProperties: false,
+} as const;
 
 const GOAL_LABELS: Record<string, string> = {
   base: 'Base Fitness & Aerobic Foundation',
@@ -69,7 +111,7 @@ Requirements:
 - TSS estimates must be realistic (Zone 2 60 min ≈ 40–55 TSS, threshold 45 min ≈ 65–80 TSS)
 - Descriptions should be specific: intervals, durations, watts as % of FTP
 
-Return ONLY valid JSON matching this exact structure (no markdown, no explanation):
+Return the plan in this structure:
 {
   "goal": "${goalLabel}",
   "ftp_input": ${ftp},
@@ -92,21 +134,25 @@ Return ONLY valid JSON matching this exact structure (no markdown, no explanatio
   "key_principles": ["3 bullet points explaining the core training philosophy for this plan"]
 }`;
 
+    // Structured outputs: the schema guarantees parseable JSON, which the old
+    // "return only JSON" instruction plus a regex could only hope for.
     const resp = await client.messages.create({
-      // Sonnet 4.5 was deprecated and retires 2026-11-30; 5.5 is the current Sonnet.
-      model: 'claude-sonnet-5-5',
-      max_tokens: 3000,
-      system: 'You are an expert cycling coach. Always return only valid JSON, no markdown code blocks, no explanations.',
+      model: PLAN_MODEL,
+      max_tokens: 16000,
+      output_config: { format: { type: 'json_schema', schema: TRAINING_PLAN_SCHEMA } },
+      system: 'You are an expert cycling coach.',
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const text = resp.content[0].type === 'text' ? resp.content[0].text : '{}';
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return NextResponse.json({ error: 'Claude returned invalid JSON' }, { status: 500 });
+    if (resp.stop_reason === 'refusal' || resp.stop_reason === 'max_tokens') {
+      return NextResponse.json({ error: `Plan generation stopped early (${resp.stop_reason})` }, { status: 500 });
+    }
+    const text = resp.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    if (!text) {
+      return NextResponse.json({ error: 'Claude returned no plan' }, { status: 500 });
     }
 
-    const plan = JSON.parse(jsonMatch[0]) as TrainingPlan;
+    const plan = JSON.parse(text) as TrainingPlan;
     return NextResponse.json({ plan });
   } catch (err) {
     console.error('[training-plan]', err);

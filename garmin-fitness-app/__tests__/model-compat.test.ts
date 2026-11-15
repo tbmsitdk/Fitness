@@ -73,11 +73,10 @@ describe('request shapes stay compatible with current models', () => {
 });
 
 describe('the coach does not fail silently', () => {
-  it('throws when no tool block comes back instead of rendering a blank report', () => {
+  it('never falls back to an empty object when the model returns nothing usable', () => {
     const ai = readFileSync('lib/ai.ts', 'utf8');
-    // With tool_choice 'auto' the model may answer in prose. The old code did
-    // `toolBlock?.input ?? {}`, which rendered an empty card as a success.
-    expect(ai).not.toMatch(/toolBlock\?\.input\s*\?\?\s*\{\}/);
-    expect(ai).toMatch(/if \(!toolBlock\)/);
+    // The old code did `toolBlock?.input ?? {}`, which rendered a blank
+    // coaching card as if it had succeeded.
+    expect(ai).not.toMatch(/\?\.input\s*\?\?\s*\{\}/);
   });
 });
