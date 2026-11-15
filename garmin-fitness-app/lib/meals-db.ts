@@ -6,7 +6,7 @@ import { createClient, type VercelClient } from '@vercel/postgres';
 import { initializeDatabase } from '@/lib/db';
 import { coerceNutritionLog } from '@/lib/nutrition';
 import {
-  carryOverMeal, carryOverStatement, deriveDay, isMealType, noAlcoholStatement, reduceCarryOver, scaleMeal,
+  carryOverMeal, carryOverStatement, deriveDay, editMeal, isMealType, noAlcoholStatement, reduceCarryOver, scaleMeal,
   type Meal, type MealType,
 } from '@/lib/meals';
 
@@ -228,6 +228,29 @@ export function setMealType(id: number, mealType: MealType | null): Promise<bool
     const { rows } = await c.query(`UPDATE meals SET meal_type = $2 WHERE id = $1 RETURNING date::text AS day`, [id, mealType]);
     if (!rows[0]) return false;
     await rederive(c, String(rows[0].day));
+    return true;
+  });
+}
+
+/** Replaces an entry's contents with the person's corrections. False if it does not exist or the edit is empty. */
+export function updateMeal(id: number, raw: unknown): Promise<boolean> {
+  return withClient(async c => {
+    const { rows } = await c.query(`SELECT *, date::text AS day FROM meals WHERE id = $1`, [id]);
+    if (!rows[0]) return false;
+    const existing = toMeal(rows[0]);
+    if (existing.no_alcohol_statement) return false;
+    const m = editMeal(existing, raw);
+    if (!m) return false;
+    await c.query(
+      `UPDATE meals SET time=$2, description=$3, kcal=$4, protein_g=$5, carbs_g=$6, added_sugar_g=$7, fat_g=$8,
+              fibre_g=$9, veg_fruit_portions=$10, alcohol_g=$11, candy_portions=$12, savoury_snacks=$13,
+              sugary_drinks=$14, caffeine=$15, ultra_processed=$16, drink_only=$17, meal_type=$18
+       WHERE id=$1`,
+      [id, m.time, m.description, m.kcal, m.protein_g, m.carbs_g, m.added_sugar_g, m.fat_g, m.fibre_g,
+       m.veg_fruit_portions, m.alcohol_g, m.candy_portions, m.savoury_snacks, m.sugary_drinks,
+       m.caffeine, m.ultra_processed, m.drink_only, m.meal_type],
+    );
+    await rederive(c, existing.date);
     return true;
   });
 }

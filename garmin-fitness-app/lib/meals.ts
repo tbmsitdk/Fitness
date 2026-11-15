@@ -393,3 +393,28 @@ export function reduceCarryOver(carry: Meal, added: Meal[]): Meal | null {
     description: `Logged by hand earlier, not covered by the meals above: ${parts.join(', ')}`,
   };
 }
+
+// ── Editing an entry ────────────────────────────────────────────────────────
+
+/**
+ * An existing entry with the person's corrections applied. Alcohol is edited
+ * in units (what the form shows) and stored in grams. A blank estimate stays
+ * unknown rather than becoming zero; the date, the source and the "no alcohol"
+ * flag cannot be changed here. Returns null if the result has no description.
+ */
+export function editMeal(existing: Meal, raw: unknown): Meal | null {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const units = r.alcohol_units;
+  const alcohol_g = typeof units === 'number' && Number.isFinite(units) && units >= 0
+    ? Math.round(Math.min(50, units) * GRAMS_PER_UNIT * 10) / 10
+    : existing.alcohol_g;
+  const cleaned = cleanMeal({ ...r, alcohol_g, source: existing.source }, existing.date);
+  if (!cleaned) return null;
+  return {
+    ...cleaned,
+    id: existing.id,
+    // An explicit choice of "not sorted" is kept; cleanMeal would otherwise guess from the time.
+    meal_type: 'meal_type' in r ? (isMealType(r.meal_type) ? r.meal_type : null) : cleaned.meal_type,
+    no_alcohol_statement: existing.no_alcohol_statement,
+  };
+}

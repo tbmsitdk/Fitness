@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cleanMeal, isMealType } from '@/lib/meals';
-import { addToDay, deleteMeal, getDay, rescaleMeal, setDayComplete, setMealType } from '@/lib/meals-db';
+import { addToDay, deleteMeal, getDay, rescaleMeal, setDayComplete, setMealType, updateMeal } from '@/lib/meals-db';
 import { homeDayAndTime } from '@/lib/raw-data';
 
 export const dynamic = 'force-dynamic';
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
 // PATCH /api/meals { date, complete }   → mark the day complete or not
 // PATCH /api/meals { id, factor }       → rescale one meal's portion
 // PATCH /api/meals { id, meal_type }    → breakfast | lunch | dinner | in_between | null
+// PATCH /api/meals { id, meal: {...} }  → correct an entry's description, time and amounts
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
@@ -61,6 +62,13 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ ok: true, ...(await setDayComplete(body.date, body.complete)) }, { headers: NO_STORE });
     }
     const id = Number(body.id);
+    if (body.meal && typeof body.meal === 'object') {
+      if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+      const ok = await updateMeal(id, body.meal);
+      return ok
+        ? NextResponse.json({ ok }, { headers: NO_STORE })
+        : NextResponse.json({ error: 'That entry could not be changed. It needs a description.' }, { status: 400 });
+    }
     if ('meal_type' in body) {
       if (!Number.isInteger(id) || id <= 0 || !(body.meal_type === null || isMealType(body.meal_type))) {
         return NextResponse.json({ error: 'id and a valid meal_type are required' }, { status: 400 });

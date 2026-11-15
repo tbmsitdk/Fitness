@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  carryOverMeal, carryOverStatement, cleanMeal, dayMinutes, deriveDay, descriptionOverlap, kcalByMealType, likelyDuplicate,
+  carryOverMeal, carryOverStatement, cleanMeal, dayMinutes, deriveDay, descriptionOverlap, editMeal, kcalByMealType,
+  likelyDuplicate,
   mealLine, mealTypeFromDescription, mealTypeFromTime, reduceCarryOver,
   noAlcoholStatement, scaleMeal, type Meal,
 } from '@/lib/meals';
@@ -363,5 +364,45 @@ describe('eating window', () => {
   it('is not reported from a single timed meal', () => {
     expect(deriveDay(D, [meal({ time: '21:30' }), meal({ time: null })], true).eating_window_h).toBeNull();
     expect(deriveDay(D, [meal({ time: '08:00' }), meal({ time: '20:00' })], true).eating_window_h).toBe(12);
+  });
+});
+
+describe('editMeal — correcting an entry by hand', () => {
+  const dinner = meal({ id: 7, time: null, meal_type: 'dinner', description: 'Aftensmad: ris med kødsovs og vin', kcal: 1900, alcohol_g: 132, source: 'photo' });
+
+  // The real correction: the entry said 11 units, it was half a bottle plus two glasses.
+  it('takes alcohol in units and stores grams', () => {
+    const m = editMeal(dinner, { description: dinner.description, alcohol_units: 5.5, kcal: 1500 })!;
+    expect(m.alcohol_g).toBe(66);
+    expect(m.kcal).toBe(1500);
+    expect(deriveDay(D, [m], true).alcohol_units).toBe(5.5);
+  });
+
+  it('keeps the id, the day and where the entry came from', () => {
+    const m = editMeal(dinner, { description: 'Ris med kødsovs', date: '2020-01-01', source: 'manual', id: 99 })!;
+    expect(m).toMatchObject({ id: 7, date: D, source: 'photo', description: 'Ris med kødsovs' });
+  });
+
+  it('leaves alcohol alone when the edit does not mention it', () => {
+    expect(editMeal(dinner, { description: 'x' })!.alcohol_g).toBe(132);
+    expect(editMeal(dinner, { description: 'x', alcohol_units: 0 })!.alcohol_g).toBe(0);
+    expect(editMeal(dinner, { description: 'x', alcohol_units: 'lots' })!.alcohol_g).toBe(132);
+  });
+
+  it('keeps a blanked estimate as unknown, not zero', () => {
+    const m = editMeal(dinner, { description: 'x', kcal: null, protein_g: '' })!;
+    expect(m.kcal).toBeNull();
+    expect(m.protein_g).toBeNull();
+  });
+
+  it('respects an explicit "not sorted", and sets a time', () => {
+    expect(editMeal(dinner, { description: 'Pasta', time: '19:30', meal_type: null })!.meal_type).toBeNull();
+    expect(editMeal(dinner, { description: 'Pasta', time: '19:30', meal_type: 'lunch' })!.meal_type).toBe('lunch');
+    expect(editMeal(dinner, { description: 'Pasta', time: '19:30' })!.time).toBe('19:30');
+  });
+
+  it('refuses an edit that removes the description', () => {
+    expect(editMeal(dinner, { description: '   ' })).toBeNull();
+    expect(editMeal(dinner, null)).toBeNull();
   });
 });
