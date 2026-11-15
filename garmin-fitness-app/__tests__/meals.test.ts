@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   carryOverMeal, carryOverStatement, cleanMeal, dayMinutes, deriveDay, descriptionOverlap, kcalByMealType, likelyDuplicate,
-  mealLine, mealTypeFromTime,
+  mealLine, mealTypeFromDescription, mealTypeFromTime, reduceCarryOver,
   noAlcoholStatement, scaleMeal, type Meal,
 } from '@/lib/meals';
 import type { NutritionLog } from '@/lib/nutrition';
@@ -297,5 +297,71 @@ describe('likelyDuplicate — the same food entered twice', () => {
     expect(likelyDuplicate(meal({ description: 'No alcohol today' }), [noAlcoholStatement(D)])).toBeNull();
     expect(descriptionOverlap('', 'chicken')).toBe(0);
     expect(descriptionOverlap('a', 'the')).toBe(0);
+  });
+});
+
+describe('typed amounts and diary meals for the same day', () => {
+  const typed = () => carryOverMeal({ date: D, alcohol_units: 5.5, candy_portions: 2, savoury_snacks: 1, sugary_drinks: null, last_food_time: '21:30', caffeine_after_14: null, notes: null })!;
+  const dinner = meal({ time: null, meal_type: 'dinner', description: 'Aftensmad: ris med kødsovs, vin, chips, lakrids', kcal: 1900, alcohol_g: 66, candy_portions: 2, savoury_snacks: 1 });
+
+  // The real case: 5.5 units typed, then the same evening described in Quick log → the app showed 11.
+  it('does not count the wine twice when the day is described after being typed', () => {
+    expect(reduceCarryOver(typed(), [dinner])).toBeNull();
+    expect(deriveDay(D, [dinner], true).alcohol_units).toBe(5.5);
+  });
+
+  it('keeps typed amounts that the logged meals do not explain', () => {
+    const lunchOnly = meal({ description: 'Frokost: kaffe og chokoladebar', candy_portions: 2 });
+    const rest = reduceCarryOver(typed(), [lunchOnly])!;
+    expect(rest.alcohol_g).toBe(66);        // the evening's wine is still there
+    expect(rest.candy_portions).toBe(0);    // the chocolate is now in the lunch entry
+    expect(rest.savoury_snacks).toBe(1);
+    expect(rest.description).toBe('Logged by hand earlier, not covered by the meals above: 5.5 alcohol units, 1 savoury snacks');
+    // The day's totals are unchanged by adding the lunch: still 5.5 units and 2 candy.
+    const d = deriveDay(D, [rest, lunchOnly], false);
+    expect(d.alcohol_units).toBe(5.5);
+    expect(d.candy_portions).toBe(2);
+  });
+
+  it('keeps only the part of a typed amount the meals fall short of, and never goes negative', () => {
+    const oneGlass = meal({ description: '1 glass of wine', alcohol_g: 15.4, candy_portions: 5 });
+    const rest = reduceCarryOver(typed(), [oneGlass])!;
+    expect(rest.alcohol_g).toBe(50.6);
+    expect(rest.candy_portions).toBe(0);
+    expect(deriveDay(D, [rest, oneGlass], false).alcohol_units).toBe(5.5);
+  });
+
+  it('lets a logged coffee explain a typed "caffeine after 14:00"', () => {
+    const carry = carryOverMeal({ date: D, alcohol_units: null, candy_portions: null, savoury_snacks: null, sugary_drinks: null, last_food_time: null, caffeine_after_14: true, notes: null })!;
+    expect(reduceCarryOver(carry, [meal({ description: 'Espresso', time: '15:30', caffeine: true })])).toBeNull();
+    expect(reduceCarryOver(carry, [meal()])!.caffeine).toBe(true);
+  });
+});
+
+describe('meal named in its own description', () => {
+  it('sorts Danish and English labels', () => {
+    expect(mealTypeFromDescription('Morgenmad: 2 stk. knækbrød')).toBe('breakfast');
+    expect(mealTypeFromDescription('Frokost: 1 kop sort kaffe')).toBe('lunch');
+    expect(mealTypeFromDescription('Aftensmad: 2 portioner ris')).toBe('dinner');
+    expect(mealTypeFromDescription('Dinner - pasta')).toBe('dinner');
+    expect(mealTypeFromDescription('Mellemmåltid: æble')).toBe('in_between');
+  });
+
+  it('does not sort on a word in the middle, or a lookalike', () => {
+    expect(mealTypeFromDescription('Leftovers from lunch')).toBeNull();
+    expect(mealTypeFromDescription('Lunchbox snack bar')).toBeNull();
+    expect(mealTypeFromDescription('Chicken salad')).toBeNull();
+  });
+
+  it('is used when no type is given, ahead of the time of day', () => {
+    expect(cleanMeal({ description: 'Frokost: kaffe', time: '15:30' }, D)!.meal_type).toBe('lunch');
+    expect(cleanMeal({ description: 'Frokost: kaffe', meal_type: 'in_between' }, D)!.meal_type).toBe('in_between');
+  });
+});
+
+describe('eating window', () => {
+  it('is not reported from a single timed meal', () => {
+    expect(deriveDay(D, [meal({ time: '21:30' }), meal({ time: null })], true).eating_window_h).toBeNull();
+    expect(deriveDay(D, [meal({ time: '08:00' }), meal({ time: '20:00' })], true).eating_window_h).toBe(12);
   });
 });

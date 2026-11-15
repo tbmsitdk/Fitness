@@ -212,6 +212,12 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS ultra_processed_pct SMALLINT`;
   await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS in_between_kcal_pct SMALLINT`;
   await sql`ALTER TABLE meals ADD COLUMN IF NOT EXISTS meal_type TEXT`;
+  // Entries saved before meal types existed often carry the meal's name in
+  // their description ("Frokost: …"). Sort those; anything else stays unsorted.
+  await sql`UPDATE meals SET meal_type = 'breakfast' WHERE meal_type IS NULL AND description ~* '^(breakfast|morgenmad)'`;
+  await sql`UPDATE meals SET meal_type = 'lunch' WHERE meal_type IS NULL AND description ~* '^(lunch|frokost)'`;
+  await sql`UPDATE meals SET meal_type = 'dinner' WHERE meal_type IS NULL AND description ~* '^(dinner|supper|aftensmad|middag)'`;
+  await sql`UPDATE meals SET meal_type = 'in_between' WHERE meal_type IS NULL AND description ~* '^(snack|mellemm)'`;
   await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS first_food_time TIME`;
   await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS eating_window_h DECIMAL(4,1)`;
 

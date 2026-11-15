@@ -28,6 +28,20 @@ export function isMealType(v: unknown): v is MealType {
  * A fallback only, for an entry that arrives without a type: the person's own
  * word ("lunch: …") always wins. Outside the usual meal hours it is "in between".
  */
+const MEAL_WORDS: [MealType, RegExp][] = [
+  ['breakfast',  /^(breakfast|morgenmad|morgenmaden)\b/i],
+  ['lunch',      /^(lunch|frokost|frokosten)\b/i],
+  ['dinner',     /^(dinner|supper|aftensmad|aftensmaden|middag|middagsmad)\b/i],
+  ['in_between', /^(snack|snacks|in between|mellemm[aå]ltid|eftermiddagssnack)\b/i],
+];
+
+/** "Frokost: …" or "Dinner - …" names its own meal. Used when no type was given. */
+export function mealTypeFromDescription(description: string): MealType | null {
+  const start = description.trim();
+  for (const [type, pattern] of MEAL_WORDS) if (pattern.test(start)) return type;
+  return null;
+}
+
 export function mealTypeFromTime(time: string | null): MealType | null {
   if (!time || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
   const [h, m] = time.split(':').map(Number);
@@ -116,7 +130,8 @@ export function deriveDay(date: string, meals: Meal[], complete: boolean): Deriv
   const last_food_time = times.length ? times[times.length - 1] : null;
   // The first meal and the window are only meaningful once the whole day is in.
   const first_food_time = complete && times.length ? times[0] : null;
-  const eating_window_h = complete && times.length
+  // One timed meal is a moment, not a window: showing "0 h" would be a made-up number.
+  const eating_window_h = complete && times.length >= 2
     ? round1((dayMinutes(times[times.length - 1]) - dayMinutes(times[0])) / 60) : null;
 
   // Caffeine after 14:00: one timed late coffee makes it true. "No" needs a
@@ -244,8 +259,8 @@ export function cleanMeal(raw: unknown, date: string): Meal | null {
   const time = typeof m.time === 'string' && isTime(m.time) ? m.time : null;
   return {
     date, time,
-    // The stated type wins; otherwise the time of day decides, and with neither it stays unknown.
-    meal_type: isMealType(m.meal_type) ? m.meal_type : mealTypeFromTime(time),
+    // The stated type wins; then a label in the description ("Frokost: …"); then the time of day.
+    meal_type: isMealType(m.meal_type) ? m.meal_type : mealTypeFromDescription(description) ?? mealTypeFromTime(time),
     description,
     kcal: amount(m.kcal, 6000) === null ? null : Math.round(amount(m.kcal, 6000)!),
     protein_g: amount(m.protein_g, 400), carbs_g: amount(m.carbs_g, 1000), added_sugar_g: amount(m.added_sugar_g, 600),
@@ -336,4 +351,45 @@ export function likelyDuplicate(candidate: Meal, existing: Meal[]): Meal | null 
     if (closeInTime || (sameMeal && !farInTime)) return e;
   }
   return null;
+}
+
+// ── Hand-typed amounts and the diary ────────────────────────────────────────
+
+const round = (v: number) => Math.round(v * 10) / 10;
+
+/**
+ * Amounts typed by hand were the DAY'S totals. When diary meals are then added
+ * for the same day, they describe that same food and drink — so they count
+ * toward the typed totals, not on top of them. This returns what is left of
+ * the carried-over entry once the meals are taken out of it, or null when the
+ * meals account for all of it.
+ *
+ * Typed 5.5 units, then a dinner logged with 5.5 units of wine → nothing left,
+ * and the day shows 5.5, not 11. Typed 5.5 units, then only lunch logged →
+ * the 5.5 stay, because lunch explains none of them.
+ */
+export function reduceCarryOver(carry: Meal, added: Meal[]): Meal | null {
+  const sum = (pick: (m: Meal) => number) => added.reduce((s, m) => s + pick(m), 0);
+  const left = (typed: number, logged: number) => Math.max(0, round(typed - logged));
+
+  const alcohol_g = left(carry.alcohol_g, sum(m => m.alcohol_g));
+  const candy = left(carry.candy_portions, sum(m => m.candy_portions));
+  const savoury = left(carry.savoury_snacks, sum(m => m.savoury_snacks));
+  const sugary = left(carry.sugary_drinks, sum(m => m.sugary_drinks));
+  // A typed late coffee is explained once any logged entry has caffeine.
+  const caffeine = carry.caffeine && !added.some(m => m.caffeine);
+
+  if (alcohol_g + candy + savoury + sugary === 0 && !caffeine) return null;
+
+  const units = Math.round((alcohol_g / GRAMS_PER_UNIT) * 2) / 2;
+  const parts = [
+    units > 0 ? `${units} alcohol units` : '', candy > 0 ? `${candy} candy portions` : '',
+    savoury > 0 ? `${savoury} savoury snacks` : '', sugary > 0 ? `${sugary} sugary drinks` : '',
+    caffeine ? 'caffeine after 14:00' : '',
+  ].filter(Boolean);
+  return {
+    ...carry,
+    alcohol_g, candy_portions: candy, savoury_snacks: savoury, sugary_drinks: sugary, caffeine,
+    description: `Logged by hand earlier, not covered by the meals above: ${parts.join(', ')}`,
+  };
 }

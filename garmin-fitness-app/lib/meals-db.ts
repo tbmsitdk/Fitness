@@ -6,7 +6,8 @@ import { createClient, type VercelClient } from '@vercel/postgres';
 import { initializeDatabase } from '@/lib/db';
 import { coerceNutritionLog } from '@/lib/nutrition';
 import {
-  carryOverMeal, carryOverStatement, deriveDay, isMealType, noAlcoholStatement, scaleMeal, type Meal, type MealType,
+  carryOverMeal, carryOverStatement, deriveDay, isMealType, noAlcoholStatement, reduceCarryOver, scaleMeal,
+  type Meal, type MealType,
 } from '@/lib/meals';
 
 let ready: Promise<void> | null = null;
@@ -161,6 +162,19 @@ export function addToDay(date: string, meals: Meal[], opts: { noAlcohol?: boolea
         [date, m.description, m.time, m.kcal],
       );
       if (twin.rows.length === 0) await insertMeal(c, { ...m, date });
+    }
+    // Hand-typed amounts were the day's totals; the meals just added count
+    // toward them, not on top (see reduceCarryOver).
+    if (meals.length > 0) {
+      for (const carry of (await mealsOn(c, date)).filter(m => m.source === 'manual' && !m.no_alcohol_statement)) {
+        const rest = reduceCarryOver(carry, meals);
+        if (!rest) await c.query(`DELETE FROM meals WHERE id = $1`, [carry.id]);
+        else await c.query(
+          `UPDATE meals SET alcohol_g = $2, candy_portions = $3, savoury_snacks = $4, sugary_drinks = $5,
+                  caffeine = $6, description = $7 WHERE id = $1`,
+          [carry.id, rest.alcohol_g, rest.candy_portions, rest.savoury_snacks, rest.sugary_drinks, rest.caffeine, rest.description],
+        );
+      }
     }
     if (opts.noAlcohol) {
       const has = (await mealsOn(c, date)).some(m => m.no_alcohol_statement);

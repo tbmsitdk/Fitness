@@ -342,3 +342,23 @@ server check skips an identical entry re-sent within two minutes, which is a
 double click, not a second helping.
 **Tests:** "likelyDuplicate" in `meals.test.ts`, and the duplicate cases in
 `quick-log.test.ts`.
+
+## 24. Two records of the same thing must not be added together
+
+A day typed by hand as 5.5 alcohol units was then described in Quick log,
+dinner wine included. The carry-over kept the typed amounts as a diary entry
+AND the dinner entry brought its own 5.5: the day showed 11. The duplicate
+guard did not see it, because it compares meals with meals and the carried
+entry reads "Logged by hand earlier".
+
+**Rule:** amounts typed by hand are the day's totals. Diary meals added for
+that day count TOWARD them: the carried entry is reduced by what the meals
+contain and removed once they explain all of it (`reduceCarryOver`). Before
+adding a second source of the same quantity, decide which one is the total.
+**Tests:** `__tests__/meals.test.ts` — "does not count the wine twice when the
+day is described after being typed", with the real numbers.
+
+Found from the same screenshot: an eating window of "0 h" from a single timed
+meal (now needs two), and meals left unsorted although their descriptions
+began "Morgenmad:", "Frokost:", "Aftensmad:" (the description's own label is
+now read, in Danish and English).
