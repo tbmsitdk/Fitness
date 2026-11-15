@@ -203,6 +203,8 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS veg_fruit_portions DECIMAL(4,1)`;
   await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS evening_kcal_pct SMALLINT`;
   await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS ultra_processed_pct SMALLINT`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS in_between_kcal_pct SMALLINT`;
+  await sql`ALTER TABLE meals ADD COLUMN IF NOT EXISTS meal_type TEXT`;
   await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS first_food_time TIME`;
   await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS eating_window_h DECIMAL(4,1)`;
 

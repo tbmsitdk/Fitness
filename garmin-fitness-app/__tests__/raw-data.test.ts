@@ -118,11 +118,12 @@ describe('buildRawTables', () => {
   });
 
   it('writes one row per meal and leaves statements out', () => {
-    const m = { date: '2026-10-30', time: '19:30', description: 'Pizza 2 slices', kcal: 600, protein_g: 24, carbs_g: 70, added_sugar_g: 5, fat_g: 24, fibre_g: 4, veg_fruit_portions: 0.5, alcohol_g: 0, candy_portions: 0, savoury_snacks: 0, sugary_drinks: 0, caffeine: false, ultra_processed: true, drink_only: false, no_alcohol_statement: false, source: 'photo' as const };
+    const m = { date: '2026-10-30', time: '19:30', meal_type: 'dinner' as const, description: 'Pizza 2 slices', kcal: 600, protein_g: 24, carbs_g: 70, added_sugar_g: 5, fat_g: 24, fibre_g: 4, veg_fruit_portions: 0.5, alcohol_g: 0, candy_portions: 0, savoury_snacks: 0, sugary_drinks: 0, caffeine: false, ultra_processed: true, drink_only: false, no_alcohol_statement: false, source: 'photo' as const };
     const csv = buildRawTables({ activities: [], wellness: [], meals: [m, { ...m, description: 'No alcohol today', no_alcohol_statement: true }] })['meals.csv'];
     expect(csv.split('\n')).toHaveLength(2);
     expect(row(csv, 1)[col(csv, 'description')]).toBe('Pizza 2 slices');
     expect(row(csv, 1)[col(csv, 'ultra_processed')]).toBe('1');
+    expect(row(csv, 1)[col(csv, 'meal_type')]).toBe('dinner');
   });
 
   it('omits tables that have no rows', () => {

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Circle, Loader2, Trash2 } from 'lucide-react';
 import { useDataRefresh, useDataVersion } from '@/lib/data-refresh';
-import { deriveDay, mealLine, type Meal } from '@/lib/meals';
+import { MEAL_TYPES, MEAL_TYPE_LABEL, deriveDay, kcalByMealType, mealLine, type Meal } from '@/lib/meals';
 
 const PORTIONS: { label: string; factor: number }[] = [
   { label: '½', factor: 0.5 }, { label: '¾', factor: 0.75 }, { label: '1¼', factor: 1.25 }, { label: '1½', factor: 1.5 },
@@ -55,7 +55,8 @@ export default function MealDiary({ date }: { date: string }) {
   const totals = [
     total('kcal', day.kcal, ''), total('protein', day.protein_g, ' g'), total('fibre', day.fibre_g, ' g'),
     total('added sugar', day.added_sugar_g, ' g'), total('veg & fruit', day.veg_fruit_portions, ''),
-    total('of calories after 19:00', day.evening_kcal_pct, '%'), total('eating window', day.eating_window_h, ' h'),
+    total('of calories after 19:00', day.evening_kcal_pct, '%'), total('of calories in between meals', day.in_between_kcal_pct, '%'),
+    total('eating window', day.eating_window_h, ' h'),
   ].filter(Boolean);
 
   return (
@@ -74,27 +75,53 @@ export default function MealDiary({ date }: { date: string }) {
         <p className="text-[11px] text-muted-foreground">No meals logged for this day.</p>
       )}
 
-      <ul className="space-y-1.5">
-        {meals.map(m => (
-          <li key={m.id} className="flex items-start justify-between gap-2">
-            <span className="text-[11px] text-muted-foreground leading-snug">{mealLine(m)}</span>
-            <span className="flex items-center gap-1 flex-shrink-0">
-              {!m.no_alcohol_statement && PORTIONS.map(p => (
-                <button key={p.label} disabled={busy} title={`Change the portion to ${p.label} of this`}
-                  onClick={() => change(() => json('PATCH', { id: m.id, factor: p.factor }))}
-                  className="text-[10px] font-mono px-1 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground disabled:opacity-40">
-                  ×{p.label}
-                </button>
-              ))}
-              <button disabled={busy} title="Delete this entry" aria-label="Delete this entry"
-                onClick={() => change(() => fetch(`/api/meals?id=${m.id}`, { method: 'DELETE' }))}
-                className="text-muted-foreground hover:text-foreground p-0.5 disabled:opacity-40">
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </span>
-          </li>
-        ))}
-      </ul>
+      {kcalByMealType(meals).map(group => (
+        <div key={group.label}>
+          <p className="text-[11px] font-medium flex items-baseline justify-between">
+            <span>{group.label}</span>
+            <span className="text-muted-foreground tabular-nums">{group.kcal == null ? '' : `~${group.kcal} kcal`}</span>
+          </p>
+          <ul className="mt-1 space-y-1.5">
+            {group.meals.map(m => (
+              <li key={m.id} className="flex items-start justify-between gap-2">
+                {/* The group heading already names the meal; show the rest of the line. */}
+                <span className="text-[11px] text-muted-foreground leading-snug">{mealLine({ ...m, meal_type: null })}</span>
+                <span className="flex items-center gap-1 flex-shrink-0">
+                  <select value={m.meal_type ?? ''} disabled={busy} aria-label="Which meal this was"
+                    onChange={e => change(() => json('PATCH', { id: m.id, meal_type: e.target.value || null }))}
+                    className="text-[10px] rounded border border-border bg-secondary px-1 py-0.5 text-muted-foreground disabled:opacity-40">
+                    <option value="">Not sorted</option>
+                    {MEAL_TYPES.map(t => <option key={t} value={t}>{MEAL_TYPE_LABEL[t]}</option>)}
+                  </select>
+                  {PORTIONS.map(p => (
+                    <button key={p.label} disabled={busy} title={`Change the portion to ${p.label} of this`}
+                      onClick={() => change(() => json('PATCH', { id: m.id, factor: p.factor }))}
+                      className="text-[10px] font-mono px-1 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground disabled:opacity-40">
+                      ×{p.label}
+                    </button>
+                  ))}
+                  <button disabled={busy} title="Delete this entry" aria-label="Delete this entry"
+                    onClick={() => change(() => fetch(`/api/meals?id=${m.id}`, { method: 'DELETE' }))}
+                    className="text-muted-foreground hover:text-foreground p-0.5 disabled:opacity-40">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+
+      {meals.filter(m => m.no_alcohol_statement).map(m => (
+        <p key={m.id} className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <span>No alcohol today</span>
+          <button disabled={busy} title="Remove this statement" aria-label="Remove this statement"
+            onClick={() => change(() => fetch(`/api/meals?id=${m.id}`, { method: 'DELETE' }))}
+            className="hover:text-foreground p-0.5 disabled:opacity-40">
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </p>
+      ))}
 
       <button disabled={busy} onClick={() => change(() => json('PATCH', { date, complete: !complete }))}
         className="flex items-start gap-2 text-left disabled:opacity-60">

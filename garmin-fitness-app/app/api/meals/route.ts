@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cleanMeal } from '@/lib/meals';
-import { addToDay, deleteMeal, getDay, rescaleMeal, setDayComplete } from '@/lib/meals-db';
+import { cleanMeal, isMealType } from '@/lib/meals';
+import { addToDay, deleteMeal, getDay, rescaleMeal, setDayComplete, setMealType } from '@/lib/meals-db';
 import { homeDayAndTime } from '@/lib/raw-data';
 
 export const dynamic = 'force-dynamic';
@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
 
 // PATCH /api/meals { date, complete }   → mark the day complete or not
 // PATCH /api/meals { id, factor }       → rescale one meal's portion
+// PATCH /api/meals { id, meal_type }    → breakfast | lunch | dinner | in_between | null
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
@@ -60,6 +61,12 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ ok: true, ...(await setDayComplete(body.date, body.complete)) }, { headers: NO_STORE });
     }
     const id = Number(body.id);
+    if ('meal_type' in body) {
+      if (!Number.isInteger(id) || id <= 0 || !(body.meal_type === null || isMealType(body.meal_type))) {
+        return NextResponse.json({ error: 'id and a valid meal_type are required' }, { status: 400 });
+      }
+      return NextResponse.json({ ok: await setMealType(id, body.meal_type) }, { headers: NO_STORE });
+    }
     const factor = Number(body.factor);
     if (!Number.isInteger(id) || id <= 0 || !Number.isFinite(factor) || factor < 0.1 || factor > 5) {
       return NextResponse.json({ error: 'id and a factor between 0.1 and 5 are required' }, { status: 400 });

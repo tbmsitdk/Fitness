@@ -14,12 +14,38 @@ import { GRAMS_PER_UNIT, type NutritionLog } from '@/lib/nutrition';
 
 export type MealSource = 'text' | 'photo' | 'manual';
 
+export const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'in_between'] as const;
+export type MealType = typeof MEAL_TYPES[number];
+export const MEAL_TYPE_LABEL: Record<MealType, string> = {
+  breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', in_between: 'In between',
+};
+
+export function isMealType(v: unknown): v is MealType {
+  return typeof v === 'string' && (MEAL_TYPES as readonly string[]).includes(v);
+}
+
+/**
+ * A fallback only, for an entry that arrives without a type: the person's own
+ * word ("lunch: …") always wins. Outside the usual meal hours it is "in between".
+ */
+export function mealTypeFromTime(time: string | null): MealType | null {
+  if (!time || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
+  const [h, m] = time.split(':').map(Number);
+  const mins = h * 60 + m;
+  if (mins >= 5 * 60 && mins < 10 * 60 + 30) return 'breakfast';
+  if (mins >= 11 * 60 + 30 && mins < 14 * 60 + 30) return 'lunch';
+  if (mins >= 17 * 60 + 30 && mins < 21 * 60) return 'dinner';
+  return 'in_between';
+}
+
 export interface Meal {
   id?: number;
   /** The day the meal belongs to (after-midnight eating belongs to the evening before). */
   date: string;
   /** 'HH:MM', or null when not known. */
   time: string | null;
+  /** Breakfast, lunch, dinner or in between. Null when it cannot be told (e.g. amounts typed by hand). */
+  meal_type: MealType | null;
   description: string;
   /** Estimates. Null = unknown (a hand-logged count carried over has no calories). */
   kcal: number | null;
@@ -132,6 +158,8 @@ export function deriveDay(date: string, meals: Meal[], complete: boolean): Deriv
     veg_fruit_portions: total('veg_fruit_portions'),
     evening_kcal_pct: share(m => isTime(m.time) && isEvening(m.time), true),
     ultra_processed_pct: share(m => m.ultra_processed, false),
+    // Needs every meal with calories to have a type, or the share would be understated.
+    in_between_kcal_pct: real.some(m => (m.kcal ?? 0) > 0 && m.meal_type == null) ? null : share(m => m.meal_type === 'in_between', false),
     first_food_time,
     eating_window_h,
   };
@@ -162,6 +190,7 @@ export function carryOverMeal(row: NutritionLog): Meal | null {
     date: row.date.slice(0, 10),
     // A late coffee needs a time to stay "after 14:00"; the last-food time carries the rest.
     time: row.last_food_time ?? (row.caffeine_after_14 ? '15:00' : null),
+    meal_type: null,
     description: `Logged by hand earlier${parts.length ? `: ${parts.join(', ')}` : ''}`,
     kcal: null, protein_g: null, carbs_g: null, added_sugar_g: null, fat_g: null, fibre_g: null, veg_fruit_portions: null,
     alcohol_g: alcohol * GRAMS_PER_UNIT,
@@ -182,7 +211,7 @@ export function carryOverStatement(row: NutritionLog): Meal | null {
 
 export function noAlcoholStatement(date: string): Meal {
   return {
-    date, time: null, description: 'No alcohol today',
+    date, time: null, meal_type: null, description: 'No alcohol today',
     kcal: 0, protein_g: 0, carbs_g: 0, added_sugar_g: 0, fat_g: 0, fibre_g: 0, veg_fruit_portions: 0,
     alcohol_g: 0, candy_portions: 0, savoury_snacks: 0, sugary_drinks: 0,
     caffeine: false, ultra_processed: false, drink_only: true, no_alcohol_statement: true, source: 'text',
@@ -214,7 +243,10 @@ export function cleanMeal(raw: unknown, date: string): Meal | null {
     typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(max, round1(v)) : null;
   const time = typeof m.time === 'string' && isTime(m.time) ? m.time : null;
   return {
-    date, time, description,
+    date, time,
+    // The stated type wins; otherwise the time of day decides, and with neither it stays unknown.
+    meal_type: isMealType(m.meal_type) ? m.meal_type : mealTypeFromTime(time),
+    description,
     kcal: amount(m.kcal, 6000) === null ? null : Math.round(amount(m.kcal, 6000)!),
     protein_g: amount(m.protein_g, 400), carbs_g: amount(m.carbs_g, 1000), added_sugar_g: amount(m.added_sugar_g, 600),
     fat_g: amount(m.fat_g, 500), fibre_g: amount(m.fibre_g, 150), veg_fruit_portions: amount(m.veg_fruit_portions, 20),
@@ -243,5 +275,23 @@ export function mealLine(m: Meal): string {
   if (m.savoury_snacks > 0) bits.push(`${m.savoury_snacks} savoury`);
   if (m.sugary_drinks > 0) bits.push(`${m.sugary_drinks} sugary drink${m.sugary_drinks === 1 ? '' : 's'}`);
   if (m.caffeine) bits.push('caffeine');
-  return `${m.time ? `${m.time} ` : ''}${m.description}${bits.length ? ` — ${bits.join(', ')}` : ''}`;
+  const type = m.meal_type ? `${MEAL_TYPE_LABEL[m.meal_type]}${m.time ? '' : ':'} ` : '';
+  return `${type}${m.time ? `${m.time} ` : ''}${m.description}${bits.length ? ` — ${bits.join(', ')}` : ''}`;
+}
+
+/** Calories per kind of meal for one day's entries; null where an entry has no estimate. */
+export function kcalByMealType(meals: Meal[]): { type: MealType | null; label: string; meals: Meal[]; kcal: number | null }[] {
+  const real = meals.filter(m => !m.no_alcohol_statement);
+  const groups: (MealType | null)[] = [...MEAL_TYPES, null];
+  return groups
+    .map(type => {
+      const inGroup = real.filter(m => m.meal_type === type);
+      return {
+        type,
+        label: type ? MEAL_TYPE_LABEL[type] : 'Not sorted',
+        meals: inGroup,
+        kcal: inGroup.some(m => m.kcal == null) ? null : inGroup.reduce((s, m) => s + (m.kcal as number), 0),
+      };
+    })
+    .filter(g => g.meals.length > 0);
 }

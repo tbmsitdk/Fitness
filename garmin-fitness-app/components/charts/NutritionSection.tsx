@@ -7,6 +7,7 @@ import type { NutritionLog } from '@/lib/nutrition';
 import type { DayMetrics } from '@/lib/nutrition-analysis';
 import ExpandableCard from '@/components/ExpandableCard';
 import NutritionCalendar from './NutritionCalendar';
+import NutritionHistory from './NutritionHistory';
 import NutritionImpact from './NutritionImpact';
 import NutritionCombined from './NutritionCombined';
 import NutritionEffects from './NutritionEffects';
@@ -74,6 +75,10 @@ export default function NutritionSection({ allWellness, allActivities, cutoff }:
     <>
       <ExpandableCard title="Food & Drink · Intake">
         {() => <NutritionCalendar logs={inPeriod} cutoff={cutoff} />}
+      </ExpandableCard>
+
+      <ExpandableCard title="Nutrition history · Day by Day">
+        {(expanded) => <NutritionHistory logs={inPeriod} expanded={expanded} />}
       </ExpandableCard>
 
       <ExpandableCard title="Alcohol · Impact on Recovery">

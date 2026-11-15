@@ -5,7 +5,7 @@ import { alcoholUnits } from '@/lib/nutrition';
 const TODAY = '2026-11-15';
 
 const meal = (over: Record<string, unknown> = {}) => ({
-  date: TODAY, time: '19:30', description: 'Pasta bolognese', kcal: 650, protein_g: 32, carbs_g: 70, added_sugar_g: 4,
+  date: TODAY, time: '19:30', meal_type: 'dinner', description: 'Pasta bolognese', kcal: 650, protein_g: 32, carbs_g: 70, added_sugar_g: 4,
   fat_g: 24, fibre_g: 7, veg_fruit_portions: 1, ultra_processed: false, drinks: [], candy_portions: 0,
   savoury_snacks: 0, sugary_drinks: 0, caffeine: false, drink_only: false, ...over,
 });
@@ -32,7 +32,8 @@ describe('resolveQuickLog — meals', () => {
     expect(p.days).toHaveLength(1);
     const m = p.days[0].meals[0];
     expect(m).toMatchObject({ date: TODAY, time: '19:30', description: 'Pasta bolognese', kcal: 650, protein_g: 32, alcohol_g: 0, source: 'text' });
-    expect(p.days[0].lines[0]).toBe('19:30 Pasta bolognese — ~650 kcal, 32 g protein, 4 g added sugar, 7 g fibre');
+    expect(p.days[0].lines[0]).toBe('Dinner 19:30 Pasta bolognese — ~650 kcal, 32 g protein, 4 g added sugar, 7 g fibre');
+    expect(m.meal_type).toBe('dinner');
     expect(p.days[0].noAlcohol).toBe(false);
     expect(p.days[0].complete).toBe(false);
   });
@@ -181,6 +182,7 @@ describe('prompt and schema', () => {
     expect(QUICK_LOG_SYSTEM).toContain('dead_hang = Dead hang');
     expect(QUICK_LOG_SYSTEM).toMatch(/Does not count:/);
     expect(QUICK_LOG_SYSTEM).not.toMatch(/meal.quality/i);
+    expect(QUICK_LOG_SYSTEM).toMatch(/in the language the note is written in/);
   });
 
   it('wraps the note, gives the time, and shows what is already in the diary', () => {
@@ -188,7 +190,7 @@ describe('prompt and schema', () => {
     const p = buildQuickLogPrompt({ text: 'two beers', today: TODAY, weekday: 'Sunday', nowTime: '20:15', recentMeals: existing, hasImages: false });
     expect(p).toContain('<note>\ntwo beers\n</note>');
     expect(p).toContain('it is now 20:15');
-    expect(p).toContain('2026-11-15 19:30 Pasta bolognese');
+    expect(p).toContain('2026-11-15 Dinner 19:30 Pasta bolognese');
   });
 
   it('has closed objects with every property required, at every level', () => {

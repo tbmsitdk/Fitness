@@ -6,7 +6,7 @@ import { createClient, type VercelClient } from '@vercel/postgres';
 import { initializeDatabase } from '@/lib/db';
 import { coerceNutritionLog } from '@/lib/nutrition';
 import {
-  carryOverMeal, carryOverStatement, deriveDay, noAlcoholStatement, scaleMeal, type Meal,
+  carryOverMeal, carryOverStatement, deriveDay, isMealType, noAlcoholStatement, scaleMeal, type Meal, type MealType,
 } from '@/lib/meals';
 
 let ready: Promise<void> | null = null;
@@ -23,6 +23,7 @@ function toMeal(r: any): Meal {
     id: Number(r.id),
     date: String(r.day ?? r.date).slice(0, 10),
     time: r.time == null ? null : String(r.time).slice(0, 5),
+    meal_type: isMealType(r.meal_type) ? r.meal_type : null,
     description: String(r.description),
     kcal: num(r.kcal), protein_g: num(r.protein_g), carbs_g: num(r.carbs_g), added_sugar_g: num(r.added_sugar_g),
     fat_g: num(r.fat_g), fibre_g: num(r.fibre_g), veg_fruit_portions: num(r.veg_fruit_portions),
@@ -55,11 +56,11 @@ async function insertMeal(c: VercelClient, m: Meal): Promise<void> {
   await c.query(
     `INSERT INTO meals (date, time, description, kcal, protein_g, carbs_g, added_sugar_g, fat_g, fibre_g,
                         veg_fruit_portions, alcohol_g, candy_portions, savoury_snacks, sugary_drinks,
-                        caffeine, ultra_processed, drink_only, no_alcohol_statement, source)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+                        caffeine, ultra_processed, drink_only, no_alcohol_statement, source, meal_type)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [m.date, m.time, m.description, m.kcal, m.protein_g, m.carbs_g, m.added_sugar_g, m.fat_g, m.fibre_g,
      m.veg_fruit_portions, m.alcohol_g, m.candy_portions, m.savoury_snacks, m.sugary_drinks,
-     m.caffeine, m.ultra_processed, m.drink_only, m.no_alcohol_statement, m.source],
+     m.caffeine, m.ultra_processed, m.drink_only, m.no_alcohol_statement, m.source, m.meal_type],
   );
 }
 
@@ -81,7 +82,7 @@ async function rederive(c: VercelClient, date: string, complete?: boolean): Prom
              alcohol_units = NULL, candy_portions = NULL, savoury_snacks = NULL, sugary_drinks = NULL,
              last_food_time = NULL, caffeine_after_14 = NULL, kcal = NULL, protein_g = NULL, carbs_g = NULL,
              added_sugar_g = NULL, fat_g = NULL, fibre_g = NULL, veg_fruit_portions = NULL,
-             evening_kcal_pct = NULL, ultra_processed_pct = NULL, first_food_time = NULL,
+             evening_kcal_pct = NULL, ultra_processed_pct = NULL, in_between_kcal_pct = NULL, first_food_time = NULL,
              eating_window_h = NULL, updated_at = NOW()
            WHERE date = $1`, [date]);
       } else {
@@ -96,8 +97,9 @@ async function rederive(c: VercelClient, date: string, complete?: boolean): Prom
     `INSERT INTO nutrition_logs
        (date, alcohol_units, candy_portions, savoury_snacks, sugary_drinks, last_food_time, caffeine_after_14,
         from_meals, day_complete, meal_count, kcal, protein_g, carbs_g, added_sugar_g, fat_g, fibre_g,
-        veg_fruit_portions, evening_kcal_pct, ultra_processed_pct, first_food_time, eating_window_h)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+        veg_fruit_portions, evening_kcal_pct, ultra_processed_pct, first_food_time, eating_window_h,
+        in_between_kcal_pct)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
      ON CONFLICT (date) DO UPDATE SET
        alcohol_units = EXCLUDED.alcohol_units, candy_portions = EXCLUDED.candy_portions,
        savoury_snacks = EXCLUDED.savoury_snacks, sugary_drinks = EXCLUDED.sugary_drinks,
@@ -107,10 +109,12 @@ async function rederive(c: VercelClient, date: string, complete?: boolean): Prom
        added_sugar_g = EXCLUDED.added_sugar_g, fat_g = EXCLUDED.fat_g, fibre_g = EXCLUDED.fibre_g,
        veg_fruit_portions = EXCLUDED.veg_fruit_portions, evening_kcal_pct = EXCLUDED.evening_kcal_pct,
        ultra_processed_pct = EXCLUDED.ultra_processed_pct, first_food_time = EXCLUDED.first_food_time,
-       eating_window_h = EXCLUDED.eating_window_h, updated_at = NOW()`,
+       eating_window_h = EXCLUDED.eating_window_h, in_between_kcal_pct = EXCLUDED.in_between_kcal_pct,
+       updated_at = NOW()`,
     [date, d.alcohol_units, d.candy_portions, d.savoury_snacks, d.sugary_drinks, d.last_food_time, d.caffeine_after_14,
      d.day_complete, d.meal_count, d.kcal, d.protein_g, d.carbs_g, d.added_sugar_g, d.fat_g, d.fibre_g,
-     d.veg_fruit_portions, d.evening_kcal_pct, d.ultra_processed_pct, d.first_food_time, d.eating_window_h],
+     d.veg_fruit_portions, d.evening_kcal_pct, d.ultra_processed_pct, d.first_food_time, d.eating_window_h,
+     d.in_between_kcal_pct],
   );
 }
 
@@ -190,6 +194,16 @@ export function rescaleMeal(id: number, factor: number): Promise<boolean> {
        m.veg_fruit_portions, m.alcohol_g, m.candy_portions, m.savoury_snacks, m.sugary_drinks],
     );
     await rederive(c, m.date);
+    return true;
+  });
+}
+
+/** Moves one entry to another kind of meal (or to "not sorted" with null). */
+export function setMealType(id: number, mealType: MealType | null): Promise<boolean> {
+  return withClient(async c => {
+    const { rows } = await c.query(`UPDATE meals SET meal_type = $2 WHERE id = $1 RETURNING date::text AS day`, [id, mealType]);
+    if (!rows[0]) return false;
+    await rederive(c, String(rows[0].day));
     return true;
   });
 }

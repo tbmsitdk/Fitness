@@ -50,6 +50,8 @@ export interface NutritionLog {
   evening_kcal_pct?: number | null;
   /** Share of the day's calories from mostly ultra-processed meals, 0-100. */
   ultra_processed_pct?: number | null;
+  /** Share of the day's calories eaten in between meals, 0-100. */
+  in_between_kcal_pct?: number | null;
   first_food_time?: string | null;
   /** Hours from first to last food. */
   eating_window_h?: number | null;
@@ -273,6 +275,7 @@ export function coerceNutritionLog(row: Record<string, unknown>): NutritionLog {
     log.veg_fruit_portions = num(row.veg_fruit_portions);
     log.evening_kcal_pct = num(row.evening_kcal_pct);
     log.ultra_processed_pct = num(row.ultra_processed_pct);
+    log.in_between_kcal_pct = num(row.in_between_kcal_pct);
     log.first_food_time = time(row.first_food_time);
     log.eating_window_h = num(row.eating_window_h);
   }

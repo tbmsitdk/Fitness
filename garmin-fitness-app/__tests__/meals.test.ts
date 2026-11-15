@@ -1,20 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import {
-  carryOverMeal, carryOverStatement, cleanMeal, dayMinutes, deriveDay, mealLine, noAlcoholStatement, scaleMeal,
-  type Meal,
+  carryOverMeal, carryOverStatement, cleanMeal, dayMinutes, deriveDay, kcalByMealType, mealLine, mealTypeFromTime,
+  noAlcoholStatement, scaleMeal, type Meal,
 } from '@/lib/meals';
 import type { NutritionLog } from '@/lib/nutrition';
 
 const D = '2026-11-15';
 
 const meal = (over: Partial<Meal> = {}): Meal => ({
-  date: D, time: '12:30', description: 'Chicken salad',
+  date: D, time: '12:30', meal_type: 'lunch', description: 'Chicken salad',
   kcal: 500, protein_g: 40, carbs_g: 30, added_sugar_g: 2, fat_g: 20, fibre_g: 8, veg_fruit_portions: 2,
   alcohol_g: 0, candy_portions: 0, savoury_snacks: 0, sugary_drinks: 0,
   caffeine: false, ultra_processed: false, drink_only: false, no_alcohol_statement: false, source: 'text',
   ...over,
 });
-const wine = (over: Partial<Meal> = {}) => meal({ time: '20:00', description: '2 glasses of red', kcal: 250, protein_g: 0, carbs_g: 8, added_sugar_g: 0, fat_g: 0, fibre_g: 0, veg_fruit_portions: 0, alcohol_g: 30.8, drink_only: true, ...over });
+const wine = (over: Partial<Meal> = {}) => meal({ time: '20:00', meal_type: 'in_between', description: '2 glasses of red', kcal: 250, protein_g: 0, carbs_g: 8, added_sugar_g: 0, fat_g: 0, fibre_g: 0, veg_fruit_portions: 0, alcohol_g: 30.8, drink_only: true, ...over });
 const manual = (over: Partial<NutritionLog> = {}): NutritionLog => ({
   date: D, alcohol_units: null, candy_portions: null, savoury_snacks: null, sugary_drinks: null,
   last_food_time: null, caffeine_after_14: null, notes: null, ...over,
@@ -205,8 +205,60 @@ describe('scaleMeal / cleanMeal / mealLine', () => {
   });
 
   it('describes a meal in one line', () => {
-    expect(mealLine(meal())).toBe('12:30 Chicken salad — ~500 kcal, 40 g protein, 2 g added sugar, 8 g fibre');
-    expect(mealLine(wine())).toBe('20:00 2 glasses of red — ~250 kcal, 2.5 alcohol units');
+    expect(mealLine(meal())).toBe('Lunch 12:30 Chicken salad — ~500 kcal, 40 g protein, 2 g added sugar, 8 g fibre');
+    expect(mealLine(wine())).toBe('In between 20:00 2 glasses of red — ~250 kcal, 2.5 alcohol units');
+    expect(mealLine(meal({ time: null, meal_type: 'dinner' }))).toMatch(/^Dinner: Chicken salad/);
+    expect(mealLine(meal({ meal_type: null }))).toMatch(/^12:30 Chicken salad/);
     expect(mealLine(noAlcoholStatement(D))).toBe('No alcohol today');
+  });
+});
+
+describe('breakfast, lunch, dinner and in between', () => {
+  it('keeps the type the person gave, whatever the clock says', () => {
+    expect(cleanMeal({ description: 'Late breakfast', time: '11:45', meal_type: 'breakfast' }, D)!.meal_type).toBe('breakfast');
+    expect(cleanMeal({ description: 'Early dinner', time: '16:30', meal_type: 'dinner' }, D)!.meal_type).toBe('dinner');
+  });
+
+  it('falls back to the time of day when no valid type is given', () => {
+    expect(cleanMeal({ description: 'x', time: '07:30' }, D)!.meal_type).toBe('breakfast');
+    expect(cleanMeal({ description: 'x', time: '12:30', meal_type: 'brunch' }, D)!.meal_type).toBe('lunch');
+    expect(mealTypeFromTime('19:00')).toBe('dinner');
+    expect(mealTypeFromTime('15:30')).toBe('in_between');
+    expect(mealTypeFromTime('22:30')).toBe('in_between');
+    expect(mealTypeFromTime('00:30')).toBe('in_between');
+  });
+
+  it('leaves the type unknown with neither a type nor a time, rather than guessing', () => {
+    expect(cleanMeal({ description: 'x' }, D)!.meal_type).toBeNull();
+    expect(carryOverMeal({ date: D, alcohol_units: 2, candy_portions: null, savoury_snacks: null, sugary_drinks: null, last_food_time: null, caffeine_after_14: null, notes: null })!.meal_type).toBeNull();
+  });
+
+  const day = [
+    meal({ time: '07:30', meal_type: 'breakfast', kcal: 400 }),
+    meal({ kcal: 600 }),
+    meal({ time: '15:30', meal_type: 'in_between', description: 'Cake', kcal: 300 }),
+    meal({ time: '19:00', meal_type: 'dinner', kcal: 500 }),
+    wine({ kcal: 200 }),
+  ];
+
+  it('computes the share of calories eaten in between meals, on a complete day only', () => {
+    expect(deriveDay(D, day, true).in_between_kcal_pct).toBe(25); // cake 300 + wine 200 of 2000
+    expect(deriveDay(D, day, false).in_between_kcal_pct).toBeNull();
+  });
+
+  it('withholds that share when an entry with calories has no type', () => {
+    expect(deriveDay(D, [...day, meal({ meal_type: null, kcal: 100 })], true).in_between_kcal_pct).toBeNull();
+  });
+
+  it('groups a day by meal with a calorie subtotal each', () => {
+    const groups = kcalByMealType([...day, noAlcoholStatement(D)]);
+    expect(groups.map(g => [g.label, g.meals.length, g.kcal])).toEqual([
+      ['Breakfast', 1, 400], ['Lunch', 1, 600], ['Dinner', 1, 500], ['In between', 2, 500],
+    ]);
+  });
+
+  it('shows no subtotal for a group holding an entry without an estimate, and collects untyped entries', () => {
+    const groups = kcalByMealType([meal({ kcal: null }), meal({ meal_type: null, description: 'Logged by hand earlier' })]);
+    expect(groups.map(g => [g.label, g.kcal])).toEqual([['Lunch', null], ['Not sorted', 500]]);
   });
 });

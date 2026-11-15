@@ -112,15 +112,15 @@ export function buildRawTables(input: RawDataInput): RawTables {
     tables['nutrition.csv'] = toCsv(
       ['date', 'weekday', 'alcohol_units', 'candy_portions', 'savoury_snacks', 'sugary_drinks',
        'last_food_time', 'caffeine_after_14', 'day_complete', 'kcal', 'protein_g', 'carbs_g', 'added_sugar_g',
-       'fat_g', 'fibre_g', 'veg_fruit_portions', 'evening_kcal_pct', 'ultra_processed_pct', 'first_food_time',
-       'eating_window_h'],
+       'fat_g', 'fibre_g', 'veg_fruit_portions', 'evening_kcal_pct', 'ultra_processed_pct', 'in_between_kcal_pct',
+       'first_food_time', 'eating_window_h'],
       rows,
       n => [dateOnly(n.date), weekday(dateOnly(n.date)), n.alcohol_units, n.candy_portions,
             n.savoury_snacks, n.sugary_drinks, n.last_food_time, n.caffeine_after_14,
             // Only a diary day can be complete; a hand-logged day leaves this empty.
             n.from_meals ? n.day_complete === true : null,
             n.kcal, n.protein_g, n.carbs_g, n.added_sugar_g, n.fat_g, n.fibre_g, n.veg_fruit_portions,
-            n.evening_kcal_pct, n.ultra_processed_pct, n.first_food_time, n.eating_window_h],
+            n.evening_kcal_pct, n.ultra_processed_pct, n.in_between_kcal_pct, n.first_food_time, n.eating_window_h],
     );
   }
 
@@ -129,11 +129,11 @@ export function buildRawTables(input: RawDataInput): RawTables {
       .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''));
     if (rows.length) {
       tables['meals.csv'] = toCsv(
-        ['date', 'weekday', 'time', 'description', 'kcal', 'protein_g', 'carbs_g', 'added_sugar_g', 'fat_g',
+        ['date', 'weekday', 'time', 'meal_type', 'description', 'kcal', 'protein_g', 'carbs_g', 'added_sugar_g', 'fat_g',
          'fibre_g', 'veg_fruit_portions', 'alcohol_g', 'candy_portions', 'savoury_snacks', 'sugary_drinks',
          'caffeine', 'ultra_processed'],
         rows,
-        m => [m.date, weekday(m.date), m.time, m.description, m.kcal, m.protein_g, m.carbs_g, m.added_sugar_g,
+        m => [m.date, weekday(m.date), m.time, m.meal_type, m.description, m.kcal, m.protein_g, m.carbs_g, m.added_sugar_g,
               m.fat_g, m.fibre_g, m.veg_fruit_portions, m.alcohol_g, m.candy_portions, m.savoury_snacks,
               m.sugary_drinks, m.caffeine, m.ultra_processed],
       );
@@ -175,8 +175,8 @@ export function buildRawTables(input: RawDataInput): RawTables {
 export const DATA_DICTIONARY = `Reading these tables:
 - An EMPTY cell means "not recorded". It never means zero. Do not fill, average in, or count empty cells as 0.
 - nutrition.csv: a 0 was entered deliberately and means "none that day". A day missing from the table was not logged at all and says nothing.
-- nutrition.csv day totals (kcal, protein_g, carbs_g, added_sugar_g, fat_g, fibre_g, veg_fruit_portions, evening_kcal_pct, ultra_processed_pct, eating_window_h) are filled ONLY on days the person confirmed as fully logged (day_complete = 1). On other days they are empty, and must not be read as low intake. evening_kcal_pct is the share of calories eaten at or after 19:00.
-- meals.csv has one row per meal, snack or drink. Its amounts are estimates from a description or a photo: good for patterns across weeks, off by a fifth or more on any single meal. Use it for timing and composition; do not sum it into day totals yourself for days that are not complete.
+- nutrition.csv day totals (kcal, protein_g, carbs_g, added_sugar_g, fat_g, fibre_g, veg_fruit_portions, evening_kcal_pct, ultra_processed_pct, eating_window_h) are filled ONLY on days the person confirmed as fully logged (day_complete = 1). On other days they are empty, and must not be read as low intake. evening_kcal_pct is the share of calories eaten at or after 19:00; in_between_kcal_pct is the share eaten outside breakfast, lunch and dinner.
+- meals.csv has one row per meal, snack or drink; meal_type is breakfast, lunch, dinner or in_between (empty when not known). Its amounts are estimates from a description or a photo: good for patterns across weeks, off by a fifth or more on any single meal. Use it for timing and composition; do not sum it into day totals yourself for days that are not complete.
 - wellness.csv dates are the morning the values were read, so sleep and resting HR on a row reflect the night BEFORE. Food, drink and training on day D show up in the row for D+1.
 - hrv_rmssd is usually empty: the device (Garmin Vivosmart 5) does not export it. stress_score is its HRV-derived stand-in and runs the OPPOSITE way (higher = worse).
 - Higher is better: sleep_score, sleep_hours (up to about 9), body_battery, vo2max. Lower is better: resting_hr, stress_score.
