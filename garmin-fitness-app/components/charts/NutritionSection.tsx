@@ -63,6 +63,11 @@ export default function NutritionSection({ allWellness, allActivities, cutoff }:
     [logs, cutoff],
   );
 
+  const wellnessInPeriod = useMemo(
+    () => allWellness.filter(w => new Date(w.date) >= cutoff),
+    [allWellness, cutoff],
+  );
+
   if (!logs) {
     return (
       <div className="rounded-lg border border-border bg-card p-6 flex items-center justify-center">
@@ -77,8 +82,8 @@ export default function NutritionSection({ allWellness, allActivities, cutoff }:
         {() => <NutritionCalendar logs={inPeriod} cutoff={cutoff} />}
       </ExpandableCard>
 
-      <ExpandableCard title="Nutrition history · Day by Day">
-        {(expanded) => <NutritionHistory logs={inPeriod} expanded={expanded} />}
+      <ExpandableCard title="Nutrition history · Calories in, burned and net">
+        {(expanded) => <NutritionHistory logs={inPeriod} wellness={wellnessInPeriod} expanded={expanded} />}
       </ExpandableCard>
 
       <ExpandableCard title="Alcohol · Impact on Recovery">

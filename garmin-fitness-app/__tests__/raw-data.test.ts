@@ -86,6 +86,18 @@ describe('buildRawTables', () => {
     expect(row(csv, 1)[col(csv, 'weekday')]).toBe('Fri');
   });
 
+  // A total read at 04:00 for a day still running must not reach the model as that day's burn.
+  it('writes calories burned only for days synced after they ended', () => {
+    const csv = buildRawTables({ activities: [], wellness: [
+      wellness('2026-10-29', { kcal_burned: 2600, active_kcal: 900, resting_kcal: 1700, kcal_synced_at: '2026-10-30T04:00:00Z' }),
+      wellness('2026-10-30', { kcal_burned: 310, active_kcal: 20, resting_kcal: 290, kcal_synced_at: '2026-10-30T04:00:00Z' }),
+    ] })['wellness.csv'];
+    expect(row(csv, 1)[col(csv, 'kcal_burned')]).toBe('2600');
+    expect(row(csv, 1)[col(csv, 'active_kcal')]).toBe('900');
+    expect(row(csv, 2)[col(csv, 'kcal_burned')]).toBe('');
+    expect(row(csv, 2)[col(csv, 'resting_kcal')]).toBe('');
+  });
+
   it('keeps an entered nutrition 0 distinct from a blank', () => {
     const t = buildRawTables({
       activities: [], wellness: [],

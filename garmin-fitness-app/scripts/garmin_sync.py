@@ -275,6 +275,18 @@ def _fetch_wellness(api: Garmin, ds: str) -> dict:
                      stats.get("bodyBatteryMostRecentValue") or 0)
             if bb > 0:
                 rec["body_battery"] = bb
+            # Energy burned: total = resting (BMR) + active. For a day still in
+            # progress these are partial; the app only treats a day's figure as
+            # final once it was synced after that day ended.
+            total_kcal = int(stats.get("totalKilocalories") or 0)
+            if total_kcal > 0:
+                rec["kcal_burned"] = total_kcal
+                active_kcal = int(stats.get("activeKilocalories") or 0)
+                resting_kcal = int(stats.get("bmrKilocalories") or 0)
+                if active_kcal > 0:
+                    rec["active_kcal"] = active_kcal
+                if resting_kcal > 0:
+                    rec["resting_kcal"] = resting_kcal
         except Exception:
             pass
 

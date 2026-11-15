@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { askStructured } from '@/lib/ai';
 import { listMeals } from '@/lib/meals-db';
 import {
-  MAX_IMAGES, MAX_TEXT_LENGTH, QUICK_LOG_SCHEMA, QUICK_LOG_SYSTEM,
+  MAX_BACKDATE_DAYS, MAX_IMAGES, MAX_TEXT_LENGTH, QUICK_LOG_SCHEMA, QUICK_LOG_SYSTEM,
   buildQuickLogPrompt, resolveQuickLog,
 } from '@/lib/quick-log';
 import { homeDayAndTime } from '@/lib/raw-data';
@@ -61,7 +61,10 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    return NextResponse.json({ proposal: resolveQuickLog(reply.text, today, images.length > 0 ? 'photo' : 'text') });
+    // Checked against everything in the diary for the days that can be logged,
+    // not just the last few shown to the model.
+    const diary = await listMeals(daysAgo(today, MAX_BACKDATE_DAYS));
+    return NextResponse.json({ proposal: resolveQuickLog(reply.text, today, images.length > 0 ? 'photo' : 'text', diary) });
   } catch (e) {
     console.error('[quick-log] POST', e);
     return NextResponse.json({ error: 'Could not read that note. Try again, or use the forms.' }, { status: 500 });

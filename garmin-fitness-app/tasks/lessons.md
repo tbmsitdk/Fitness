@@ -316,3 +316,29 @@ alcohol today", and 500 kcal so far is not a 500 kcal day.
 **Tests:** `__tests__/meals.test.ts` ("does NOT report zero alcohol or sweets
 just because none are logged yet", "reports no day totals for a partial day",
 carry-over round trip), and the meals cases in `quick-log.test.ts`.
+
+## 22. A difference needs both of its halves whole
+
+Net calories = eaten − burned. The Garmin sync runs at 04:00 and also reads
+"today", when the watch has counted four hours; subtracting that from a full
+day of food shows a 1,700 kcal surplus that never happened. The mirror image
+is a full day's burn against a half-logged diary.
+
+**Rule:** a day gets a net figure only when the diary day is complete AND the
+burn figure was synced after the day ended (`kcal_synced_at`, checked in
+`isBurnFinal`). Anything else is shown as partial or pending and stays out of
+every average. A weekly weight rate is stated only with seven such days.
+**Tests:** `__tests__/energy-balance.test.ts`, and "writes calories burned
+only for days synced after they ended" in `raw-data.test.ts`.
+
+## 23. A duplicate guard asks; it does not decide
+
+The same meal entered twice doubles the day's calories, but the same dish at
+lunch and dinner, or a second coffee, is real. The guard therefore flags only
+the same thing at the same sitting (same day, much the same words, and the
+same kind of meal or within an hour), sets it aside in the proposal with an
+"Add anyway" choice, and never drops or adds anything on its own. A separate
+server check skips an identical entry re-sent within two minutes, which is a
+double click, not a second helping.
+**Tests:** "likelyDuplicate" in `meals.test.ts`, and the duplicate cases in
+`quick-log.test.ts`.

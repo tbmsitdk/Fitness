@@ -56,7 +56,7 @@ describe('resolveQuickLog — meals', () => {
 
   it('accepts a statement on its own, with no meal', () => {
     const p = resolve({ day_statements: [{ date: TODAY, no_alcohol: true, day_complete: false }] });
-    expect(p.days).toEqual([{ date: TODAY, meals: [], lines: [], noAlcohol: true, complete: false }]);
+    expect(p.days).toEqual([{ date: TODAY, meals: [], lines: [], duplicates: [], noAlcohol: true, complete: false }]);
     expect(resolve({ day_statements: [{ date: TODAY, no_alcohol: false, day_complete: false }] }).days).toEqual([]);
   });
 
@@ -88,6 +88,28 @@ describe('resolveQuickLog — meals', () => {
     const p = resolveQuickLog(reply({ meals: [meal(), meal({ date: '2026-11-14', description: 'Late kebab', time: '00:30' }), meal({ description: 'Lunch', time: '12:00' })] }), TODAY, 'photo');
     expect(p.days.map(d => [d.date, d.meals.length])).toEqual([['2026-11-14', 1], [TODAY, 2]]);
     expect(p.days[1].meals[0].source).toBe('photo');
+  });
+
+  // "Make sure not to double count when I enter the same food twice the same day."
+  it('sets aside an entry that is already in the diary instead of adding it again', () => {
+    const inDiary = resolve({ meals: [meal()] }).days[0].meals;
+    const p = resolveQuickLog(reply({ meals: [meal({ description: 'pasta bolognese', time: '19:40' }), meal({ description: 'Ice cream', time: '20:30', meal_type: 'in_between' })] }), TODAY, 'text', inDiary);
+    expect(p.days[0].meals.map(m => m.description)).toEqual(['Ice cream']);
+    expect(p.days[0].duplicates).toHaveLength(1);
+    expect(p.days[0].duplicates[0].alreadyThere).toContain('Pasta bolognese');
+  });
+
+  it('catches the same thing listed twice in one note', () => {
+    const p = resolve({ meals: [meal(), meal({ description: 'Pasta bolognese', time: '19:35' })] });
+    expect(p.days[0].meals).toHaveLength(1);
+    expect(p.days[0].duplicates).toHaveLength(1);
+  });
+
+  it('keeps the same dish at a different meal as a real second entry', () => {
+    const inDiary = resolve({ meals: [meal({ time: '12:30', meal_type: 'lunch' })] }).days[0].meals;
+    const p = resolveQuickLog(reply({ meals: [meal()] }), TODAY, 'text', inDiary);
+    expect(p.days[0].meals).toHaveLength(1);
+    expect(p.days[0].duplicates).toEqual([]);
   });
 
   it('drops an entry with no description', () => {

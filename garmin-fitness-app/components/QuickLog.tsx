@@ -79,7 +79,7 @@ export default function QuickLog() {
     let saved = 0;
     try {
       // The ordinary routes do the saving, with their own validation.
-      for (const d of proposal.days) { await post('/api/meals', { date: d.date, meals: d.meals, no_alcohol: d.noAlcohol, ...(d.complete ? { complete: true } : {}) }); saved++; }
+      for (const d of proposal.days.filter(savable)) { await post('/api/meals', { date: d.date, meals: d.meals, no_alcohol: d.noAlcohol, ...(d.complete ? { complete: true } : {}) }); saved++; }
       for (const e of proposal.exercises) { await post('/api/exercises', { date: e.date, entries: e.entries }); saved++; }
       for (const t of proposal.trips) { await post('/api/travel', t.payload); saved++; }
       setDone(`Saved ${saved} ${saved === 1 ? 'entry' : 'entries'}.`);
@@ -91,7 +91,21 @@ export default function QuickLog() {
     } finally { setBusy(null); }
   }
 
-  const nothing = proposal && proposal.days.length + proposal.exercises.length + proposal.trips.length === 0;
+  /** The person says a flagged entry really is a second helping: move it into the meals to save. */
+  function addAnyway(date: string, index: number) {
+    setProposal(prev => prev && {
+      ...prev,
+      days: prev.days.map(d => {
+        if (d.date !== date) return d;
+        const dup = d.duplicates[index];
+        return { ...d, meals: [...d.meals, dup.meal], lines: [...d.lines, dup.line], duplicates: d.duplicates.filter((_, i) => i !== index) };
+      }),
+    });
+  }
+
+  // A day that holds only flagged repeats has nothing to save.
+  const savable = (d: QuickLogProposal['days'][number]) => d.meals.length > 0 || d.noAlcohol || d.complete;
+  const nothing = proposal && proposal.days.filter(savable).length + proposal.exercises.length + proposal.trips.length === 0;
 
   return (
     <Card>
@@ -149,6 +163,12 @@ export default function QuickLog() {
                 <p className="text-xs font-medium">Meal diary, {when(d.date)}</p>
                 <ul className="mt-1 space-y-0.5">
                   {d.lines.map((l, i) => <li key={i} className="text-xs text-muted-foreground">{l}</li>)}
+                  {d.duplicates.map((dup, i) => (
+                    <li key={`dup-${i}`} className="text-xs text-amber-400 flex items-start justify-between gap-2">
+                      <span>Already in the diary, not added again: {dup.line}</span>
+                      <button onClick={() => addAnyway(d.date, i)} className="underline flex-shrink-0 hover:text-foreground">Add anyway</button>
+                    </li>
+                  ))}
                   {d.noAlcohol && <li className="text-xs text-muted-foreground">No alcohol this day</li>}
                   {d.complete && <li className="text-xs text-muted-foreground">Marks the day as complete: totals will count</li>}
                 </ul>

@@ -151,7 +151,17 @@ export function listMeals(from: string): Promise<Meal[]> {
 export function addToDay(date: string, meals: Meal[], opts: { noAlcohol?: boolean; complete?: boolean } = {}): Promise<DayDiary> {
   return withClient(async c => {
     await carryOver(c, date);
-    for (const m of meals) await insertMeal(c, { ...m, date });
+    for (const m of meals) {
+      // A double click or a retried request sends the very same entry again
+      // seconds later. Identical in every respect and that recent: skip it.
+      const twin = await c.query(
+        `SELECT 1 FROM meals
+         WHERE date = $1 AND description = $2 AND time IS NOT DISTINCT FROM $3 AND kcal IS NOT DISTINCT FROM $4
+           AND created_at > NOW() - INTERVAL '2 minutes' LIMIT 1`,
+        [date, m.description, m.time, m.kcal],
+      );
+      if (twin.rows.length === 0) await insertMeal(c, { ...m, date });
+    }
     if (opts.noAlcohol) {
       const has = (await mealsOn(c, date)).some(m => m.no_alcohol_statement);
       if (!has) await insertMeal(c, noAlcoholStatement(date));

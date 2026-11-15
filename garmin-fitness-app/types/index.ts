@@ -50,6 +50,12 @@ export interface WellnessRecord {
   walking_double_support_pct: number | null; // % time both feet on ground (balance)
   oxygen_saturation: number | null;       // SpO2 %
   mindful_minutes: number | null;         // meditation/mindfulness minutes
+  // Energy burned that day, from the watch: total = resting + active (kcal).
+  kcal_burned?: number | null;
+  active_kcal?: number | null;
+  resting_kcal?: number | null;
+  /** When the burn figures were last synced. A day synced before it ended is partial. */
+  kcal_synced_at?: string | null;
 }
 
 export interface WeeklyVolume {

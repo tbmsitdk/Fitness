@@ -54,6 +54,13 @@ export function homeDayAndTime(instant: string, timeZone = DEFAULT_HOME_TIMEZONE
   return { day: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}` };
 }
 
+/** Same rule as lib/energy-balance.ts isBurnFinal (kept here to avoid a circular import). */
+function burnIsFinal(w: WellnessRecord): boolean {
+  if (w.kcal_burned == null || !w.kcal_synced_at) return false;
+  const synced = Date.parse(w.kcal_synced_at);
+  return Number.isFinite(synced) && synced >= Date.parse(`${dateOnly(w.date)}T23:00:00Z`);
+}
+
 function weekday(day: string): string {
   const d = new Date(`${day}T12:00:00Z`);
   return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getUTCDay()] ?? '';
@@ -82,12 +89,14 @@ export function buildRawTables(input: RawDataInput): RawTables {
       ['date', 'weekday', 'resting_hr', 'hrv_rmssd', 'stress_score', 'body_battery', 'sleep_hours',
        'sleep_score', 'steps', 'weight_kg', 'body_fat_pct', 'muscle_mass_kg', 'body_comp_source',
        'visceral_fat', 'vo2max', 'respiratory_rate', 'oxygen_saturation', 'walking_speed',
-       'walking_asymmetry_pct', 'mindful_minutes'],
+       'walking_asymmetry_pct', 'mindful_minutes', 'kcal_burned', 'active_kcal', 'resting_kcal'],
       rows,
       w => [dateOnly(w.date), weekday(dateOnly(w.date)), w.resting_hr, w.hrv_rmssd, w.stress_score,
             w.body_battery, w.sleep_hours, w.sleep_score, w.steps, w.weight_kg, w.body_fat_pct,
             w.muscle_mass_kg, w.body_comp_source, w.visceral_fat, w.vo2max, w.respiratory_rate,
-            w.oxygen_saturation, w.walking_speed, w.walking_asymmetry_pct, w.mindful_minutes],
+            w.oxygen_saturation, w.walking_speed, w.walking_asymmetry_pct, w.mindful_minutes,
+            // Only a figure synced after the day ended; a running day's partial total is left empty.
+            ...(burnIsFinal(w) ? [w.kcal_burned, w.active_kcal, w.resting_kcal] : [null, null, null])],
     );
   }
 
@@ -176,6 +185,7 @@ export const DATA_DICTIONARY = `Reading these tables:
 - An EMPTY cell means "not recorded". It never means zero. Do not fill, average in, or count empty cells as 0.
 - nutrition.csv: a 0 was entered deliberately and means "none that day". A day missing from the table was not logged at all and says nothing.
 - nutrition.csv day totals (kcal, protein_g, carbs_g, added_sugar_g, fat_g, fibre_g, veg_fruit_portions, evening_kcal_pct, ultra_processed_pct, eating_window_h) are filled ONLY on days the person confirmed as fully logged (day_complete = 1). On other days they are empty, and must not be read as low intake. evening_kcal_pct is the share of calories eaten at or after 19:00; in_between_kcal_pct is the share eaten outside breakfast, lunch and dinner.
+- Energy balance: wellness.csv kcal_burned is the watch's total for the day (resting_kcal + active_kcal), filled only for finished days. A day's net is nutrition.csv kcal minus kcal_burned, and exists only where BOTH are filled (the diary day was complete). Negative = deficit. Both sides are estimates; trust averages over weeks, not single days.
 - meals.csv has one row per meal, snack or drink; meal_type is breakfast, lunch, dinner or in_between (empty when not known). Its amounts are estimates from a description or a photo: good for patterns across weeks, off by a fifth or more on any single meal. Use it for timing and composition; do not sum it into day totals yourself for days that are not complete.
 - wellness.csv dates are the morning the values were read, so sleep and resting HR on a row reflect the night BEFORE. Food, drink and training on day D show up in the row for D+1.
 - hrv_rmssd is usually empty: the device (Garmin Vivosmart 5) does not export it. stress_score is its HRV-derived stand-in and runs the OPPOSITE way (higher = worse).

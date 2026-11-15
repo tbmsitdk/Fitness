@@ -10,7 +10,7 @@
 import {
   ALCOHOL_REFERENCE, CANDY_REFERENCE, GRAMS_PER_UNIT, NUTRITION_FIELDS, SAVOURY_REFERENCE,
 } from '@/lib/nutrition';
-import { cleanMeal, mealLine, type Meal, type MealSource } from '@/lib/meals';
+import { cleanMeal, likelyDuplicate, mealLine, type Meal, type MealSource } from '@/lib/meals';
 import { EXERCISES } from '@/lib/exercises';
 import { TRAVEL_MODES, TRAVEL_PURPOSES, utcOffsetOn } from '@/lib/travel';
 
@@ -200,6 +200,11 @@ export interface DayProposal {
   /** Meals to add, with alcohol already computed. */
   meals: Meal[];
   lines: string[];
+  /**
+   * Entries that look like something already in the diary for this day. They
+   * are NOT saved unless the person chooses to add them anyway.
+   */
+  duplicates: { meal: Meal; line: string; alreadyThere: string }[];
   noAlcohol: boolean;
   /** The person said this is everything for the day. */
   complete: boolean;
@@ -249,6 +254,8 @@ export function resolveQuickLog(
   text: string,
   today: string,
   source: MealSource = 'text',
+  /** What the diary already holds for the days in question, to catch repeats. */
+  existingMeals: Meal[] = [],
   homeTimezone = 'Europe/Copenhagen',
 ): QuickLogProposal {
   let raw: Record<string, unknown>;
@@ -261,7 +268,7 @@ export function resolveQuickLog(
   // ── Meals ──
   const dayMap = new Map<string, DayProposal>();
   const dayFor = (date: string) => {
-    const d = dayMap.get(date) ?? { date, meals: [], lines: [], noAlcohol: false, complete: false };
+    const d = dayMap.get(date) ?? { date, meals: [], lines: [], duplicates: [], noAlcohol: false, complete: false };
     dayMap.set(date, d);
     return d;
   };
@@ -275,6 +282,14 @@ export function resolveQuickLog(
     const meal = cleanMeal({ ...raw_, alcohol_g: gramsFor(drinks), source }, raw_.date);
     if (!meal) continue;
     const day = dayFor(raw_.date);
+    // The same thing at the same sitting, already in the diary or earlier in
+    // this very note, is set aside for the person to decide — never added
+    // silently, and never dropped silently.
+    const twin = likelyDuplicate(meal, [...existingMeals, ...day.meals]);
+    if (twin) {
+      day.duplicates.push({ meal, line: mealLine(meal), alreadyThere: mealLine(twin) });
+      continue;
+    }
     day.meals.push(meal);
     day.lines.push(mealLine(meal));
   }

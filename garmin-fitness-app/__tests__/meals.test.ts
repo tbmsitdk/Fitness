@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  carryOverMeal, carryOverStatement, cleanMeal, dayMinutes, deriveDay, kcalByMealType, mealLine, mealTypeFromTime,
+  carryOverMeal, carryOverStatement, cleanMeal, dayMinutes, deriveDay, descriptionOverlap, kcalByMealType, likelyDuplicate,
+  mealLine, mealTypeFromTime,
   noAlcoholStatement, scaleMeal, type Meal,
 } from '@/lib/meals';
 import type { NutritionLog } from '@/lib/nutrition';
@@ -260,5 +261,41 @@ describe('breakfast, lunch, dinner and in between', () => {
   it('shows no subtotal for a group holding an entry without an estimate, and collects untyped entries', () => {
     const groups = kcalByMealType([meal({ kcal: null }), meal({ meal_type: null, description: 'Logged by hand earlier' })]);
     expect(groups.map(g => [g.label, g.kcal])).toEqual([['Lunch', null], ['Not sorted', 500]]);
+  });
+});
+
+describe('likelyDuplicate — the same food entered twice', () => {
+  const lunch = meal({ id: 1, description: 'Chicken salad with a bread roll' });
+
+  it('catches the same meal entered again, however it is worded', () => {
+    expect(likelyDuplicate(meal({ description: 'chicken salad and a roll' }), [lunch])).toBe(lunch);
+    expect(likelyDuplicate(meal({ description: 'Chicken salad', time: '12:45' }), [lunch])).toBe(lunch);
+    expect(likelyDuplicate(meal({ description: 'Kyllingesalat' }), [meal({ id: 2, description: 'kyllingesalat med brød' })])).not.toBeNull();
+  });
+
+  it('catches it when the second entry has no time, if it is the same kind of meal', () => {
+    expect(likelyDuplicate(meal({ description: 'Chicken salad', time: null }), [lunch])).toBe(lunch);
+  });
+
+  // The guard must not eat real second helpings.
+  it('does NOT flag the same dish at a different meal', () => {
+    expect(likelyDuplicate(meal({ description: 'Chicken salad', time: '19:00', meal_type: 'dinner' }), [lunch])).toBeNull();
+  });
+
+  it('does NOT flag a second coffee hours later', () => {
+    const coffee = (time: string) => meal({ description: 'Coffee with milk', time, meal_type: 'in_between', kcal: 30 });
+    expect(likelyDuplicate(coffee('15:30'), [coffee('10:00')])).toBeNull();
+    expect(likelyDuplicate(coffee('10:20'), [coffee('10:00')])).not.toBeNull();
+  });
+
+  it('does not flag different food at the same meal, or the same food on another day', () => {
+    expect(likelyDuplicate(meal({ description: 'Tomato soup' }), [lunch])).toBeNull();
+    expect(likelyDuplicate(meal({ description: 'Chicken salad', date: '2026-11-14' }), [lunch])).toBeNull();
+  });
+
+  it('ignores the "no alcohol" statement and empty descriptions', () => {
+    expect(likelyDuplicate(meal({ description: 'No alcohol today' }), [noAlcoholStatement(D)])).toBeNull();
+    expect(descriptionOverlap('', 'chicken')).toBe(0);
+    expect(descriptionOverlap('a', 'the')).toBe(0);
   });
 });

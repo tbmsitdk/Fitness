@@ -77,6 +77,13 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS walking_double_support_pct DECIMAL(5,2)`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS oxygen_saturation DECIMAL(5,2)`;
   await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS mindful_minutes INTEGER`;
+  // Energy burned per day, from the watch: total = resting + active. A figure
+  // synced while the day was still running is partial; kcal_synced_at records
+  // when it was last written so the app can tell a finished day from a running one.
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS kcal_burned INTEGER`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS active_kcal INTEGER`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS resting_kcal INTEGER`;
+  await sql`ALTER TABLE wellness ADD COLUMN IF NOT EXISTS kcal_synced_at TIMESTAMPTZ`;
 
   // User settings table — single row keyed by 'default', persists across deployments & devices
   await sql`
@@ -463,6 +470,10 @@ type WellnessRow = {
   walking_double_support_pct: number | null;
   oxygen_saturation: number | null;
   mindful_minutes: number | null;
+  // Energy burned that day (kcal). Optional: only the Garmin sync sends them.
+  kcal_burned?: number | null;
+  active_kcal?: number | null;
+  resting_kcal?: number | null;
 };
 
 const BATCH = 50; // rows per INSERT statement
@@ -598,8 +609,11 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
       // and re-add a guard dropping 0.00 readings, which is what a Garmin scale
       // writes when the impedance measurement fails.
       batch.forEach((r, j) => {
-        const b = j * 24;
-        rows.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16},$${b+17},$${b+18},$${b+19},$${b+20},$${b+21},$${b+22},$${b+23},$${b+24})`);
+        const b = j * 28;
+        rows.push(`(${Array.from({ length: 28 }, (_, k) => `$${b + k + 1}`).join(',')})`);
+        // Whole, plausible numbers only: this route is also reachable from the browser upload.
+        const kcal = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 20000 ? Math.round(v) : null);
+        const burned = kcal(r.kcal_burned);
         values.push(
           r.date, r.steps, r.resting_hr, r.hrv_rmssd, r.sleep_hours, r.sleep_score,
           // Body composition is USER-OWNED — never imported. See MANUAL_ONLY note above.
@@ -609,6 +623,10 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
           r.flights_climbed ?? null, r.respiratory_rate ?? null, r.walking_asymmetry_pct ?? null,
           r.walking_speed ?? null, r.walking_double_support_pct ?? null,
           r.oxygen_saturation ?? null, r.mindful_minutes ?? null,
+          burned, kcal(r.active_kcal), kcal(r.resting_kcal),
+          // Stamped only when a burn figure arrives, so an import without one
+          // cannot make an old partial figure look freshly synced.
+          burned != null ? new Date().toISOString() : null,
         );
       });
 
@@ -621,7 +639,7 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
         `INSERT INTO wellness (date,steps,resting_hr,hrv_rmssd,sleep_hours,sleep_score,stress_score,body_battery,
            weight_kg,vo2max,fitness_age,body_fat_pct,muscle_mass_kg,bone_mass_kg,body_water_pct,visceral_fat,metabolic_age,
            flights_climbed,respiratory_rate,walking_asymmetry_pct,walking_speed,walking_double_support_pct,
-           oxygen_saturation,mindful_minutes)
+           oxygen_saturation,mindful_minutes,kcal_burned,active_kcal,resting_kcal,kcal_synced_at)
          VALUES ${rows.join(',')}
          ON CONFLICT (date) DO UPDATE SET
            steps=${locked('steps')},
@@ -647,6 +665,10 @@ export async function upsertWellness(records: WellnessRow[]): Promise<number> {
            walking_double_support_pct=${locked('walking_double_support_pct')},
            oxygen_saturation=${locked('oxygen_saturation')},
            mindful_minutes=${locked('mindful_minutes')},
+           kcal_burned=COALESCE(EXCLUDED.kcal_burned,wellness.kcal_burned),
+           active_kcal=CASE WHEN EXCLUDED.kcal_burned IS NOT NULL THEN EXCLUDED.active_kcal ELSE wellness.active_kcal END,
+           resting_kcal=CASE WHEN EXCLUDED.kcal_burned IS NOT NULL THEN EXCLUDED.resting_kcal ELSE wellness.resting_kcal END,
+           kcal_synced_at=COALESCE(EXCLUDED.kcal_synced_at,wellness.kcal_synced_at),
            locked_fields=COALESCE(wellness.locked_fields,'[]')`,
         values
       );
@@ -715,5 +737,10 @@ export function coerceWellness(row: any) {
     walking_double_support_pct:  row.walking_double_support_pct  != null ? Number(row.walking_double_support_pct)  : null,
     oxygen_saturation:           row.oxygen_saturation           != null ? Number(row.oxygen_saturation)           : null,
     mindful_minutes:             row.mindful_minutes             != null ? Number(row.mindful_minutes)             : null,
+    kcal_burned:  row.kcal_burned  != null ? Number(row.kcal_burned)  : null,
+    active_kcal:  row.active_kcal  != null ? Number(row.active_kcal)  : null,
+    resting_kcal: row.resting_kcal != null ? Number(row.resting_kcal) : null,
+    kcal_synced_at: row.kcal_synced_at instanceof Date ? row.kcal_synced_at.toISOString()
+      : row.kcal_synced_at != null ? String(row.kcal_synced_at) : null,
   };
 }

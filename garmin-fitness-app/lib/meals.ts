@@ -295,3 +295,45 @@ export function kcalByMealType(meals: Meal[]): { type: MealType | null; label: s
     })
     .filter(g => g.meals.length > 0);
 }
+
+// ── Duplicates ──────────────────────────────────────────────────────────────
+
+const STOP_WORDS = new Set(['a', 'an', 'and', 'the', 'of', 'with', 'some', 'og', 'en', 'et', 'med', 'til', 'lidt']);
+
+function words(description: string): Set<string> {
+  return new Set(
+    description.toLowerCase().normalize('NFKD').replace(/[^a-z0-9æøå ]+/g, ' ')
+      .split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w)),
+  );
+}
+
+/** How alike two descriptions are, 0-1: shared words over the smaller set. */
+export function descriptionOverlap(a: string, b: string): number {
+  const wa = words(a), wb = words(b);
+  if (wa.size === 0 || wb.size === 0) return 0;
+  let shared = 0;
+  for (const w of wa) if (wb.has(w)) shared++;
+  return shared / Math.min(wa.size, wb.size);
+}
+
+/**
+ * The entry already in the diary that `candidate` most likely repeats, or null.
+ *
+ * Same day, much the same description, AND the same occasion: the same kind of
+ * meal, or times within an hour of each other. A second coffee in the
+ * afternoon, or the same dish for lunch and dinner, is therefore NOT a
+ * duplicate — only the same thing at the same sitting is. The caller asks the
+ * person; this never drops anything on its own authority.
+ */
+export function likelyDuplicate(candidate: Meal, existing: Meal[]): Meal | null {
+  for (const e of existing) {
+    if (e.no_alcohol_statement || e.date !== candidate.date) continue;
+    if (descriptionOverlap(candidate.description, e.description) < 0.7) continue;
+    const bothTimed = isTime(candidate.time) && isTime(e.time);
+    const closeInTime = bothTimed && Math.abs(dayMinutes(candidate.time as string) - dayMinutes(e.time as string)) <= 60;
+    const farInTime = bothTimed && !closeInTime;
+    const sameMeal = candidate.meal_type != null && candidate.meal_type === e.meal_type;
+    if (closeInTime || (sameMeal && !farInTime)) return e;
+  }
+  return null;
+}
