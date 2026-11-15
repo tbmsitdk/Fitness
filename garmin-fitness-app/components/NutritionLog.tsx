@@ -78,6 +78,40 @@ function RefTable({ title, rows }: { title: string; rows: { label: string; value
   );
 }
 
+/** On a diary day the amounts are computed from the meals: show them, do not offer boxes to type over them. */
+function DerivedSummary({ row }: { row: NLog | undefined }) {
+  if (!row) return null;
+  const unknown = <span className="text-muted-foreground">not known yet</span>;
+  const amount = (v: number | null, unit: string) => (v == null ? unknown : <span>{v}{unit}</span>);
+  const complete = row.day_complete === true;
+  const items: [string, React.ReactNode][] = [
+    ['Alcohol', amount(row.alcohol_units, ' units')],
+    ['Candy & sweets', amount(row.candy_portions, ' portions')],
+    ['Savoury snacks', amount(row.savoury_snacks, ' portions')],
+    ['Sugary drinks', amount(row.sugary_drinks, ' servings')],
+    ['Last food', row.last_food_time
+      ? <span>{row.last_food_time}</span>
+      : <span className="text-muted-foreground">{complete ? 'not known: an entry with food has no time' : 'known once the day is complete'}</span>],
+    ['Caffeine after 14:00', row.caffeine_after_14 == null ? unknown : <span>{row.caffeine_after_14 ? 'yes' : 'no'}</span>],
+  ];
+  return (
+    <div className="rounded-md border border-border bg-card p-3">
+      <p className="text-xs font-semibold mb-2">Computed from your meals</p>
+      <dl className="grid grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2">
+        {items.map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+            <dd className="text-sm tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-2 text-[10px] text-muted-foreground/70">
+        These feed the alcohol, sugar and correlation cards. To change one, change the meal it comes from: use the pencil in the diary above.
+      </p>
+    </div>
+  );
+}
+
 export default function NutritionLog() {
   const [date, setDate] = useState(todayStr);
   const [all, setAll] = useState<NLog[] | null>(null);
@@ -155,7 +189,8 @@ export default function NutritionLog() {
   const field = (k: string) => NUTRITION_FIELDS.find(f => f.key === k)!;
   // On a day with a meal diary these amounts are computed from the meals;
   // typing over them would only be overwritten by the next meal.
-  const fromMeals = (all ?? []).find(l => l.date.slice(0, 10) === date)?.from_meals === true;
+  const dayRow = (all ?? []).find(l => l.date.slice(0, 10) === date);
+  const fromMeals = dayRow?.from_meals === true;
   const loggedDays = useMemo(() => (all ?? []).length, [all]);
 
   const nothingEntered = !hasAnyEntry({
@@ -199,8 +234,8 @@ export default function NutritionLog() {
 
       <p className="text-[11px] text-muted-foreground border-l-2 border-border pl-2.5 leading-relaxed">
         {fromMeals ? (
-          <>The amounts below are <strong>computed from this day&apos;s meal diary</strong> and cannot be typed over.
-          A blank means &ldquo;not known yet&rdquo;: it becomes 0 once you tick that the day is complete.</>
+          <>The amounts below are <strong>computed from this day&apos;s meal diary</strong>. &ldquo;Not known yet&rdquo; becomes 0 once
+          you tick that the day is complete; last food needs the day complete and a time on every entry with food.</>
         ) : (
           <>The meal diary above is the quickest way to log. You can still type amounts by hand for a day without one:{' '}
           <strong>enter 0 for anything you had none of</strong>, and leave a field blank only if you genuinely
@@ -209,6 +244,8 @@ export default function NutritionLog() {
         )}
       </p>
 
+      {fromMeals ? <DerivedSummary row={dayRow} /> : (
+        <>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Alcohol */}
         <div className="rounded-md border border-border bg-card p-3">
@@ -278,6 +315,8 @@ export default function NutritionLog() {
           <Definition def={field('caffeine_after_14')} />
         </div>
       </div>
+        </>
+      )}
 
       <input type="text" placeholder="notes (optional) — anything unusual about today"
         value={draft.notes} onChange={e => set('notes', e.target.value)}

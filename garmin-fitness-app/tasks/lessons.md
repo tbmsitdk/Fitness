@@ -362,3 +362,24 @@ Found from the same screenshot: an eating window of "0 h" from a single timed
 meal (now needs two), and meals left unsorted although their descriptions
 began "Morgenmad:", "Frokost:", "Aftensmad:" (the description's own label is
 now read, in Danish and English).
+
+## 25. A maximum over incomplete data is a lower bound, not a value
+
+"Last food" is the latest time among the day's entries. With lunch timed and
+dinner untimed it read 12:30 — wrong, not merely unknown — and on any partial
+day it can only ever be a lower bound. The same holds for the first meal and
+the eating window. Totals were already withheld on partial days; maxima and
+minima need the same rule.
+
+**Rule:** last food, first food and the eating window are reported only when
+the day is complete AND every entry with food has a time. Otherwise null, with
+the entries that need a time named in the diary and flagged in Quick log (a
+time box on the proposal), so the fix is one step.
+
+Also from this change: correlation on the detailed numbers uses thirds of the
+person's own complete days (highest third vs lowest) instead of fixed
+thresholds, which were guesses about what is "a lot" for them. A partial day
+has no value and is left out, never counted as low.
+**Tests:** "last food is unknown rather than wrong" in `meals.test.ts`;
+`nutrition-detail.test.ts` ("leaves a day with no total out, never treating it
+as low", direction and dose-response on known numbers).

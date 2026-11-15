@@ -101,6 +101,18 @@ export function dayMinutes(time: string): number {
 const isEvening = (time: string) => dayMinutes(time) >= EVENING_FROM_HOUR * 60;
 const isAfter14 = (time: string) => dayMinutes(time) >= 14 * 60;
 
+/** An entry that counts as eating: anything but a calorie-free drink (black coffee, water). */
+const isFood = (m: Meal) => !(m.drink_only && !(m.kcal && m.kcal > 0));
+
+/**
+ * Entries with food in them but no time. While any exist, the day's last food,
+ * first food and eating window cannot be known: the untimed entry might be the
+ * latest thing eaten.
+ */
+export function untimedFood(meals: Meal[]): Meal[] {
+  return meals.filter(m => !m.no_alcohol_statement && isFood(m) && !isTime(m.time));
+}
+
 const round1 = (v: number) => Math.round(v * 10) / 10;
 
 export type DerivedDay = Omit<NutritionLog, 'id' | 'notes'>;
@@ -124,14 +136,21 @@ export function deriveDay(date: string, meals: Meal[], complete: boolean): Deriv
     ? Math.round((alcoholGrams / GRAMS_PER_UNIT) * 2) / 2
     : complete || saidNoAlcohol ? 0 : null;
 
-  // Food times. A calorie-free drink (black coffee, water) is not food.
-  const food = real.filter(m => isTime(m.time) && !(m.drink_only && !(m.kcal && m.kcal > 0)));
-  const times = food.map(m => m.time as string).sort((a, b) => dayMinutes(a) - dayMinutes(b));
-  const last_food_time = times.length ? times[times.length - 1] : null;
-  // The first meal and the window are only meaningful once the whole day is in.
-  const first_food_time = complete && times.length ? times[0] : null;
+  // Food times. "Last food" is a MAXIMUM over the day, so it is only the day's
+  // value once nothing can still be missing: the day must be marked complete
+  // AND every entry with food must have a time. On a partial day it would only
+  // be a lower bound, and an untimed dinner would silently leave lunch as
+  // "the last thing eaten" — a wrong value, which is worse than an unknown one
+  // (tasks/lessons.md 25).
+  const foodEntries = real.filter(isFood);
+  const timesKnown = complete && foodEntries.length > 0 && foodEntries.every(m => isTime(m.time));
+  const times = timesKnown
+    ? foodEntries.map(m => m.time as string).sort((a, b) => dayMinutes(a) - dayMinutes(b))
+    : [];
+  const last_food_time = timesKnown ? times[times.length - 1] : null;
+  const first_food_time = timesKnown ? times[0] : null;
   // One timed meal is a moment, not a window: showing "0 h" would be a made-up number.
-  const eating_window_h = complete && times.length >= 2
+  const eating_window_h = timesKnown && times.length >= 2
     ? round1((dayMinutes(times[times.length - 1]) - dayMinutes(times[0])) / 60) : null;
 
   // Caffeine after 14:00: one timed late coffee makes it true. "No" needs a

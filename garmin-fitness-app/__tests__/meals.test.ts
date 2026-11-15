@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   carryOverMeal, carryOverStatement, cleanMeal, dayMinutes, deriveDay, descriptionOverlap, editMeal, kcalByMealType,
-  likelyDuplicate,
+  likelyDuplicate, untimedFood,
   mealLine, mealTypeFromDescription, mealTypeFromTime, reduceCarryOver,
   noAlcoholStatement, scaleMeal, type Meal,
 } from '@/lib/meals';
@@ -42,11 +42,10 @@ describe('deriveDay — what is known on a partial day', () => {
     expect(d.meal_count).toBe(1);
   });
 
-  it('still reports what IS known: drinks and sweets that were logged, and the last food time', () => {
+  it('still reports what IS known: drinks and sweets that were logged', () => {
     const d = deriveDay(D, [meal(), wine(), meal({ time: '21:15', description: 'crisps', kcal: 160, savoury_snacks: 1, ultra_processed: true })], false);
     expect(d.alcohol_units).toBe(2.5);
     expect(d.savoury_snacks).toBe(1);
-    expect(d.last_food_time).toBe('21:15');
     expect(d.candy_portions).toBeNull(); // none logged, day not complete
   });
 
@@ -160,7 +159,8 @@ describe('carry-over from a hand-logged day', () => {
     const d = deriveDay(D, [m], false);
     expect(d.alcohol_units).toBe(2);
     expect(d.candy_portions).toBe(1);
-    expect(d.last_food_time).toBe('21:30');
+    expect(d.last_food_time).toBeNull();                       // partial day: not the day's last food yet
+    expect(deriveDay(D, [m], true).last_food_time).toBe('21:30'); // once complete, the typed time is the answer
   });
 
   it('keeps a typed "0 alcohol" as a statement', () => {
@@ -404,5 +404,42 @@ describe('editMeal — correcting an entry by hand', () => {
   it('refuses an edit that removes the description', () => {
     expect(editMeal(dinner, { description: '   ' })).toBeNull();
     expect(editMeal(dinner, null)).toBeNull();
+  });
+});
+
+describe('last food is unknown rather than wrong', () => {
+  const timed = [meal({ time: '07:30', meal_type: 'breakfast' }), meal({ time: '12:30' }), meal({ time: '19:30', meal_type: 'dinner', description: 'Dinner' })];
+
+  // The real case: lunch had a time, dinner had none, and "last food" read 12:30.
+  it('is not reported while an entry with food has no time', () => {
+    const day = [...timed.slice(0, 2), meal({ time: null, meal_type: 'dinner', description: 'Dinner' })];
+    const d = deriveDay(D, day, true);
+    expect(d.last_food_time).toBeNull();
+    expect(d.first_food_time).toBeNull();
+    expect(d.eating_window_h).toBeNull();
+    expect(untimedFood(day).map(m => m.description)).toEqual(['Dinner']);
+  });
+
+  it('is not the day\'s value on a partial day, only a lower bound', () => {
+    expect(deriveDay(D, timed, false).last_food_time).toBeNull();
+    expect(deriveDay(D, timed, true).last_food_time).toBe('19:30');
+  });
+
+  it('is reported once the day is complete and every food entry is timed', () => {
+    const d = deriveDay(D, timed, true);
+    expect(d).toMatchObject({ first_food_time: '07:30', last_food_time: '19:30', eating_window_h: 12 });
+    expect(untimedFood(timed)).toEqual([]);
+  });
+
+  it('is not held up by a calorie-free drink without a time, but is by a drink with calories', () => {
+    const blackCoffee = meal({ time: null, description: 'Black coffee', kcal: 0, protein_g: 0, carbs_g: 0, added_sugar_g: 0, fat_g: 0, fibre_g: 0, veg_fruit_portions: 0, caffeine: true, drink_only: true });
+    expect(deriveDay(D, [...timed, blackCoffee], true).last_food_time).toBe('19:30');
+    expect(untimedFood([blackCoffee])).toEqual([]);
+    expect(deriveDay(D, [...timed, wine({ time: null })], true).last_food_time).toBeNull();
+    expect(untimedFood([wine({ time: null })])).toHaveLength(1);
+  });
+
+  it('never lists the "no alcohol" statement as an untimed entry', () => {
+    expect(untimedFood([noAlcoholStatement(D)])).toEqual([]);
   });
 });

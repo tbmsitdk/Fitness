@@ -400,11 +400,8 @@ export const STANDARD_EXPOSURES: { label: string; test: (l: NutritionLog) => boo
   { label: '2+ savoury snacks', test: l => l.savoury_snacks == null ? null : l.savoury_snacks >= 2 },
   { label: 'Sugary drinks',     test: l => l.sugary_drinks == null ? null : l.sugary_drinks > 0 },
   { label: 'Caffeine after 14', test: l => l.caffeine_after_14 },
-  // From the meal diary. Null (not judged) on any day that was not logged in
-  // full, because a partial day's total is not a low total.
-  { label: '50 g+ added sugar', test: l => l.added_sugar_g == null ? null : l.added_sugar_g >= 50 },
-  { label: 'Heavy evening eating (40%+ of calories after 19:00)', test: l => l.evening_kcal_pct == null ? null : l.evening_kcal_pct >= 40 },
-  { label: 'Low protein (under 80 g)', test: l => l.protein_g == null ? null : l.protein_g < 80 },
+  // Diary-based measures (calories, protein, added sugar, timing, net energy) are
+  // compared by thirds of the person's own days: see lib/nutrition-detail.ts.
 ];
 
 // ── Alcohol × sugar together ─────────────────────────────────────────────────

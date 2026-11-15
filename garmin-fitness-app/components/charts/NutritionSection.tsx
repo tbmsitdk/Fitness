@@ -11,6 +11,8 @@ import NutritionHistory from './NutritionHistory';
 import NutritionImpact from './NutritionImpact';
 import NutritionCombined from './NutritionCombined';
 import NutritionEffects from './NutritionEffects';
+import NutritionDetailImpact from './NutritionDetailImpact';
+import { DETAIL_EXPOSURES, detailComparisons, netByDate, netExposure } from '@/lib/nutrition-detail';
 
 interface Props {
   allWellness: WellnessRecord[];
@@ -63,6 +65,13 @@ export default function NutritionSection({ allWellness, allActivities, cutoff }:
     [logs, cutoff],
   );
 
+  // Detailed diary measures, plus net energy (eaten − burned) from the watch.
+  const detailExposures = useMemo(
+    () => [...DETAIL_EXPOSURES, netExposure(netByDate(logs ?? [], allWellness))],
+    [logs, allWellness],
+  );
+  const detail = useMemo(() => detailComparisons(logs ?? [], detailExposures), [logs, detailExposures]);
+
   const wellnessInPeriod = useMemo(
     () => allWellness.filter(w => new Date(w.date) >= cutoff),
     [allWellness, cutoff],
@@ -109,8 +118,15 @@ export default function NutritionSection({ allWellness, allActivities, cutoff }:
         )}
       </ExpandableCard>
 
+      <ExpandableCard title="Meals & Calories · Impact on Recovery">
+        {(expanded) => (
+          <NutritionDetailImpact logs={logs} metricsByDate={metricsByDate}
+            exposures={detailExposures} height={expanded ? 360 : undefined} />
+        )}
+      </ExpandableCard>
+
       <ExpandableCard title="What Moves the Needle">
-        {() => <NutritionEffects logs={logs} metricsByDate={metricsByDate} />}
+        {() => <NutritionEffects logs={logs} metricsByDate={metricsByDate} detail={detail} />}
       </ExpandableCard>
     </>
   );

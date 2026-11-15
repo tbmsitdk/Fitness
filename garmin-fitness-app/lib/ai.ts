@@ -18,6 +18,9 @@ import {
 } from '@/lib/nutrition-analysis';
 import type { UserSettings } from '@/lib/settings';
 import { COACH_MODEL } from '@/lib/models';
+import { DETAIL_EXPOSURES, detailComparisons, netByDate, netExposure } from '@/lib/nutrition-detail';
+import { historyAverages, historyRows } from '@/lib/nutrition-history';
+import { energyDays, energySummary } from '@/lib/energy-balance';
 import { betaMemoryTool } from '@anthropic-ai/sdk/helpers/beta/memory';
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema';
 import { HISTORY_INSTRUCTIONS, HISTORY_TOOL_DEFS, runHistoryTool, type HistoryTables } from '@/lib/history-tools';
@@ -297,7 +300,23 @@ function summariseNutrition(
   const alcohol = present(logs.map(l => l.alcohol_units));
   const candy = present(logs.map(l => l.candy_portions));
   const savoury = present(logs.map(l => l.savoury_snacks));
-  const ranked = rankEffects(logs, metricsByDate, STANDARD_EXPOSURES).slice(0, 8);
+  // Habits from the meal diary are compared by thirds of the person's own days.
+  const detail = detailComparisons(logs, [...DETAIL_EXPOSURES, netExposure(netByDate(logs, wellness))]);
+  const ranked = rankEffects(logs, metricsByDate, [...STANDARD_EXPOSURES, ...detail]).slice(0, 8);
+
+  const rows = historyRows(logs);
+  const completeDays = rows.filter(r => r.status === 'complete').length;
+  const energy = energySummary(energyDays(logs, wellness));
+  const diary = completeDays === 0 ? undefined : {
+    complete_days: completeDays,
+    partial_days: rows.filter(r => r.status === 'partial').length,
+    // Averages are over complete days only; n says how many. Estimates from descriptions and photos.
+    averages: Object.fromEntries(historyAverages(rows).filter(a => a.mean != null).map(a => [a.key, { mean: a.mean, days: a.n }])),
+    energy_balance: energy.days === 0 ? undefined : {
+      days: energy.days, avg_in_kcal: energy.avgIntake, avg_burned_kcal: energy.avgBurned,
+      avg_net_kcal: energy.avgNet, note: 'Negative net = deficit. Both sides are estimates; trust the average over weeks, not a single day.',
+    },
+  };
 
   return {
     logged: true,
@@ -318,6 +337,7 @@ function summariseNutrition(
       days_with_snacks: savoury.filter(v => v > 0).length,
       avg_portions_per_recorded_day: savoury.length ? Math.round((savoury.reduce((s, v) => s + v, 0) / savoury.length) * 10) / 10 : null,
     },
+    ...(diary ? { meal_diary: diary } : {}),
     measured_effects: ranked.map(e => ({
       habit: e.exposureLabel,
       affects: e.outcome.label,
@@ -329,7 +349,7 @@ function summariseNutrition(
       reliable: !e.unreliable,
       direction: e.worse ? 'worse' : 'better',
     })),
-    note: 'Effects are measured the MORNING AFTER intake, comparing days the user logged. Days never logged are excluded, not treated as zero. Any entry with reliable=false has under 5 days on one side — mention the uncertainty rather than stating it as fact. These are associations in one person\'s observational data, not proven causation; weekends confound alcohol in particular. Where an effect is large and reliable, it is worth naming the specific number.',
+    note: 'Effects are measured the MORNING AFTER intake, comparing days the user logged. Days never logged are excluded, not treated as zero. Any entry with reliable=false has under 5 days on one side — mention the uncertainty rather than stating it as fact. Habits written like "Added sugar: 45 g or more (vs 20 g or less)" compare the person\'s highest third of days on that measure with their lowest third, using only days they marked complete. These are associations in one person\'s observational data, not proven causation; weekends confound alcohol in particular. Where an effect is large and reliable, it is worth naming the specific number.',
   };
 }
 

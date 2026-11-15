@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useDataRefresh } from '@/lib/data-refresh';
 import { MAX_IMAGES, MAX_TEXT_LENGTH, type QuickLogProposal } from '@/lib/quick-log';
+import { mealLine, mealTypeFromTime, untimedFood, type Meal } from '@/lib/meals';
 
 interface Photo { name: string; mediaType: 'image/jpeg'; data: string; preview: string }
 
@@ -91,6 +92,18 @@ export default function QuickLog() {
     } finally { setBusy(null); }
   }
 
+  /** Sets a time on one proposed entry. The meal type follows the time only if it had none. */
+  function setMealTime(date: string, index: number, time: string) {
+    if (!time) return;
+    setProposal(prev => prev && {
+      ...prev,
+      days: prev.days.map(d => d.date !== date ? d : {
+        ...d,
+        meals: d.meals.map((m, i): Meal => i !== index ? m : { ...m, time, meal_type: m.meal_type ?? mealTypeFromTime(time) }),
+      }),
+    });
+  }
+
   /** The person says a flagged entry really is a second helping: move it into the meals to save. */
   function addAnyway(date: string, index: number) {
     setProposal(prev => prev && {
@@ -122,7 +135,7 @@ export default function QuickLog() {
             onChange={e => setText(e.target.value.slice(0, MAX_TEXT_LENGTH))}
             onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !busy) read(); }}
             rows={2}
-            placeholder="e.g. lunch: chicken salad and a roll · two glasses of red with dinner at 19:30 · that's everything for today · 2 x 20 s dead hang"
+            placeholder="include the time: 08:00 breakfast, 2 rye breads with cheese · 19:30 dinner with two glasses of red · that's everything for today"
             className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring"
           />
           <div className="flex flex-col gap-2">
@@ -162,7 +175,20 @@ export default function QuickLog() {
               <div key={d.date}>
                 <p className="text-xs font-medium">Meal diary, {when(d.date)}</p>
                 <ul className="mt-1 space-y-0.5">
-                  {d.lines.map((l, i) => <li key={i} className="text-xs text-muted-foreground">{l}</li>)}
+                  {d.meals.map((m, i) => (
+                    <li key={i} className="text-xs text-muted-foreground flex items-start justify-between gap-2">
+                      <span>{mealLine(m)}</span>
+                      {/* No time → last food and evening eating stay unknown. Fill it in here, before saving. */}
+                      {untimedFood([m]).length > 0 && (
+                        <label className="flex items-center gap-1.5 flex-shrink-0 text-amber-400">
+                          no time
+                          <input type="time" aria-label={`Time for ${m.description}`} value=""
+                            onChange={e => setMealTime(d.date, i, e.target.value)}
+                            className="rounded border border-amber-400/40 bg-secondary px-1 py-0.5 text-[11px] font-mono text-foreground" />
+                        </label>
+                      )}
+                    </li>
+                  ))}
                   {d.duplicates.map((dup, i) => (
                     <li key={`dup-${i}`} className="text-xs text-amber-400 flex items-start justify-between gap-2">
                       <span>Already in the diary, not added again: {dup.line}</span>

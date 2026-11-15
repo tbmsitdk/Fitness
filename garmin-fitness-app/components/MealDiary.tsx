@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Circle, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { useDataRefresh, useDataVersion } from '@/lib/data-refresh';
 import { GRAMS_PER_UNIT } from '@/lib/nutrition';
-import { MEAL_TYPES, MEAL_TYPE_LABEL, deriveDay, kcalByMealType, mealLine, type Meal } from '@/lib/meals';
+import { MEAL_TYPES, MEAL_TYPE_LABEL, deriveDay, kcalByMealType, mealLine, untimedFood, type Meal } from '@/lib/meals';
 
 const PORTIONS: { label: string; factor: number }[] = [
   { label: '½', factor: 0.5 }, { label: '¾', factor: 0.75 }, { label: '1¼', factor: 1.25 }, { label: '1½', factor: 1.5 },
@@ -246,6 +246,13 @@ export default function MealDiary({ date }: { date: string }) {
           </span>
         </span>
       </button>
+
+      {untimedFood(meals).length > 0 && (
+        <p className="text-[11px] text-amber-400">
+          No time on: {untimedFood(meals).map(m => m.description.split(':')[0].slice(0, 40)).join('; ')}. Last food, the eating window and the
+          after-19:00 share stay unknown until each has one: use the pencil, or add the time when you log.
+        </p>
+      )}
 
       {complete && totals.length > 0 && (
         <p className="text-[11px] text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">{totals}</p>

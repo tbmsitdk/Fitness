@@ -1,6 +1,7 @@
 'use client';
 import { useMemo } from 'react';
 import type { NutritionLog } from '@/lib/nutrition';
+import type { DetailComparison } from '@/lib/nutrition-detail';
 import {
   rankEffects, STANDARD_EXPOSURES, MIN_BUCKET_N,
   type DayMetrics, type StratifiedEffect,
@@ -9,6 +10,8 @@ import {
 interface Props {
   logs: NutritionLog[];
   metricsByDate: Map<string, DayMetrics>;
+  /** Comparisons built from the meal diary (highest vs lowest third of the person's own days). */
+  detail?: DetailComparison[];
   limit?: number;
 }
 
@@ -66,11 +69,12 @@ function Row({ e }: { e: StratifiedEffect }) {
   );
 }
 
-export default function NutritionEffects({ logs, metricsByDate, limit = 12 }: Props) {
+export default function NutritionEffects({ logs, metricsByDate, detail = [], limit = 12 }: Props) {
   const ranked = useMemo(
-    () => rankEffects(logs, metricsByDate, STANDARD_EXPOSURES),
-    [logs, metricsByDate],
+    () => rankEffects(logs, metricsByDate, [...STANDARD_EXPOSURES, ...detail]),
+    [logs, metricsByDate, detail],
   );
+  const diaryDays = useMemo(() => logs.filter(l => l.from_meals && l.day_complete).length, [logs]);
 
   const reliable = ranked.filter(e => !e.unreliable);
   const shown = (reliable.length > 0 ? reliable : ranked).slice(0, limit);
@@ -137,6 +141,13 @@ export default function NutritionEffects({ logs, metricsByDate, limit = 12 }: Pr
         Ranked by effect size (Cohen&apos;s d), which makes metrics on different scales comparable —
         10 ms of HRV and 3 bpm of resting HR are not otherwise. Differences are measured the
         morning after.{' '}
+        <strong>Diary rows</strong> (calories, protein, added sugar, timing, net energy) compare your
+        highest third of days on that measure with your lowest third, with the cut-offs shown in the
+        row, so &ldquo;a lot&rdquo; means a lot for you. They use only days you marked complete
+        ({diaryDays} so far), and need at least 9 of them to appear. Hard training days mean more food and a
+        bigger deficit, which these rows do not separate from the food itself.{' '}
+        {ranked.length} comparisons had enough days to rank; scanning that many turns up a few
+        that look notable by chance alone.{' '}
         <strong>Treat this as a list of things worth testing deliberately, not as settled findings.</strong>{' '}
         Scanning many habits against many outcomes will throw up some hits by chance; the way to
         confirm one is to change that single habit for a fortnight and watch the same number.

@@ -161,6 +161,7 @@ Meals:
 - For alcohol, list each drink with its volume and strength and how many; the app does the unit arithmetic. Read the ABV from a label when you can see one. Include the drink's calories in kcal.
 - candy_portions, savoury_snacks and sugary_drinks are counts for THIS entry, by the definitions below; 0 when the entry has none. A normal meal is not candy or a savoury snack.
 - Say which meal each entry was: breakfast, lunch, dinner, or in_between for everything else (a snack, a coffee, drinks later in the evening). Go by what the person calls it; otherwise by the time and by what it is. Wine drunk WITH dinner belongs to the dinner entry; a beer two hours later is its own in_between entry.
+- Every entry needs a time, because the day's last food, evening eating and eating window are worked out from them. Take it from the note whenever it is there, in any form: "kl. 21", "21.30", "9 pm", "halv ni" (08:30), "half past eight". Write it as 24-hour HH:MM. If several things share one time ("dinner at 19:30: pasta and two glasses of wine"), each gets that time unless a later one is named for it. "Just now" is the time given below.
 - Give the time when it was said or is obvious ("breakfast at 7", "just now" means the time given below). Leave it empty when you cannot tell; do not invent one.
 - Something eaten or drunk after midnight belongs to the evening before.
 

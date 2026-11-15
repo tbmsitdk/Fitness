@@ -205,6 +205,8 @@ describe('prompt and schema', () => {
     expect(QUICK_LOG_SYSTEM).toMatch(/Does not count:/);
     expect(QUICK_LOG_SYSTEM).not.toMatch(/meal.quality/i);
     expect(QUICK_LOG_SYSTEM).toMatch(/in the language the note is written in/);
+    expect(QUICK_LOG_SYSTEM).toMatch(/Every entry needs a time/);
+    expect(QUICK_LOG_SYSTEM).toMatch(/halv ni/);
   });
 
   it('wraps the note, gives the time, and shows what is already in the diary', () => {
