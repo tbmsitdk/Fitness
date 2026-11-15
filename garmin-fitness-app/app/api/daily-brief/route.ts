@@ -6,6 +6,7 @@ import { BRIEF_SCHEMA, BRIEF_SYSTEM_PROMPT, buildBriefPrompt, parseBrief } from 
 import { briefFor, latestBrief, saveBrief } from '@/lib/daily-brief-db';
 import { buildRawTables, homeDayAndTime, rawDataPromptSection } from '@/lib/raw-data';
 import { computeReadiness } from '@/lib/readiness';
+import { stepCoach } from '@/lib/step-coach';
 import { estimateTSS } from '@/lib/training-load';
 import { loadMemorySection } from '@/lib/coach-memory-db';
 import { loadExperimentsSection } from '@/lib/experiments-db';
@@ -80,6 +81,7 @@ export async function POST(req: NextRequest) {
         warning,
         recentData: rawDataPromptSection(recent),
         readiness: readiness ? { overall: Math.round(readiness.overall), band: readiness.band.label } : null,
+        steps: stepCoach({ wellness: data.wellness, goal: data.stepsGoal, today: data.today }),
         notes: [memory, experiments].filter(Boolean).join('\n\n') || undefined,
       }),
     });

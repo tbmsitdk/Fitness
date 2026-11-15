@@ -18,6 +18,8 @@ import {
 } from '@/lib/nutrition-analysis';
 import type { UserSettings } from '@/lib/settings';
 import { COACH_MODEL } from '@/lib/models';
+import { stepCoach } from '@/lib/step-coach';
+import { DEFAULT_HOME_TIMEZONE, homeDayAndTime } from '@/lib/raw-data';
 import { DETAIL_EXPOSURES, detailComparisons, netByDate, netExposure } from '@/lib/nutrition-detail';
 import { historyAverages, historyRows } from '@/lib/nutrition-history';
 import { energyDays, energySummary } from '@/lib/energy-balance';
@@ -69,6 +71,7 @@ that ignores the manually-logged sections reads as though the user's effort was 
   read low HRV as overtraining.
 - cardiovascular_age — use its factor scores to say which single change would move it most.
 - apple_health_vitals — gait quality and respiratory rate.
+- wellness.step_goal_coaching — the person has asked to be coached toward their step goal. Where it is relevant, be specific: name the weekday pattern, how many steps are missing and one concrete way to close the gap (a walk of a stated length at a stated time). Encouraging, not scolding; never judge today, which is not over.
 - body_composition — read the source field; values may come from a different scale than the
   history, and muscle mass definitions differ between devices.
 
@@ -577,6 +580,22 @@ export function buildFullContext(
         ? Math.round(avg(nonNull(last7Well.map(w => w.body_battery)))!) : null,
       avg_steps_7d:         avg(nonNull(last7Well.map(w => w.steps)))
         ? Math.round(avg(nonNull(last7Well.map(w => w.steps)))!) : null,
+      step_goal_coaching: (() => {
+        // Finished days only: the sync also reads today, a few hours in, which would make every morning a miss.
+        const c = stepCoach({ wellness, goal: userSettings?.dailyStepsGoal ?? 10000, today: homeDayAndTime(new Date().toISOString(), DEFAULT_HOME_TIMEZONE).day });
+        return {
+          goal: c.goal,
+          newest_finished_day: c.latest,
+          last_7_days: c.last7,
+          trend_vs_previous_week: c.trend,
+          streak_days: c.streak,
+          weekday_vs_weekend_average: c.weekdayAvg,
+          per_weekday_last_8_weeks: c.weekdays.map(w => ({ day: w.name, avg: w.mean, goal_reached: `${w.hits} of ${w.n}` })),
+          median_shortfall_on_missed_days: c.medianShortfall,
+          today_plan: { weekday: c.today.name, usual_steps: c.today.usual, extra_steps_needed: c.today.extraNeeded, brisk_walk_minutes: c.today.walkMinutes },
+          note: 'Computed by code from finished days only; days with no count are excluded, not zero. A brisk walk is taken as about 100 steps a minute.',
+        };
+      })(),
       note:                 'recovery_score = 100 - stress_score (Firstbeat HRV-derived)',
     },
     cycling_performance: {

@@ -2,6 +2,7 @@
 // the model call is in lib/ai.ts, storage in lib/daily-brief-db.ts.
 
 import type { EarlyWarning } from '@/lib/early-warning';
+import type { StepCoach } from '@/lib/step-coach';
 
 export interface DailyBrief {
   /** One sentence: the state of things this morning. */
@@ -12,6 +13,8 @@ export interface DailyBrief {
   today: string;
   /** Anything unusual worth an eye. Empty string when there is nothing. */
   watch: string;
+  /** A short, concrete nudge toward the step goal. Absent on briefs written before it existed. */
+  steps?: string;
 }
 
 export interface StoredBrief {
@@ -29,8 +32,9 @@ export const BRIEF_SCHEMA = {
     recovery: { type: 'string', description: 'Two or three sentences on last night and the last few days, citing the actual numbers.' },
     today:    { type: 'string', description: 'Two or three sentences: what to do today, concretely.' },
     watch:    { type: 'string', description: 'One or two sentences on anything unusual. Empty string if nothing is.' },
+    steps:    { type: 'string', description: 'Two sentences at most: where the step goal stands and ONE concrete way to reach it today. Empty string if no step data was given.' },
   },
-  required: ['headline', 'recovery', 'today', 'watch'],
+  required: ['headline', 'recovery', 'today', 'watch', 'steps'],
   additionalProperties: false,
 } as const;
 
@@ -41,6 +45,7 @@ export const BRIEF_SYSTEM_PROMPT = `You write a short morning brief for one pers
 - The early-warning result was computed by code and is authoritative on WHETHER something is off. Do not raise an alarm it did not raise, and do not play down one it did. Your job is to word it.
 - If the warning lists likely explanations (alcohol, travel, hard training), say so: a known cause is not a mystery illness. If it lists none and the level is watch or warning, say plainly that the pattern often comes before getting ill or overreaching, and suggest an easy day.
 - If the data is stale, say which day it is from and do not describe it as this morning.
+- Steps: when step coaching is given, "steps" says where the goal stands and names ONE concrete way to reach it today — a walk of a stated length at a stated time, tied to the person's own pattern (for example, weekdays are the gap). Encouraging, never scolding, and no more than two sentences. Do not invent step counts: use only the numbers given, and never call today a miss, because today is not over.
 - You are a coach, not a doctor: never diagnose. For anything that sounds medical, suggest seeing one.
 - An empty cell in the tables means not recorded, never zero. stress_score is HRV-derived and higher is worse.`;
 
@@ -53,6 +58,8 @@ export interface BriefPromptInput {
   readiness?: { overall: number; band: string } | null;
   /** Coach memory and any active experiment. */
   notes?: string;
+  /** The step-goal coaching computed by code. */
+  steps?: StepCoach | null;
 }
 
 export function buildBriefPrompt(input: BriefPromptInput): string {
@@ -60,6 +67,16 @@ export function buildBriefPrompt(input: BriefPromptInput): string {
     `Today is ${input.weekday} ${input.today}. Write this morning's brief.`,
     `Early-warning check (computed by the app):\n${JSON.stringify(input.warning, null, 2)}`,
   ];
+  if (input.steps) {
+    const c = input.steps;
+    parts.push(`Step coaching (computed by the app; today's count is excluded because today is not over):\n${JSON.stringify({
+      goal: c.goal, newest_finished_day: c.latest, newest_count_is_stale: c.stale, last_7_days: c.last7, trend: c.trend,
+      streak_days: c.streak, median_shortfall_on_missed_days: c.medianShortfall,
+      weekday_average: c.weekdayAvg.weekdays, weekend_average: c.weekdayAvg.weekend,
+      today: { weekday: c.today.name, usual_steps: c.today.usual, goal_reached_on_this_weekday: `${c.today.hitsOnThisWeekday} of ${c.today.samples}`,
+               extra_steps_needed: c.today.extraNeeded, brisk_walk_minutes: c.today.walkMinutes },
+    }, null, 2)}`);
+  }
   if (input.readiness) parts.push(`The app's readiness score today: ${input.readiness.overall}/100 (${input.readiness.band}).`);
   parts.push(input.recentData);
   if (input.notes) parts.push(input.notes);
@@ -75,7 +92,7 @@ export function parseBrief(text: string): DailyBrief {
     throw new Error(`Brief is not JSON: "${text.slice(0, 120)}"`);
   }
   const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-  const brief = { headline: str(o?.headline), recovery: str(o?.recovery), today: str(o?.today), watch: str(o?.watch) };
+  const brief: DailyBrief = { headline: str(o?.headline), recovery: str(o?.recovery), today: str(o?.today), watch: str(o?.watch), steps: str(o?.steps) };
   if (!brief.headline || !brief.today) throw new Error('Brief is missing its headline or its advice for today.');
   return brief;
 }

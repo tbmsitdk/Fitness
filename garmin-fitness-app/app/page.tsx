@@ -8,6 +8,7 @@ import SettingsPanel from '@/components/Settings';
 import InsightCards from '@/components/InsightCards';
 import MorningBrief from '@/components/MorningBrief';
 import QuickLog from '@/components/QuickLog';
+import StepGoalCard from '@/components/charts/StepGoalCard';
 import SyncStatus from '@/components/SyncStatus';
 import DataManager from '@/components/DataManager';
 import { Activity, WellnessRecord, FtpEntry } from '@/types';
@@ -228,6 +229,7 @@ export default function Home() {
             <div className="grid gap-4 lg:grid-cols-2">
               <MorningBrief />
               <QuickLog />
+              <StepGoalCard wellness={allWellness} goal={settings.dailyStepsGoal} />
             </div>
             <InsightCards />
             <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} ftpEntries={ftpEntries} />

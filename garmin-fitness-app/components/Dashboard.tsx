@@ -10,6 +10,7 @@ import HRZoneDistribution from './charts/HRZoneDistribution';
 import ConsistencyChart from './charts/ConsistencyChart';
 import PersonalBests from './charts/PersonalBests';
 import StepsChart from './charts/StepsChart';
+import StepsVsTarget from './charts/StepsVsTarget';
 import PowerChart from './charts/PowerChart';
 import PowerZonesChart from './charts/PowerZonesChart';
 import CaloriesChart from './charts/CaloriesChart';
@@ -496,6 +497,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Volume first: steps are the daily total, walks are the logged sessions. */}
           <ExpandableCard title="Daily Steps">
             {(expanded) => <StepsChart wellness={sortedWellness} age={age} stepsGoal={settings.dailyStepsGoal} height={expanded ? 500 : undefined} />}
+          </ExpandableCard>
+
+          {/* Period-filtered for the tracking; the full history only feeds today's coaching line. */}
+          <ExpandableCard title="Steps vs Target">
+            {(expanded) => <StepsVsTarget wellness={sortedWellness} allWellness={sortedAllWellness} goal={settings.dailyStepsGoal} height={expanded ? 320 : undefined} />}
           </ExpandableCard>
 
           <ExpandableCard title="Walking & Activity">

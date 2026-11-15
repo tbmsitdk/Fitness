@@ -20,25 +20,31 @@ export interface CoachData {
   travelLogs: TravelLog[];
   manualFtpWatts: number | null;
   homeTimezone: string;
+  /** The daily step goal from Settings. */
+  stepsGoal: number;
   /** Today's date in the home timezone — the server itself runs in UTC. */
   today: string;
 }
 
-async function homeTimezone(): Promise<string> {
+async function settingsRow(): Promise<{ tz: string; stepsGoal: number }> {
+  let tz = DEFAULT_HOME_TIMEZONE;
+  let stepsGoal = 10000;
   try {
-    const { rows } = await sql`SELECT home_timezone FROM user_settings WHERE id = 'default'`;
-    const tz = rows[0]?.home_timezone;
-    if (typeof tz === 'string' && tz) {
+    const { rows } = await sql`SELECT home_timezone, daily_steps_goal FROM user_settings WHERE id = 'default'`;
+    const z = rows[0]?.home_timezone;
+    if (typeof z === 'string' && z) {
       // Throws on a zone name the runtime does not know.
-      new Intl.DateTimeFormat('en-CA', { timeZone: tz });
-      return tz;
+      new Intl.DateTimeFormat('en-CA', { timeZone: z });
+      tz = z;
     }
-  } catch { /* table missing or zone invalid: fall through to the default */ }
-  return DEFAULT_HOME_TIMEZONE;
+    const g = Number(rows[0]?.daily_steps_goal);
+    if (Number.isFinite(g) && g > 0) stepsGoal = Math.round(g);
+  } catch { /* table missing or zone invalid: keep the defaults */ }
+  return { tz, stepsGoal };
 }
 
 export async function loadCoachData(): Promise<CoachData> {
-  const [actResult, wellResult, ftpResult, exerciseResult, nutritionResult, travelResult, tz, meals] = await Promise.all([
+  const [actResult, wellResult, ftpResult, exerciseResult, nutritionResult, travelResult, settings, meals] = await Promise.all([
     sql`SELECT * FROM activities ORDER BY date`,
     sql`SELECT * FROM wellness ORDER BY date`,
     sql`SELECT ftp_watts FROM ftp_entries ORDER BY date DESC LIMIT 1`,
@@ -48,7 +54,7 @@ export async function loadCoachData(): Promise<CoachData> {
     sql`SELECT *, date::text AS day FROM nutrition_logs ORDER BY date`,
     // SELECT * deliberately: coerceTravelLog decides what is read.
     sql`SELECT * FROM travel_logs ORDER BY depart_date`,
-    homeTimezone(),
+    settingsRow(),
     // A broken diary must not take the whole coach down with it.
     listMeals('1970-01-01').catch((e): Meal[] => { console.error('[coach-data] meals', e); return []; }),
   ]);
@@ -61,8 +67,9 @@ export async function loadCoachData(): Promise<CoachData> {
     meals,
     travelLogs: travelResult.rows.map(coerceTravelLog),
     manualFtpWatts: ftpResult.rows[0]?.ftp_watts ? Number(ftpResult.rows[0].ftp_watts) : null,
-    homeTimezone: tz,
-    today: homeDayAndTime(new Date().toISOString(), tz).day,
+    homeTimezone: settings.tz,
+    stepsGoal: settings.stepsGoal,
+    today: homeDayAndTime(new Date().toISOString(), settings.tz).day,
   };
 }
 

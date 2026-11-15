@@ -383,3 +383,20 @@ has no value and is left out, never counted as low.
 **Tests:** "last food is unknown rather than wrong" in `meals.test.ts`;
 `nutrition-detail.test.ts` ("leaves a day with no total out, never treating it
 as low", direction and dose-response on known numbers).
+
+## 26. A coaching signal is only as honest as the day it judges
+
+Step coaching reads yesterday and the weeks before, never today: the overnight
+sync also reads "today" a few hours in, and a goal check on that count would
+call every morning a failure. Days with no count are unknown (not zero, not a
+miss) and end a streak instead of extending it; the weekday pattern needs four
+samples of a weekday before it is named; and the nudge is computed by code
+(gap, minutes of walking at a stated 100 steps a minute) so the brief and the
+chat can only reword it.
+**Tests:** `__tests__/step-coach.test.ts` ("never uses today", "treats a day
+with no count as unknown"); the brief cases in `early-warning.test.ts`.
+
+Also: before telling someone their max heart rate is wrong, look at the data.
+Two maximal ramp tests months apart both peaked at 169-170 with the rate still
+climbing when the effort ended; a recalled "about 166" was a hard ride, not a
+maximum.

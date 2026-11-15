@@ -77,6 +77,7 @@ export default function MorningBrief() {
             <p className="text-xs text-muted-foreground">{brief.brief.recovery}</p>
             <p className="text-xs"><span className="font-medium">Today: </span><span className="text-muted-foreground">{brief.brief.today}</span></p>
             {brief.brief.watch && <p className="text-xs"><span className="font-medium">Watch: </span><span className="text-muted-foreground">{brief.brief.watch}</span></p>}
+            {brief.brief.steps && <p className="text-xs"><span className="font-medium">Steps: </span><span className="text-muted-foreground">{brief.brief.steps}</span></p>}
 
             {brief.warning.signals.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">

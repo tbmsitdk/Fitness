@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { computeEarlyWarning } from '@/lib/early-warning';
-import { buildBriefPrompt, parseBrief, BRIEF_SCHEMA } from '@/lib/daily-brief';
+import { buildBriefPrompt, parseBrief, BRIEF_SCHEMA, BRIEF_SYSTEM_PROMPT } from '@/lib/daily-brief';
+import { stepCoach } from '@/lib/step-coach';
 import type { WellnessRecord } from '@/types';
 import type { TravelLog } from '@/lib/travel';
 
@@ -190,9 +191,23 @@ describe('daily brief', () => {
     expect(p).toContain('Sunday 2026-11-15');
   });
 
+  it('carries the step nudge, and reads an older brief that has none', () => {
+    const withSteps = parseBrief(JSON.stringify({ headline: 'h', recovery: 'r', today: 't', watch: '', steps: ' Walk 20 minutes after lunch. ' }));
+    expect(withSteps.steps).toBe('Walk 20 minutes after lunch.');
+    expect(parseBrief(JSON.stringify({ headline: 'h', recovery: 'r', today: 't', watch: '' })).steps).toBe('');
+  });
+
+  it('gives the model the step coaching, with today left out of the counts', () => {
+    const steps = stepCoach({ wellness: [], goal: 8750, today: TODAY });
+    const p = buildBriefPrompt({ today: TODAY, weekday: 'Sunday', warning, recentData: '', steps });
+    expect(p).toContain('Step coaching (computed by the app; today\'s count is excluded');
+    expect(p).toContain('"goal": 8750');
+    expect(BRIEF_SYSTEM_PROMPT).toMatch(/never call today a miss/);
+  });
+
   it('parses a brief and allows an empty watch field', () => {
     const b = parseBrief(JSON.stringify({ headline: ' Solid night. ', recovery: 'RHR 50.', today: 'Ride easy.', watch: '' }));
-    expect(b).toEqual({ headline: 'Solid night.', recovery: 'RHR 50.', today: 'Ride easy.', watch: '' });
+    expect(b).toEqual({ headline: 'Solid night.', recovery: 'RHR 50.', today: 'Ride easy.', watch: '', steps: '' });
   });
 
   it('throws rather than store an empty or non-JSON brief', () => {
