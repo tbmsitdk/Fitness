@@ -400,3 +400,24 @@ Also: before telling someone their max heart rate is wrong, look at the data.
 Two maximal ramp tests months apart both peaked at 169-170 with the rate still
 climbing when the effort ended; a recalled "about 166" was a hard ride, not a
 maximum.
+
+## 27. Several writers, one quantity: never add the sources together
+
+The Steps vs Target card showed a 1-year average of 10,762 while Garmin's own
+figure was 8,030. The Apple Health export holds one step record PER SOURCE
+(iPhone, a watch, and any app that writes into Health, Garmin Connect
+included), and the importer added every record it saw, so a walk was counted
+once for each source that recorded it. Stored months before June read 12-14k;
+the Garmin-synced months after it read 7-9k, close to Garmin's own average.
+Same family as lesson 8 (same word, different device), found because the
+person knew the right answer and checked.
+
+**Rule:** when more than one source can report the same quantity, total each
+source separately and take ONE (`busiestSourceTotal`), never the sum. Do the
+same for flights climbed. A figure that disagrees with the person's own
+trusted device by 30% is a data defect until shown otherwise.
+**Tests:** `__tests__/apple-health-parser.test.ts` ("does not add the same
+steps up once per source", with the real shape: iPhone 6,000, watch 5,200,
+Garmin Connect 5,900 for one day).
+**Not fixed by code:** days already stored keep the old totals until they are
+overwritten, by a Garmin backfill or a fresh Apple Health import.
