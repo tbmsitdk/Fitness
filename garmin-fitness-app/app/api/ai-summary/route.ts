@@ -9,6 +9,7 @@ import { coerceExerciseLog } from '@/lib/exercises';
 import { AISummary } from '@/types';
 import type { UserSettings } from '@/lib/settings';
 import { buildRawTablesWithin, rawDataPromptSection } from '@/lib/raw-data';
+import { loadMemorySection, recordAdvice } from '@/lib/coach-memory-db';
 
 export const dynamic = 'force-dynamic';
 // The report now reads raw daily rows as well as the aggregates, and Fable 5.2
@@ -84,10 +85,14 @@ async function buildSummary(userSettings?: UserSettings) {
   const rawDataSection = `${rawDataPromptSection(raw.tables)}\n\n${windowNote}`;
   console.log('[ai-summary] raw data', { windowDays: raw.windowDays, approxTokens: raw.tokens });
 
-  return generateWeeklySummary(
+  const summary = await generateWeeklySummary(
     activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs, travelLogs,
     rawDataSection,
+    await loadMemorySection(),
   );
+  // So the next report, and the chat, know what was advised and when.
+  await recordAdvice('weekly', summary.summary.split('\n')[0], summary.recommendations);
+  return summary;
 }
 
 // POST — called from AICoach with optional settings

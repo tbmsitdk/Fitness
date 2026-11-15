@@ -8,6 +8,7 @@ import { buildMaxHrLookup } from '@/lib/hr-zones';
 import { coerceNutritionLog } from '@/lib/nutrition';
 import { coerceTravelLog } from '@/lib/travel';
 import { coerceExerciseLog } from '@/lib/exercises';
+import { postgresMemoryStore, loadMemorySection } from '@/lib/coach-memory-db';
 
 export const dynamic = 'force-dynamic';
 // Fable 5.2 always thinks before it answers; 60s was cutting replies off.
@@ -229,7 +230,12 @@ export async function POST(request: NextRequest) {
       settings?.maxHR ?? 0,
     );
 
-    const sampleSummaries = await fetchSampleSummaries(cutoff, maxHrFor, ftpForCalc);
+    const [sampleSummaries, memorySection] = await Promise.all([
+      fetchSampleSummaries(cutoff, maxHrFor, ftpForCalc),
+      loadMemorySection(),
+    ]);
+    // If the memory could not be loaded the chat still works, just statelessly.
+    const memory = memorySection ? { section: memorySection, store: postgresMemoryStore } : undefined;
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -245,6 +251,7 @@ export async function POST(request: NextRequest) {
             exerciseLogs,
             nutritionLogs,
             travelLogs,
+            memory,
           )) {
             // Reasoning and answer travel as separate fields so the client can
             // show one as a collapsed note and the other as the reply.

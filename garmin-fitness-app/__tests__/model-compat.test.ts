@@ -12,7 +12,7 @@ import { join } from 'path';
 //
 // See tasks/lessons.md.
 
-const ROOTS = ['app', 'lib', 'components'];
+const ROOTS = ['app', 'lib', 'components', 'scripts'];
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];

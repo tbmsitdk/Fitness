@@ -228,3 +228,37 @@ tool block comes back. Never put backticks inside a template-literal prompt —
 that broke the build while fixing this.
 **Tests:** `__tests__/model-compat.test.ts` scans the source for retired model
 ids, forced tool choice and assistant prefill.
+
+## 17. Check the installed SDK before proposing an API feature
+
+Structured outputs were proposed as the fix for the forced tool call before
+anyone looked at `package.json`: the SDK was 0.40, which has no
+`output_config` at all. The plan had to be redone mid-task.
+
+**Rule:** read the installed version (`node_modules/<pkg>/package.json`, not
+just the semver range) and grep its types for the parameter before designing
+around it.
+
+## 18. A model reply is not a success until its ending is checked
+
+A refusal and a `max_tokens` cut-off both arrive as HTTP 200. Reading
+`content` without checking `stop_reason` stores an empty or half-written
+report as if it had worked. The same goes for anything the model chooses that
+the UI then displays as fact: an unrecognised `confidence` is shown as low,
+never promoted, and a garbled sample size is shown as "not given", never as a
+number.
+
+**Tests:** `__tests__/coach-report.test.ts` (refusal, cut-off, prose instead
+of JSON), `__tests__/analysis.test.ts` ("never promotes an unrecognised
+confidence").
+
+## 19. What the model writes is input, wherever it lands
+
+The memory tool lets the model pick file paths and contents; the analysis
+runner posts model-made charts back to the app. Both are validated where they
+arrive: memory paths must be plain names under `/memories` (no traversal, no
+deleting the root, size and count caps), and a chart is kept only if it is a
+small file whose bytes really are a PNG, whatever its name says.
+
+**Tests:** `__tests__/coach-memory.test.ts`, `__tests__/analysis.test.ts`
+("drops a chart that is not a PNG").

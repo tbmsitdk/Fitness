@@ -1,0 +1,60 @@
+name: Coach Analysis
+
+# Runs queued deep analyses and the monthly review for the fitness app.
+# These take minutes of model time — longer than a Vercel function may live —
+# so they run here and the app only displays the result.
+#
+# Needs one secret the other workflows do not: ANTHROPIC_API_KEY.
+
+on:
+  schedule:
+    - cron: '0 5 1 * *'   # 05:00 UTC on the 1st — the monthly review
+  workflow_dispatch:
+    inputs:
+      monthly:
+        description: 'Also run this month''s review now (skipped if it already ran this month)'
+        type: boolean
+        default: false
+      effort:
+        description: 'How hard the model works. high is the right default; xhigh costs more.'
+        type: choice
+        options: [high, xhigh, medium]
+        default: high
+
+# Two runners must never work the same queue at once.
+concurrency:
+  group: coach-analysis
+  cancel-in-progress: false
+
+jobs:
+  analyse:
+    name: Run queued analyses
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: garmin-fitness-app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: garmin-fitness-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run analyses
+        env:
+          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
+          APP_URL:              ${{ secrets.APP_URL }}
+          SYNC_SECRET:          ${{ secrets.SYNC_SECRET }}
+          VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_BYPASS_SECRET }}
+          ANALYSIS_SCHEDULE:    ${{ (github.event_name == 'schedule' || inputs.monthly) && 'monthly' || '' }}
+          ANALYSIS_EFFORT:      ${{ inputs.effort || 'high' }}
+        run: npx tsx scripts/run-analysis.ts

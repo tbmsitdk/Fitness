@@ -18,6 +18,8 @@ import {
 } from '@/lib/nutrition-analysis';
 import type { UserSettings } from '@/lib/settings';
 import { COACH_MODEL } from '@/lib/models';
+import { betaMemoryTool } from '@anthropic-ai/sdk/helpers/beta/memory';
+import { runMemoryCommand, type MemoryCommand, type MemoryStore } from '@/lib/coach-memory';
 import { COACHING_REPORT_SCHEMA, readReply, parseCoachingReport } from '@/lib/coach-report';
 
 const client = new Anthropic({
@@ -629,7 +631,11 @@ export async function generateWeeklySummary(
   const rawPart = rawDataSection
     ? `\n\n${rawDataSection}\n\nThe aggregates above were computed by the app. The raw rows are the ground truth: use them to check the aggregates, and to look for patterns no aggregate covers (weekday effects, lagged effects, runs of bad days, what preceded the best and worst weeks). Where the rows contradict an aggregate, say so.`
     : '';
-  const memoryPart = memorySection ? `\n\n${memorySection}` : '';
+  // The report has no memory tool: it reads the notes, and the app records the
+  // recommendations afterwards.
+  const memoryPart = memorySection
+    ? `\n\n${memorySection}\n\nIn this report you can read the memory but not write to it; the app saves your recommendations afterwards. Where earlier advice is on file, say whether the data shows it was followed and what happened.`
+    : '';
 
   // Structured outputs, not a forced tool call: Fable 5.2 rejects forced
   // tool_choice with a 400, and the schema guarantees the JSON parses.
@@ -682,8 +688,11 @@ export async function* streamChat(
   exerciseLogs?: ExerciseLog[],
   nutritionLogs?: NutritionLog[],
   travelLogs?: TravelLog[],
-  /** What the coach has on file from earlier sessions (lib/coach-memory.ts). Optional. */
-  memorySection?: string,
+  /**
+   * The coach's memory: its current contents as a prompt section, and the store
+   * the memory tool writes to. Optional — without it the chat is stateless.
+   */
+  memory?: { section: string; store: MemoryStore },
 ): AsyncGenerator<ChatChunk> {
   const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs, travelLogs);
 
@@ -700,7 +709,7 @@ ${JSON.stringify(sampleSummaries, null, 2)}
     : '';
 
   const dataContext = `## Your Complete Fitness & Health Profile
-${JSON.stringify(context, null, 2)}${samplesSection}${memorySection ? `\n\n${memorySection}` : ''}`;
+${JSON.stringify(context, null, 2)}${samplesSection}`;
 
   // Build Anthropic message format — support text-only and text+file content
   const anthropicMessages = messages.map(m => {
@@ -728,35 +737,61 @@ ${JSON.stringify(context, null, 2)}${samplesSection}${memorySection ? `\n\n${mem
   });
 
   // The data block is identical across the turns of one conversation, so it is
-  // cached: follow-up questions read it at a fraction of the input price.
-  const stream = client.beta.messages.stream({
+  // cached: follow-up questions read it at a fraction of the input price. The
+  // memory comes AFTER the cache breakpoint, because a saved note changes it.
+  const system: Anthropic.Beta.Messages.BetaTextBlockParam[] = [
+    { type: 'text', text: SYSTEM_PROMPT },
+    { type: 'text', text: dataContext, cache_control: { type: 'ephemeral' } },
+  ];
+  if (memory) system.push({ type: 'text', text: memory.section });
+
+  const params = {
     model: MODEL,
     max_tokens: 16000,
     betas: [FALLBACK_BETA],
-    fallbacks: 'default',
-    thinking: { type: 'adaptive', display: 'summarized' },
-    output_config: { effort: 'medium' },
-    system: [
-      { type: 'text', text: SYSTEM_PROMPT },
-      { type: 'text', text: dataContext, cache_control: { type: 'ephemeral' } },
-    ],
+    fallbacks: 'default' as const,
+    thinking: { type: 'adaptive' as const, display: 'summarized' as const },
+    output_config: { effort: 'medium' as const },
+    system,
     messages: anthropicMessages,
+  };
+
+  type Event = Anthropic.Beta.Messages.BetaRawMessageStreamEvent;
+  function* chunksOf(event: Event): Generator<ChatChunk> {
+    if (event.type !== 'content_block_delta') return;
+    if (event.delta.type === 'text_delta') yield { type: 'text', text: event.delta.text };
+    else if (event.delta.type === 'thinking_delta') yield { type: 'thinking', text: event.delta.thinking };
+  }
+  const checkEnding = (stopReason: string | null) => {
+    if (stopReason === 'refusal') throw new Error('The model declined this request.');
+    if (stopReason === 'max_tokens') throw new Error('The reply was cut off before it finished.');
+  };
+
+  if (!memory) {
+    const stream = client.beta.messages.stream(params);
+    for await (const event of stream) yield* chunksOf(event);
+    checkEnding((await stream.finalMessage()).stop_reason);
+    return;
+  }
+
+  // With memory, the model may call the memory tool mid-reply. The runner
+  // executes each call against the store and continues the turn.
+  const run = (cmd: MemoryCommand) => runMemoryCommand(memory.store, cmd);
+  const runner = client.beta.messages.toolRunner({
+    ...params,
+    tools: [betaMemoryTool({
+      view: run, create: run, str_replace: run, insert: run, delete: run, rename: run,
+    })],
+    stream: true,
+    max_iterations: 6,
+    // Send the full history each turn rather than relying on a server-side thread.
+    thread: false,
   });
 
-  for await (const chunk of stream) {
-    if (chunk.type !== 'content_block_delta') continue;
-    if (chunk.delta.type === 'text_delta') {
-      yield { type: 'text', text: chunk.delta.text };
-    } else if (chunk.delta.type === 'thinking_delta') {
-      yield { type: 'thinking', text: chunk.delta.thinking };
-    }
-  }
-
-  const final = await stream.finalMessage();
-  if (final.stop_reason === 'refusal') {
-    throw new Error('The model declined this request.');
-  }
-  if (final.stop_reason === 'max_tokens') {
-    throw new Error('The reply was cut off before it finished.');
+  for await (const messageStream of runner) {
+    for await (const event of messageStream) yield* chunksOf(event);
+    // A refusal can cut a tool call off mid-input; checkEnding throws before
+    // the runner would execute it.
+    checkEnding((await messageStream.finalMessage()).stop_reason);
   }
 }
