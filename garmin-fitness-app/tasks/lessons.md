@@ -262,3 +262,33 @@ small file whose bytes really are a PNG, whatever its name says.
 
 **Tests:** `__tests__/coach-memory.test.ts`, `__tests__/analysis.test.ts`
 ("drops a chart that is not a PNG").
+
+## 20. The model reads; code decides
+
+Four features added together (quick log, early warning, experiments, history
+look-ups) all follow one split, and each would have reintroduced an old bug
+without it:
+
+- **Quick log.** The model reports what was eaten or drunk; code computes the
+  units, adds to the day, and leaves every field nobody mentioned untouched.
+  Letting the model fill the row would have written zeros for unmentioned
+  fields (lesson 4) the first time someone logged only a beer.
+- **Early warning.** Whether something is off is computed (median and MAD
+  against the previous four weeks, two of three days, at least one
+  physiological signal). The model only words it, and is told the check is
+  authoritative. Known causes — alcohol, travel, a heavy block — are named
+  rather than hidden (lesson 6).
+- **Experiments.** An unlogged day is unknown, never "kept". The comparison is
+  weekend-night against weekend-night (lesson 6), and each outcome carries its
+  own direction (lesson 3).
+- **History look-ups.** The model picks a table, column and function; averages
+  and bests are computed in code over the same tables the reports use, and an
+  empty cell takes no part in any of them.
+
+**Rule:** anything that is arithmetic, a threshold, or a null-versus-zero
+decision is code with a test. A model output that the UI shows as a fact
+(a verdict, a confidence, a sample size) is validated, and an unrecognised
+value falls to the cautious reading — "cannot check", never "agrees".
+
+**Tests:** `quick-log.test.ts`, `early-warning.test.ts`, `experiments.test.ts`,
+`history-tools.test.ts`, and the card-check cases in `analysis.test.ts`.

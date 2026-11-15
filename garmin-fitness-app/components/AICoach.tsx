@@ -10,6 +10,7 @@ import type { UserSettings } from '@/lib/settings';
 import { COACH_MODEL } from '@/lib/models';
 import DeepAnalysis from '@/components/DeepAnalysis';
 import CoachMemory from '@/components/CoachMemory';
+import Experiments from '@/components/Experiments';
 
 interface Props { activities: Activity[]; wellness: WellnessRecord[]; settings?: UserSettings; }
 
@@ -68,7 +69,7 @@ const STORAGE_DRAFT    = 'ai-coach-draft-v1';
 const MAX_STORED_MSGS  = 60; // keep last 60 messages (~30 exchanges)
 
 export default function AICoach({ activities, wellness, settings }: Props) {
-  const [section, setSection] = useState<'chat'|'summary'|'analysis'|'memory'>('chat');
+  const [section, setSection] = useState<'chat'|'summary'|'analysis'|'experiments'|'memory'>('chat');
   const [summary, setSummary] = useState<AISummary | null>(null);
   const [loading, setLoading] = useState(false);  // not auto-started
   const [error, setError] = useState('');
@@ -188,6 +189,7 @@ export default function AICoach({ activities, wellness, settings }: Props) {
           { id: 'chat',    label: 'Chat'            },
           { id: 'summary', label: 'Coaching Report' },
           { id: 'analysis', label: 'Deep Analysis'  },
+          { id: 'experiments', label: 'Experiments' },
           { id: 'memory',  label: 'Memory'          },
         ] as const).map(t => (
           <button key={t.id} onClick={() => setSection(t.id)} className={cn(
@@ -299,6 +301,7 @@ export default function AICoach({ activities, wellness, settings }: Props) {
       )}
 
       {section === 'analysis' && <DeepAnalysis />}
+      {section === 'experiments' && <Experiments />}
       {section === 'memory' && <CoachMemory />}
 
       {section === 'chat' && (
@@ -327,7 +330,7 @@ export default function AICoach({ activities, wellness, settings }: Props) {
                 <div className="text-center space-y-2">
                   <Bot className="w-8 h-8 text-muted-foreground mx-auto" />
                   <p className="text-sm text-muted-foreground">Ask anything about your training</p>
-                  <p className="text-xs text-muted-foreground/60">Full context: 90 days of activities, wellness, per-second HR & power · the coach keeps notes between conversations (see Memory)</p>
+                  <p className="text-xs text-muted-foreground/60">Knows the last 90 days in detail, can look up anything in your full history, and keeps notes between conversations (see Memory)</p>
                 </div>
               </div>
             ) : messages.map((m,i) => (

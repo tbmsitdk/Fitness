@@ -64,7 +64,9 @@ export async function POST(req: NextRequest) {
         { status: 429 },
       );
     }
-    const run = await queueRun('deep', question);
+    // 'audit' is the cross-check of the dashboard's own numbers; it takes no question.
+    const kind = (body as { kind?: unknown }).kind === 'audit' ? 'audit' : 'deep';
+    const run = await queueRun(kind, kind === 'audit' ? null : question);
     const dispatch = await dispatchWorkflow();
     return NextResponse.json({ run, dispatch });
   } catch (e) {

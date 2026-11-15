@@ -6,7 +6,8 @@
 
 import { DATA_DICTIONARY } from '@/lib/raw-data';
 
-export type AnalysisKind = 'deep' | 'monthly';
+export type AnalysisKind = 'deep' | 'monthly' | 'audit';
+export const ANALYSIS_KINDS: AnalysisKind[] = ['deep', 'monthly', 'audit'];
 export type AnalysisStatus = 'queued' | 'running' | 'done' | 'failed';
 export type Confidence = 'high' | 'medium' | 'low';
 
@@ -28,6 +29,19 @@ export interface AnalysisChart {
   data?: string;
 }
 
+export type CardVerdict = 'agrees' | 'differs' | 'cannot_check';
+
+/** One of the app's own dashboard claims, recomputed independently. */
+export interface CardCheck {
+  /** Which card or number, in the app's words. */
+  card: string;
+  app_says: string;
+  analysis_says: string;
+  verdict: CardVerdict;
+  /** Why they differ, or why it could not be checked. */
+  note: string;
+}
+
 export interface AnalysisResult {
   headline: string;
   findings: AnalysisFinding[];
@@ -36,6 +50,8 @@ export interface AnalysisResult {
   caveats: string[];
   next_steps: string[];
   charts: AnalysisChart[];
+  /** Filled by the cross-check run; empty for the others. */
+  card_checks: CardCheck[];
 }
 
 export interface AnalysisRun {
@@ -96,8 +112,24 @@ export const ANALYSIS_SCHEMA = {
         additionalProperties: false,
       },
     },
+    card_checks: {
+      type: 'array',
+      description: 'Cross-check runs only: one entry per claim checked. Empty array for every other kind of run.',
+      items: {
+        type: 'object',
+        properties: {
+          card:          { type: 'string', description: 'The claim being checked, named as the app names it.' },
+          app_says:      { type: 'string', description: 'The app\'s figure, with its sample size.' },
+          analysis_says: { type: 'string', description: 'Your independently computed figure, with n and interval.' },
+          verdict:       { type: 'string', enum: ['agrees', 'differs', 'cannot_check'] },
+          note:          { type: 'string', description: 'If they differ: the most likely reason. If not checkable: what is missing.' },
+        },
+        required: ['card', 'app_says', 'analysis_says', 'verdict', 'note'],
+        additionalProperties: false,
+      },
+    },
   },
-  required: ['headline', 'findings', 'not_significant', 'caveats', 'next_steps', 'charts'],
+  required: ['headline', 'findings', 'not_significant', 'caveats', 'next_steps', 'charts', 'card_checks'],
   additionalProperties: false,
 } as const;
 
@@ -138,11 +170,29 @@ export interface AnalysisPromptInput {
   memory?: string;
   /** Headline and finding titles of the previous monthly review, if any. */
   previousReview?: string;
+  /** Cross-check runs: the app's own computed claims, as JSON text. */
+  claims?: string;
   today: string;
 }
 
 export function buildAnalysisPrompt(input: AnalysisPromptInput): string {
-  const task = input.kind === 'monthly'
+  const audit = `Today is ${input.today}. This is a cross-check of the app's own dashboard.
+
+The app computes the claims below with hand-written code: the effect of each habit on next-morning recovery, the cost of travel, and so on. Recompute each one independently from the raw files, with your own method, WITHOUT first looking at how the app got its number. Then compare.
+
+<claims>
+${input.claims ?? '(none supplied)'}
+</claims>
+
+For every claim that carries a number, add one card_checks entry:
+- agrees: same direction, and your interval contains the app's figure or the two are close enough that a reader would draw the same conclusion.
+- differs: opposite direction, or a size different enough to change the conclusion. In the note, give the most likely reason: a different baseline group, pooling weekdays with weekends, a different lag, counting unlogged days, a small sample.
+- cannot_check: the files do not hold what is needed; say what is missing.
+Be exact about what each side measured. Two numbers that answer different questions do not "differ"; say so and mark them agrees or cannot_check as fits.
+
+Put the claims that differ first. In findings, report only what the cross-check itself shows (which cards to trust, which to treat with care). The headline says how many claims were checked and how many differ.`;
+
+  const task = input.kind === 'audit' ? audit : input.kind === 'monthly'
     ? `This is the monthly review. Today is ${input.today}. Compare the most recent 30 days with the 30 days before, and with the same period a year earlier where the data reaches that far.
 
 Answer three things:
@@ -216,8 +266,23 @@ export function parseAnalysisResult(text: string): AnalysisResult {
     .slice(0, MAX_CHARTS)
     .map(c => ({ filename: c.filename as string, caption: typeof c.caption === 'string' ? c.caption : '' }));
 
+  const verdict = (v: unknown): CardVerdict => (v === 'agrees' || v === 'differs' ? v : 'cannot_check');
+  const card_checks: CardCheck[] = (Array.isArray(parsed.card_checks) ? parsed.card_checks : [])
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object')
+    .filter(c => typeof c.card === 'string' && c.card.trim() !== '')
+    .slice(0, 40)
+    .map(c => ({
+      card: (c.card as string).slice(0, 200),
+      app_says: typeof c.app_says === 'string' ? c.app_says.slice(0, 300) : '',
+      analysis_says: typeof c.analysis_says === 'string' ? c.analysis_says.slice(0, 300) : '',
+      // Anything unrecognised is "cannot check" — never silently "agrees".
+      verdict: verdict(c.verdict),
+      note: typeof c.note === 'string' ? c.note.slice(0, 500) : '',
+    }));
+
   return {
     headline:        parsed.headline,
+    card_checks,
     findings,
     not_significant: strings(parsed.not_significant),
     caveats:         strings(parsed.caveats),

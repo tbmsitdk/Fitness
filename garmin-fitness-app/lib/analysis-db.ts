@@ -32,13 +32,15 @@ const iso = (v: unknown): string | null =>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toRun(r: any, withCharts: boolean): AnalysisRun {
   let result: AnalysisResult | null = r.result ?? null;
+  // Runs stored before the cross-check existed have no card_checks.
+  if (result && !Array.isArray(result.card_checks)) result = { ...result, card_checks: [] };
   if (result && !withCharts) {
     // Chart bytes are large; the list view only needs to know they exist.
     result = { ...result, charts: (result.charts ?? []).map(c => ({ filename: c.filename, caption: c.caption })) };
   }
   return {
     id: Number(r.id),
-    kind: r.kind as AnalysisKind,
+    kind: (['monthly', 'audit'].includes(r.kind) ? r.kind : 'deep') as AnalysisKind,
     question: r.question ?? null,
     status: r.status as AnalysisStatus,
     requested_at: iso(r.requested_at) ?? '',

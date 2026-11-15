@@ -10,6 +10,8 @@ import { AISummary } from '@/types';
 import type { UserSettings } from '@/lib/settings';
 import { buildRawTablesWithin, rawDataPromptSection } from '@/lib/raw-data';
 import { loadMemorySection, recordAdvice } from '@/lib/coach-memory-db';
+import { loadExperimentsSection } from '@/lib/experiments-db';
+import { homeDayAndTime } from '@/lib/raw-data';
 
 export const dynamic = 'force-dynamic';
 // The report now reads raw daily rows as well as the aggregates, and Fable 5.2
@@ -88,7 +90,10 @@ async function buildSummary(userSettings?: UserSettings) {
   const summary = await generateWeeklySummary(
     activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs, travelLogs,
     rawDataSection,
-    await loadMemorySection(),
+    [
+      await loadMemorySection(),
+      await loadExperimentsSection(nutritionLogs, homeDayAndTime(new Date().toISOString()).day),
+    ].filter(Boolean).join('\n\n') || undefined,
   );
   // So the next report, and the chat, know what was advised and when.
   await recordAdvice('weekly', summary.summary.split('\n')[0], summary.recommendations);

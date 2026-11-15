@@ -29,6 +29,7 @@ interface Job {
   aggregates: unknown;
   memory: string | null;
   previousReview: string | null;
+  claims?: string | null;
   today: string;
 }
 
@@ -108,6 +109,7 @@ async function analyse(job: Job): Promise<{ result: AnalysisResult; reasoning: s
       aggregates: JSON.stringify(job.aggregates, null, 2),
       memory: job.memory ?? undefined,
       previousReview: job.previousReview ?? undefined,
+      claims: job.claims ?? undefined,
       today: job.today,
     });
 
@@ -238,7 +240,7 @@ async function main() {
   for (let i = 0; i < MAX_RUNS; i++) {
     const job = await nextJob();
     if (!job) break;
-    const label = job.run.kind === 'monthly' ? 'monthly review' : `deep analysis${job.run.question ? `: "${job.run.question}"` : ''}`;
+    const label = job.run.kind === 'monthly' ? 'monthly review' : job.run.kind === 'audit' ? 'dashboard cross-check' : `deep analysis${job.run.question ? `: "${job.run.question}"` : ''}`;
     console.log(`\nRun #${job.run.id} — ${label}`);
     currentRunId = job.run.id;
     try {

@@ -1,11 +1,11 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, BarChart3, CheckCircle2, Clock, FlaskConical, Lightbulb, Loader2, Trash2 } from 'lucide-react';
+import { AlertTriangle, BarChart3, CheckCircle2, Clock, FlaskConical, Lightbulb, Loader2, ScanSearch, Trash2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { MAX_QUESTION_LENGTH, type AnalysisChart, type AnalysisRun, type Confidence } from '@/lib/analysis';
+import { MAX_QUESTION_LENGTH, type AnalysisChart, type AnalysisRun, type CardVerdict, type Confidence } from '@/lib/analysis';
 
 const ACTIONS_HINT = 'GitHub → Actions → Coach Analysis → Run workflow';
 
@@ -14,6 +14,13 @@ const CONFIDENCE_STYLE: Record<Confidence, string> = {
   medium: 'border-amber-500/30 text-amber-400',
   low:    'border-border text-muted-foreground',
 };
+
+const VERDICT_STYLE: Record<CardVerdict, string> = {
+  agrees:       'border-green-500/30 text-green-400',
+  differs:      'border-red-500/30 text-red-400',
+  cannot_check: 'border-border text-muted-foreground',
+};
+const VERDICT_LABEL: Record<CardVerdict, string> = { agrees: 'agrees', differs: 'differs', cannot_check: 'could not check' };
 
 function when(iso: string | null) {
   return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
@@ -48,7 +55,9 @@ function RunCard({ run, onDelete }: { run: AnalysisRun; onDelete: (id: number) =
     return () => { cancelled = true; };
   }, [run.id, run.status, chartCount, charts]);
 
-  const title = run.kind === 'monthly' ? 'Monthly review' : (run.question ?? 'Deep analysis: strongest relationships in your data');
+  const title = run.kind === 'monthly' ? 'Monthly review'
+    : run.kind === 'audit' ? 'Cross-check of the dashboard numbers'
+    : (run.question ?? 'Deep analysis: strongest relationships in your data');
 
   return (
     <Card>
@@ -86,6 +95,25 @@ function RunCard({ run, onDelete }: { run: AnalysisRun; onDelete: (id: number) =
         {result && (
           <div className="space-y-4">
             <p className="text-sm">{result.headline}</p>
+
+            {result.card_checks.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Dashboard claims, recomputed independently · {result.card_checks.filter(c => c.verdict === 'differs').length} of {result.card_checks.length} differ
+                </p>
+                {result.card_checks.map((c, i) => (
+                  <div key={i} className="rounded-md border border-border p-3 space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-medium">{c.card}</p>
+                      <Badge variant="outline" className={cn('flex-shrink-0', VERDICT_STYLE[c.verdict])}>{VERDICT_LABEL[c.verdict]}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground"><span className="text-foreground">App: </span>{c.app_says || '—'}</p>
+                    <p className="text-xs text-muted-foreground"><span className="text-foreground">Recomputed: </span>{c.analysis_says || '—'}</p>
+                    {c.note && <p className="text-[11px] text-muted-foreground/80">{c.note}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {result.findings.length > 0 && (
               <div className="space-y-2">
@@ -169,16 +197,16 @@ export default function DeepAnalysis() {
     return () => clearInterval(t);
   }, [pending, load]);
 
-  async function queue() {
+  async function queue(kind: 'deep' | 'audit' = 'deep') {
     setBusy(true); setError(''); setNotice('');
     try {
       const res = await fetch('/api/analysis', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify(kind === 'audit' ? { kind } : { question }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      setQuestion('');
+      if (kind === 'deep') setQuestion('');
       setNotice(json.dispatch === 'started'
         ? 'Started. Results can take from 10 minutes up to about 40.'
         : json.dispatch === 'failed'
@@ -225,10 +253,16 @@ export default function DeepAnalysis() {
           />
           <div className="flex items-center justify-between gap-3">
             <span className="text-[11px] text-muted-foreground">{question.length}/{MAX_QUESTION_LENGTH}</span>
-            <Button size="sm" onClick={queue} disabled={busy}>
-              {busy ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <BarChart3 className="w-3.5 h-3.5 mr-2" />}
-              Run deep analysis
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => queue('audit')} disabled={busy}
+                title="Recomputes the dashboard's habit and travel numbers independently and marks each one agrees or differs">
+                <ScanSearch className="w-3.5 h-3.5 mr-2" />Cross-check the dashboard
+              </Button>
+              <Button size="sm" onClick={() => queue('deep')} disabled={busy}>
+                {busy ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <BarChart3 className="w-3.5 h-3.5 mr-2" />}
+                Run deep analysis
+              </Button>
+            </div>
           </div>
           {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
           {error && <p className="text-xs text-red-400">{error}</p>}

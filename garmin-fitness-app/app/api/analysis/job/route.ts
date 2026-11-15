@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@vercel/postgres';
 import { buildFullContext } from '@/lib/ai';
-import { coerceActivity, coerceWellness } from '@/lib/db';
-import { coerceNutritionLog } from '@/lib/nutrition';
-import { coerceTravelLog } from '@/lib/travel';
-import { coerceExerciseLog } from '@/lib/exercises';
+import { loadCoachData, lastDays } from '@/lib/coach-data';
 import { buildRawTables } from '@/lib/raw-data';
 import { sanitiseIncomingResult, summariseForNextReview } from '@/lib/analysis';
 import {
-  claimNextRun, completeRun, failRun, lastMonthlyReview, monthlyAlreadyRequested, queueRun,
+  claimNextRun, completeRun, failRun, getRun, lastMonthlyReview, monthlyAlreadyRequested, queueRun,
 } from '@/lib/analysis-db';
 import { loadMemorySection, recordAdvice } from '@/lib/coach-memory-db';
 
@@ -24,43 +20,33 @@ function bearerOk(req: NextRequest) {
   return (req.headers.get('authorization') ?? '') === `Bearer ${secret}`;
 }
 
-/** Everything the runner needs for one run: the raw tables, the aggregates, the memory. */
-async function loadBundle() {
-  const cutoff = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
-  const [actResult, wellResult, ftpResult, exerciseResult, nutritionResult, travelResult] = await Promise.all([
-    sql`SELECT * FROM activities ORDER BY date`,
-    sql`SELECT * FROM wellness ORDER BY date`,
-    sql`SELECT ftp_watts FROM ftp_entries ORDER BY date DESC LIMIT 1`,
-    sql`SELECT id, date::text, exercise_key, sets, reps, duration_seconds, load_kg,
-               vital_capacity_l, inspiratory_strength, expiratory_strength, notes
-        FROM exercise_logs ORDER BY date`,
-    sql`SELECT id, date::text, alcohol_units, candy_portions, savoury_snacks, sugary_drinks,
-               to_char(last_food_time, 'HH24:MI') AS last_food_time,
-               caffeine_after_14, meal_quality, notes
-        FROM nutrition_logs ORDER BY date`,
-    // SELECT * deliberately — see tasks/lessons.md 14 (one table, one read path).
-    sql`SELECT * FROM travel_logs ORDER BY depart_date`,
-  ]);
-
-  const activities = actResult.rows.map(coerceActivity);
-  const wellness = wellResult.rows.map(coerceWellness);
-  const exerciseLogs = exerciseResult.rows.map(coerceExerciseLog);
-  const nutritionLogs = nutritionResult.rows.map(coerceNutritionLog);
-  const travelLogs = travelResult.rows.map(coerceTravelLog);
-  const manualFtpWatts = ftpResult.rows[0]?.ftp_watts ? Number(ftpResult.rows[0].ftp_watts) : null;
+/** Everything the runner needs for one run: the raw tables, the aggregates, the claims. */
+async function loadBundle(kind: string) {
+  const data = await loadCoachData();
 
   // The files hold the WHOLE history: they go to the sandbox, not into the
   // prompt, so there is no token budget to fit.
-  const tables = buildRawTables({ activities, wellness, exerciseLogs, nutritionLogs, travelLogs });
+  const tables = buildRawTables(data);
 
   // The aggregates are tuned to a 90-day window, same as the weekly report.
-  const recent = <T extends { date: string }>(rows: T[]) => rows.filter(r => r.date >= cutoff.slice(0, 10));
   const aggregates = buildFullContext(
-    recent(activities), recent(wellness), undefined, manualFtpWatts,
-    recent(exerciseLogs), recent(nutritionLogs), travelLogs,
+    lastDays(data.activities, 90, data.today), lastDays(data.wellness, 90, data.today), undefined,
+    data.manualFtpWatts, lastDays(data.exerciseLogs, 90, data.today),
+    lastDays(data.nutritionLogs, 90, data.today), data.travelLogs,
   );
 
-  return { tables, aggregates };
+  // For the cross-check: the app's habit and travel claims over the FULL
+  // history, which is the widest window the dashboard cards can show.
+  let claims: string | null = null;
+  if (kind === 'audit') {
+    const full = buildFullContext(
+      data.activities, data.wellness, undefined, data.manualFtpWatts,
+      data.exerciseLogs, data.nutritionLogs, data.travelLogs,
+    );
+    claims = JSON.stringify({ nutrition: full.nutrition, travel: full.travel }, null, 2);
+  }
+
+  return { tables, aggregates, claims, today: data.today };
 }
 
 // GET /api/analysis/job?schedule=monthly
@@ -78,7 +64,7 @@ export async function GET(req: NextRequest) {
 
     try {
       const [bundle, memory, previous] = await Promise.all([
-        loadBundle(),
+        loadBundle(run.kind),
         loadMemorySection(),
         run.kind === 'monthly' ? lastMonthlyReview(run.id) : Promise.resolve(null),
       ]);
@@ -88,7 +74,8 @@ export async function GET(req: NextRequest) {
         aggregates: bundle.aggregates,
         memory: memory ?? null,
         previousReview: previous?.result ? summariseForNextReview(previous.result) : null,
-        today: new Date().toISOString().slice(0, 10),
+        claims: bundle.claims,
+        today: bundle.today,
       });
     } catch (e) {
       // The run was claimed but its data could not be built: release it as
@@ -129,9 +116,10 @@ export async function POST(req: NextRequest) {
       typeof body.reasoning === 'string' ? body.reasoning.slice(0, 20_000) : null,
       typeof body.model === 'string' ? body.model.slice(0, 80) : null,
     );
-    if (ok && result.next_steps.length > 0) {
-      const kind = (await lastMonthlyReview())?.id === id ? 'monthly' : 'deep';
-      await recordAdvice(kind, result.headline, result.next_steps);
+    // The cross-check is about the app's numbers, not advice to the person.
+    const stored = ok ? await getRun(id) : null;
+    if (stored && stored.kind !== 'audit' && result.next_steps.length > 0) {
+      await recordAdvice(stored.kind === 'monthly' ? 'monthly' : 'deep', result.headline, result.next_steps);
     }
     return NextResponse.json({ ok });
   } catch (e) {

@@ -179,6 +179,34 @@ describe('buildAnalysisPrompt', () => {
   });
 });
 
+describe('card checks (dashboard cross-check)', () => {
+  const check = (over: Record<string, unknown> = {}) => ({ card: 'Alcohol → sleep score', app_says: '-4.2 (n=31)', analysis_says: '-6.1, CI -9.0 to -3.2 (n=84)', verdict: 'agrees', note: '', ...over });
+
+  it('parses the checks and defaults to none for other runs', () => {
+    expect(parseAnalysisResult(JSON.stringify(report)).card_checks).toEqual([]);
+    const r = parseAnalysisResult(JSON.stringify({ ...report, card_checks: [check(), check({ verdict: 'differs', note: 'different baseline' })] }));
+    expect(r.card_checks.map(c => c.verdict)).toEqual(['agrees', 'differs']);
+  });
+
+  // A garbled verdict must never show up as a green "agrees".
+  it('never reads an unrecognised verdict as agreement', () => {
+    const r = parseAnalysisResult(JSON.stringify({ ...report, card_checks: [check({ verdict: 'AGREES' }), check({ verdict: 'mostly agrees' }), check({ verdict: null })] }));
+    expect(r.card_checks.map(c => c.verdict)).toEqual(['cannot_check', 'cannot_check', 'cannot_check']);
+  });
+
+  it('drops checks without a card name', () => {
+    const r = parseAnalysisResult(JSON.stringify({ ...report, card_checks: [check({ card: ' ' }), null, 'x', check()] }));
+    expect(r.card_checks).toHaveLength(1);
+  });
+
+  it('gives the cross-check its own task, with the app\'s claims', () => {
+    const p = buildAnalysisPrompt({ kind: 'audit', question: null, files: ['wellness.csv'], aggregates: '{}', claims: '{"nutrition":{"alcohol":-4.2}}', today: '2026-11-15' });
+    expect(p).toContain('<claims>\n{"nutrition":{"alcohol":-4.2}}\n</claims>');
+    expect(p).toMatch(/WITHOUT first looking at how the app got its number/);
+    expect(p).toMatch(/Two numbers that answer different questions do not "differ"/);
+  });
+});
+
 describe('summariseForNextReview', () => {
   it('carries the headline, findings and advice forward', () => {
     const s = summariseForNextReview(parseAnalysisResult(JSON.stringify(report)));
@@ -197,5 +225,6 @@ describe('ANALYSIS_SCHEMA', () => {
     check(ANALYSIS_SCHEMA);
     check(ANALYSIS_SCHEMA.properties.findings.items);
     check(ANALYSIS_SCHEMA.properties.charts.items);
+    check(ANALYSIS_SCHEMA.properties.card_checks.items);
   });
 });

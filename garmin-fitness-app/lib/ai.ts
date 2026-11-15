@@ -19,6 +19,8 @@ import {
 import type { UserSettings } from '@/lib/settings';
 import { COACH_MODEL } from '@/lib/models';
 import { betaMemoryTool } from '@anthropic-ai/sdk/helpers/beta/memory';
+import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema';
+import { HISTORY_INSTRUCTIONS, HISTORY_TOOL_DEFS, runHistoryTool, type HistoryTables } from '@/lib/history-tools';
 import { runMemoryCommand, type MemoryCommand, type MemoryStore } from '@/lib/coach-memory';
 import { COACHING_REPORT_SCHEMA, readReply, parseCoachingReport } from '@/lib/coach-report';
 
@@ -671,6 +673,46 @@ Be specific. Cite exact numbers. Give actionable targets not vague advice.`,
   };
 }
 
+export interface StructuredRequest {
+  system: string;
+  prompt: string;
+  /** JSON schema the reply must match (closed objects, every property required). */
+  schema: Record<string, unknown>;
+  effort?: 'low' | 'medium' | 'high';
+  /** Images to look at alongside the prompt: base64 without the data: prefix. */
+  images?: { mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'; data: string }[];
+}
+
+/**
+ * One schema-constrained question to the coach model. Used by the small
+ * features (morning brief, quick log, experiment proposals) so each gets the
+ * same refusal fallback and the same loud failure on a refusal or a cut-off.
+ */
+export async function askStructured(req: StructuredRequest): Promise<{ text: string; reasoning: string; model: string }> {
+  const content: Anthropic.Beta.Messages.BetaContentBlockParam[] = [
+    ...(req.images ?? []).map(img => ({
+      type: 'image' as const,
+      source: { type: 'base64' as const, media_type: img.mediaType, data: img.data },
+    })),
+    { type: 'text', text: req.prompt },
+  ];
+  const response = await client.beta.messages.stream({
+    model: MODEL,
+    max_tokens: 16000,
+    betas: [FALLBACK_BETA],
+    fallbacks: 'default',
+    thinking: { type: 'adaptive', display: 'summarized' },
+    output_config: {
+      effort: req.effort ?? 'low',
+      format: { type: 'json_schema', schema: req.schema },
+    },
+    system: req.system,
+    messages: [{ role: 'user', content }],
+  }).finalMessage();
+  const reply = readReply(response);
+  return { ...reply, model: response.model };
+}
+
 /** One piece of a streamed chat reply. */
 export type ChatChunk =
   | { type: 'text'; text: string }
@@ -693,6 +735,11 @@ export async function* streamChat(
    * the memory tool writes to. Optional — without it the chat is stateless.
    */
   memory?: { section: string; store: MemoryStore },
+  /**
+   * Look-ups over the full history (lib/history-tools.ts). `load` is called at
+   * most once, and only if the model actually looks something up.
+   */
+  history?: { load: () => Promise<HistoryTables> },
 ): AsyncGenerator<ChatChunk> {
   const context = buildFullContext(activities, wellness, userSettings, manualFtpWatts, exerciseLogs, nutritionLogs, travelLogs);
 
@@ -743,6 +790,7 @@ ${JSON.stringify(context, null, 2)}${samplesSection}`;
     { type: 'text', text: SYSTEM_PROMPT },
     { type: 'text', text: dataContext, cache_control: { type: 'ephemeral' } },
   ];
+  if (history) system.push({ type: 'text', text: HISTORY_INSTRUCTIONS });
   if (memory) system.push({ type: 'text', text: memory.section });
 
   const params = {
@@ -767,23 +815,49 @@ ${JSON.stringify(context, null, 2)}${samplesSection}`;
     if (stopReason === 'max_tokens') throw new Error('The reply was cut off before it finished.');
   };
 
-  if (!memory) {
+  if (!memory && !history) {
     const stream = client.beta.messages.stream(params);
     for await (const event of stream) yield* chunksOf(event);
     checkEnding((await stream.finalMessage()).stop_reason);
     return;
   }
 
-  // With memory, the model may call the memory tool mid-reply. The runner
-  // executes each call against the store and continues the turn.
-  const run = (cmd: MemoryCommand) => runMemoryCommand(memory.store, cmd);
+  // With tools, the model may save a note or look something up mid-reply. The
+  // runner executes each call and continues the turn.
+  const tools = [];
+  if (memory) {
+    const run = (cmd: MemoryCommand) => runMemoryCommand(memory.store, cmd);
+    tools.push(betaMemoryTool({
+      view: run, create: run, str_replace: run, insert: run, delete: run, rename: run,
+    }));
+  }
+  if (history) {
+    let loaded: Promise<HistoryTables> | null = null;
+    const lookUp = async (name: string, args: unknown) => {
+      try {
+        loaded ??= history.load();
+        return runHistoryTool(await loaded, name, args);
+      } catch (e) {
+        loaded = null;
+        console.error('[chat] history look-up failed', e);
+        return 'Error: the history could not be loaded just now. Answer from the profile above and say the look-up failed.';
+      }
+    };
+    for (const def of HISTORY_TOOL_DEFS) {
+      tools.push(betaTool({
+        name: def.name,
+        description: def.description,
+        inputSchema: def.inputSchema,
+        run: (args: unknown) => lookUp(def.name, args),
+      }));
+    }
+  }
+
   const runner = client.beta.messages.toolRunner({
     ...params,
-    tools: [betaMemoryTool({
-      view: run, create: run, str_replace: run, insert: run, delete: run, rename: run,
-    })],
+    tools,
     stream: true,
-    max_iterations: 6,
+    max_iterations: 10,
     // Send the full history each turn rather than relying on a server-side thread.
     thread: false,
   });

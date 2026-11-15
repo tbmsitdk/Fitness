@@ -737,6 +737,18 @@ def main():
     _post_sync_log("success", SYNC_DAYS, acts_synced, well_synced, duration, samples_summary)
     print(f"\nSync complete in {duration}s.")
 
+    # ── Morning brief: written now, so it sees the data that just landed.
+    # Never allowed to fail the sync — the data is in either way.
+    try:
+        b = requests.post(f"{APP_URL}/api/daily-brief?force=1", headers=HEADERS, timeout=150)
+        if b.ok:
+            level = (b.json().get("brief") or {}).get("warning", {}).get("level", "none")
+            print(f"  ✓ Morning brief written (early warning: {level})")
+        else:
+            print(f"  ⚠  Morning brief not written: the app answered {b.status_code}")
+    except Exception as exc:
+        print(f"  ⚠  Morning brief not written: {type(exc).__name__}: {exc}")
+
 
 if __name__ == "__main__":
     _t0 = time.time()

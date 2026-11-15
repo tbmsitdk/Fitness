@@ -6,6 +6,8 @@ import Dashboard from '@/components/Dashboard';
 import AICoach from '@/components/AICoach';
 import SettingsPanel from '@/components/Settings';
 import InsightCards from '@/components/InsightCards';
+import MorningBrief from '@/components/MorningBrief';
+import QuickLog from '@/components/QuickLog';
 import SyncStatus from '@/components/SyncStatus';
 import DataManager from '@/components/DataManager';
 import { Activity, WellnessRecord, FtpEntry } from '@/types';
@@ -223,6 +225,10 @@ export default function Home() {
           </div>
         ) : activeTab === 'dashboard' ? (
           <div className="space-y-4">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <MorningBrief />
+              <QuickLog />
+            </div>
             <InsightCards />
             <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} ftpEntries={ftpEntries} />
           </div>

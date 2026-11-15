@@ -9,6 +9,10 @@ import { coerceNutritionLog } from '@/lib/nutrition';
 import { coerceTravelLog } from '@/lib/travel';
 import { coerceExerciseLog } from '@/lib/exercises';
 import { postgresMemoryStore, loadMemorySection } from '@/lib/coach-memory-db';
+import { loadCoachData } from '@/lib/coach-data';
+import { buildHistoryTables } from '@/lib/history-tools';
+import { loadExperimentsSection } from '@/lib/experiments-db';
+import { homeDayAndTime } from '@/lib/raw-data';
 
 export const dynamic = 'force-dynamic';
 // Fable 5.2 always thinks before it answers; 60s was cutting replies off.
@@ -235,7 +239,12 @@ export async function POST(request: NextRequest) {
       loadMemorySection(),
     ]);
     // If the memory could not be loaded the chat still works, just statelessly.
-    const memory = memorySection ? { section: memorySection, store: postgresMemoryStore } : undefined;
+    const experiments = await loadExperimentsSection(nutritionLogs, homeDayAndTime(new Date().toISOString()).day);
+    const memory = memorySection
+      ? { section: [memorySection, experiments].filter(Boolean).join('\n\n'), store: postgresMemoryStore }
+      : undefined;
+    // The full history is only read if the model actually looks something up.
+    const history = { load: async () => buildHistoryTables(await loadCoachData()) };
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -252,6 +261,7 @@ export async function POST(request: NextRequest) {
             nutritionLogs,
             travelLogs,
             memory,
+            history,
           )) {
             // Reasoning and answer travel as separate fields so the client can
             // show one as a collapsed note and the other as the reply.
