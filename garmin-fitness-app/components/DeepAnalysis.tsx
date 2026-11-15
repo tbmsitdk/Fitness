@@ -79,7 +79,7 @@ function RunCard({ run, onDelete }: { run: AnalysisRun; onDelete: (id: number) =
           <p className="text-xs text-muted-foreground">Waiting for the runner. If nothing happens within a few minutes, start it from {ACTIONS_HINT}.</p>
         )}
         {run.status === 'running' && (
-          <p className="text-xs text-muted-foreground">Working through your data. This usually takes 5 to 15 minutes; the page checks by itself.</p>
+          <p className="text-xs text-muted-foreground">Working through your data. This can take from 10 minutes up to about 40; the page checks by itself.</p>
         )}
         {run.status === 'failed' && <p className="text-xs text-red-400">{run.error ?? 'The run failed.'}</p>}
 
@@ -180,7 +180,7 @@ export default function DeepAnalysis() {
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       setQuestion('');
       setNotice(json.dispatch === 'started'
-        ? 'Started. Results usually arrive in 5 to 15 minutes.'
+        ? 'Started. Results can take from 10 minutes up to about 40.'
         : json.dispatch === 'failed'
           ? `Queued, but the runner could not be started from here. Start it from ${ACTIONS_HINT}.`
           : `Queued. Start the runner from ${ACTIONS_HINT}.`);

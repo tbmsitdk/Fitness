@@ -57,7 +57,7 @@ export const MAX_QUESTION_LENGTH = 600;
 export const MAX_CHARTS = 4;
 export const MAX_CHART_BYTES = 300_000;
 /** A run still "running" after this long has died; the runner's own timeout is shorter. */
-export const STALE_RUN_MINUTES = 90;
+export const STALE_RUN_MINUTES = 140;
 export const MAX_QUEUED_RUNS = 3;
 
 /** Structured-output schema for both kinds of run. */
@@ -115,6 +115,8 @@ How to work:
 ${DATA_DICTIONARY}
 
 Charts: make at most ${MAX_CHARTS}, only where a picture shows something the numbers do not. Save each as a PNG at 120 dpi or lower with a short descriptive filename, then copy it into "$OUTPUT_DIR" and list that directory in the same command so the copy is confirmed. List every chart in the charts field with the exact filename.
+
+Scope: this is a focused piece of work, not an open-ended exploration. Plan for roughly 10 to 15 sandbox steps: load and check the data, run the handful of tests that matter most, draw the charts, write the report. Combine related work into one script per step, and stop exploring once the main question is answered.
 
 Write for the person the data belongs to: plain words, their actual numbers, no jargon without a gloss. Your final message must be the JSON report and nothing else.`;
 

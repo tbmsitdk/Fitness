@@ -10,7 +10,7 @@
 //
 // Environment: APP_URL, SYNC_SECRET, ANTHROPIC_API_KEY, and optionally
 // VERCEL_BYPASS_SECRET, ANALYSIS_SCHEDULE=monthly, ANALYSIS_EFFORT,
-// ANALYSIS_TASK_BUDGET, ANALYSIS_MAX_RUNS.
+// ANALYSIS_TASK_BUDGET, ANALYSIS_MAX_RUNS, ANALYSIS_RUN_LIMIT_MINUTES.
 
 import Anthropic, { toFile } from '@anthropic-ai/sdk';
 import {
@@ -50,9 +50,13 @@ const EFFORT: Effort = EFFORTS.includes(process.env.ANALYSIS_EFFORT as Effort)
   ? (process.env.ANALYSIS_EFFORT as Effort) : 'high';
 // Tokens Claude may generate and read back from the sandbox in one run. It is
 // told the budget and paces itself to finish inside it.
-const TASK_BUDGET = Math.max(20_000, Number(process.env.ANALYSIS_TASK_BUDGET) || 300_000);
+const TASK_BUDGET = Math.max(20_000, Number(process.env.ANALYSIS_TASK_BUDGET) || 120_000);
 const MAX_RUNS = Math.max(1, Number(process.env.ANALYSIS_MAX_RUNS) || 3);
 const MAX_CONTINUATIONS = 8;
+// Wall-clock limit for ONE run. The first real run sat for 48 minutes with no
+// output and would have been killed by the job timeout with nothing saved; a
+// run now stops itself, and reports why, well before that.
+const RUN_LIMIT_MINUTES = Math.max(5, Number(process.env.ANALYSIS_RUN_LIMIT_MINUTES) || 40);
 
 const client = new Anthropic();
 
@@ -123,8 +127,15 @@ async function analyse(job: Job): Promise<{ result: AnalysisResult; reasoning: s
     let inputTokens = 0;
     let outputTokens = 0;
 
+    const started = Date.now();
+    const elapsed = () => `${Math.floor((Date.now() - started) / 60000)}m${String(Math.floor((Date.now() - started) / 1000) % 60).padStart(2, '0')}s`;
+    const abort = new AbortController();
+    const deadline = setTimeout(() => abort.abort(), RUN_LIMIT_MINUTES * 60_000);
+    let steps = 0;
+
+    try {
     for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
-      response = await client.beta.messages.stream({
+      const stream = client.beta.messages.stream({
         model: COACH_MODEL,
         max_tokens: 64000,
         betas: ['server-side-fallback-2026-07-01', 'task-budgets-2026-03-13'],
@@ -139,7 +150,17 @@ async function analyse(job: Job): Promise<{ result: AnalysisResult; reasoning: s
         tools: [{ type: 'code_execution_20260521', name: 'code_execution' }],
         ...(container ? { container } : {}),
         messages,
-      }).finalMessage();
+      }, { signal: abort.signal });
+
+      // Progress as it happens, so a long run is visibly working, not silent.
+      for await (const event of stream) {
+        if (event.type !== 'content_block_start') continue;
+        const block = event.content_block;
+        if (block.type === 'server_tool_use') console.log(`  · [${elapsed()}] step ${++steps}: ${block.name}`);
+        else if (block.type === 'thinking') console.log(`  · [${elapsed()}] thinking`);
+        else if (block.type === 'text') console.log(`  · [${elapsed()}] writing the report`);
+      }
+      response = await stream.finalMessage();
 
       blocks.push(...response.content);
       container = response.container?.id ?? container;
@@ -151,6 +172,14 @@ async function analyse(job: Job): Promise<{ result: AnalysisResult; reasoning: s
       if (i === MAX_CONTINUATIONS) throw new Error(`The analysis was still running after ${MAX_CONTINUATIONS + 1} turns.`);
       // Replace, don't append twice: user turn + everything the assistant has said so far.
       messages.splice(1, messages.length - 1, { role: 'assistant', content: blocks as Anthropic.Beta.Messages.BetaContentBlockParam[] });
+    }
+    } catch (e) {
+      if (abort.signal.aborted) {
+        throw new Error(`Stopped after ${RUN_LIMIT_MINUTES} minutes without a finished report (${steps} sandbox steps done). Try a narrower question.`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(deadline);
     }
     if (!response) throw new Error('No response from the model.');
 
@@ -190,8 +219,20 @@ async function analyse(job: Job): Promise<{ result: AnalysisResult; reasoning: s
   }
 }
 
+let currentRunId: number | null = null;
+
+// Cancelling the workflow sends SIGTERM/SIGINT. Tell the app, so the run shows
+// as failed straight away instead of "running" until it goes stale.
+for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(sig, () => {
+    const id = currentRunId;
+    const done = id === null ? Promise.resolve() : report({ id, error: 'The workflow was cancelled before the run finished.' }).catch(() => undefined);
+    done.finally(() => process.exit(1));
+  });
+}
+
 async function main() {
-  console.log(`Coach analysis · model ${COACH_MODEL} · effort ${EFFORT} · task budget ${TASK_BUDGET} tokens`);
+  console.log(`Coach analysis · model ${COACH_MODEL} · effort ${EFFORT} · task budget ${TASK_BUDGET} tokens · ${RUN_LIMIT_MINUTES} min limit per run`);
   let done = 0;
   let failed = 0;
   for (let i = 0; i < MAX_RUNS; i++) {
@@ -199,9 +240,11 @@ async function main() {
     if (!job) break;
     const label = job.run.kind === 'monthly' ? 'monthly review' : `deep analysis${job.run.question ? `: "${job.run.question}"` : ''}`;
     console.log(`\nRun #${job.run.id} — ${label}`);
+    currentRunId = job.run.id;
     try {
       const { result, reasoning, model } = await analyse(job);
       await report({ id: job.run.id, result, reasoning, model });
+      currentRunId = null;
       done++;
     } catch (e) {
       failed++;
@@ -209,6 +252,7 @@ async function main() {
       console.error(`  ✗ ${message}`);
       // Tell the app, so the run shows as failed with a reason instead of hanging.
       try { await report({ id: job.run.id, error: message }); } catch (e2) { console.error(`  ✗ could not report the failure: ${e2}`); }
+      currentRunId = null;
     }
   }
   console.log(done + failed === 0 ? '\nNothing queued.' : `\n${done} finished, ${failed} failed.`);
