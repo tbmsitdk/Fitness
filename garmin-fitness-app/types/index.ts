@@ -56,6 +56,10 @@ export interface WellnessRecord {
   resting_kcal?: number | null;
   /** When the burn figures were last synced. A day synced before it ended is partial. */
   kcal_synced_at?: string | null;
+  // Which source the step count came from (Apple Health import only); see lib/step-sources.ts.
+  steps_source?: 'garmin' | 'apple' | null;
+  steps_fill?: number | null;
+  steps_fill_ref?: number | null;
 }
 
 export interface WeeklyVolume {

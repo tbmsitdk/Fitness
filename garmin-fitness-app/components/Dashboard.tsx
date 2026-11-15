@@ -19,7 +19,6 @@ import CadenceChart from './charts/CadenceChart';
 import EfficiencyFactorChart from './charts/EfficiencyFactorChart';
 import WeightChart from './charts/WeightChart';
 import TrainingHeatmap from './charts/TrainingHeatmap';
-import SleepPerformanceChart from './charts/SleepPerformanceChart';
 import HeartRateChart from './charts/HeartRateChart';
 import HRVReadinessCard from './charts/HRVReadinessCard';
 import ReadinessScore from './charts/ReadinessScore';
@@ -429,9 +428,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           <ExpandableCard title="Cadence">
             {(expanded) => <CadenceChart activities={activities} sport="running" height={expanded ? 480 : undefined} />}
           </ExpandableCard>
-          <ExpandableCard title="Sleep & Performance">
-            {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} defaultSport="running" hideSportToggle height={expanded ? 480 : undefined} />}
-          </ExpandableCard>
+          {/* Sleep is a health measure, not a running one: no sleep chart on this tab. */}
           {/* Planning tool */}
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground pt-2">Planning</p>
           <ExpandableCard title="Race Time Predictor">
@@ -481,9 +478,7 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           <ExpandableCard title="Cadence">
             {(expanded) => <CadenceChart activities={activities} sport="cycling" height={expanded ? 480 : undefined} />}
           </ExpandableCard>
-          <ExpandableCard title="Sleep & Performance">
-            {(expanded) => <SleepPerformanceChart activities={allActivities} wellness={allWellness} defaultSport="cycling" hideSportToggle height={expanded ? 480 : undefined} />}
-          </ExpandableCard>
+          {/* Sleep is a health measure, not a cycling one: no sleep chart on this tab. */}
           {/* Planning tools */}
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground pt-2">Planning</p>
           <ExpandableCard title="Training Plan Generator">

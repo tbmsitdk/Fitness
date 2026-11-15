@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { mergeDaySteps, type StepRecord } from '@/lib/step-sources';
 import { ParsedGarminData } from '@/types';
 
 // ── Activity type mapping ──────────────────────────────────────────────────────
@@ -177,16 +178,12 @@ const RELEVANT_TYPES = [
 ];
 
 /**
- * Steps and flights are recorded once PER SOURCE: the iPhone, an Apple Watch,
- * and any app that writes into Health (Garmin Connect does) each add their own
- * records for the same walk. Adding them all together counts one step two or
- * three times: the 1-year average read 10,762 against Garmin's own 8,030.
+ * Flights climbed are recorded once PER SOURCE (iPhone and Apple Watch each
+ * add their own), so adding them all together counts each flight twice. Each
+ * source is totalled on its own for the day and the BUSIEST one is taken.
  *
- * So each source is totalled on its own for the day and the BUSIEST one is
- * taken. A device normally counts every step while it is worn or carried, so
- * the largest single source is the closest stand-in for the true day; it can
- * undercount only if two sources each cover a different part of the day.
- * (Apple's own app merges them by time slice; the export does not.)
+ * Steps follow a different rule, because the person has said which device to
+ * trust: see lib/step-sources.ts (Garmin first, the iPhone only in Garmin's gaps).
  */
 export function busiestSourceTotal(perSource: Map<string, number>): number | null {
   let best: number | null = null;
@@ -209,7 +206,7 @@ export function parseXML(xml: string): ParsedGarminData {
   const activities: ParsedGarminData['activities'] = [];
   const wellnessMap = new Map<string, WellnessRow>();
   // Per-source daily totals; resolved to one figure per day after all records are read.
-  const stepTotals: SourceTotals = new Map();
+  const stepRecords = new Map<string, StepRecord[]>();   // day → every step record, placed in time
   const flightTotals: SourceTotals = new Map();
 
   function getOrCreate(date: string): WellnessRow {
@@ -280,7 +277,18 @@ export function parseXML(xml: string): ParsedGarminData {
     switch (type) {
       case 'HKQuantityTypeIdentifierStepCount': {
         getOrCreate(startDate);   // the day exists even if the count is resolved later
-        addForSource(stepTotals, startDate.substring(0, 10), attr(a, 'sourceName') ?? 'unknown', Math.round(parseFloat(value)));
+        const day = startDate.substring(0, 10);
+        const minutes = (t: string) => parseInt(t.substring(11, 13), 10) * 60 + parseInt(t.substring(14, 16), 10);
+        const record: StepRecord = {
+          source: attr(a, 'sourceName') ?? 'unknown',
+          startMin: minutes(startDate),
+          // A record that runs past midnight is placed on the day it started.
+          endMin: endDate.substring(0, 10) > day ? 1440 : minutes(endDate),
+          value: Math.round(parseFloat(value)),
+        };
+        if (Number.isFinite(record.value) && Number.isFinite(record.startMin) && Number.isFinite(record.endMin)) {
+          stepRecords.set(day, [...(stepRecords.get(day) ?? []), record]);
+        }
         break;
       }
       case 'HKQuantityTypeIdentifierRestingHeartRate': {
@@ -372,7 +380,15 @@ export function parseXML(xml: string): ParsedGarminData {
   }
 
   // One figure per day: the busiest single source, never the sum of all of them.
-  for (const [day, perSource] of stepTotals) wellnessMap.get(day)!.steps = busiestSourceTotal(perSource);
+  // Steps: Garmin first, the iPhone only where Garmin recorded nothing (lib/step-sources.ts).
+  for (const [day, records] of stepRecords) {
+    const merged = mergeDaySteps(records);
+    const w = wellnessMap.get(day)!;
+    w.steps = merged.merged;
+    w.steps_fill = merged.fill;
+    w.steps_fill_ref = merged.garminInHealth;
+    w.steps_source = 'apple';
+  }
   for (const [day, perSource] of flightTotals) wellnessMap.get(day)!.flights_climbed = busiestSourceTotal(perSource);
 
   // ── Parse <Workout ...>...</Workout> blocks ────────────────────────────────

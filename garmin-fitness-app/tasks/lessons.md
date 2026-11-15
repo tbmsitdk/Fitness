@@ -412,12 +412,30 @@ the Garmin-synced months after it read 7-9k, close to Garmin's own average.
 Same family as lesson 8 (same word, different device), found because the
 person knew the right answer and checked.
 
-**Rule:** when more than one source can report the same quantity, total each
-source separately and take ONE (`busiestSourceTotal`), never the sum. Do the
-same for flights climbed. A figure that disagrees with the person's own
+**Rule:** when more than one source can report the same quantity, never add
+them. For steps the person chose the order: GARMIN is the master and the
+IPHONE fills only where Garmin recorded nothing (charging, not worn); an Apple
+Watch and other apps are ignored (`lib/step-sources.ts`). For flights climbed,
+which has no such preference, the busiest single source is taken. A figure that disagrees with the person's own
 trusted device by 30% is a data defect until shown otherwise.
 **Tests:** `__tests__/apple-health-parser.test.ts` ("does not add the same
 steps up once per source", with the real shape: iPhone 6,000, watch 5,200,
 Garmin Connect 5,900 for one day).
 **Not fixed by code:** days already stored keep the old totals until they are
 overwritten, by a Garmin backfill or a fresh Apple Health import.
+
+## 28. A rule about which write wins must not depend on which write comes first
+
+Two importers write the same daily step count, an overnight Garmin sync and an
+occasional Apple Health upload. "Last writer wins" made the answer depend on
+the order they ran. `steps` is now DERIVED from per-source columns
+(`steps_garmin`, `steps_apple`, `steps_fill`), so any order gives the same
+result, and a fill from the phone counts only if the export's account of
+Garmin's day agrees with Garmin's own within 20%.
+
+The SQL that does this lives in `lib/wellness-upsert.ts` and is run against a
+real Postgres (PGlite) in `__tests__/wellness-upsert.test.ts`, including both
+orders of arrival, locked values, rows stored before the columns existed, and
+a check that the SQL and the TypeScript `deriveSteps()` agree. A mistake in
+that statement would break the daily sync, and a type check cannot see inside
+a SQL string.
