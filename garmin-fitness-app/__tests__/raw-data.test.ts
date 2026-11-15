@@ -90,11 +90,39 @@ describe('buildRawTables', () => {
     const t = buildRawTables({
       activities: [], wellness: [],
       nutritionLogs: [{ date: '2026-10-30', alcohol_units: 0, candy_portions: null, savoury_snacks: null,
-                        sugary_drinks: null, last_food_time: null, caffeine_after_14: null, meal_quality: null, notes: null }],
+                        sugary_drinks: null, last_food_time: null, caffeine_after_14: null, notes: null }],
     });
     const csv = t['nutrition.csv'];
     expect(row(csv, 1)[col(csv, 'alcohol_units')]).toBe('0');
     expect(row(csv, 1)[col(csv, 'candy_portions')]).toBe('');
+  });
+
+  // A partial day's totals must reach the model as EMPTY, not as small numbers.
+  it('writes diary totals only for complete days, and day_complete only for diary days', () => {
+    const base = { candy_portions: null, savoury_snacks: null, sugary_drinks: null, last_food_time: null, caffeine_after_14: null, notes: null };
+    const csv = buildRawTables({
+      activities: [], wellness: [],
+      nutritionLogs: [
+        { ...base, date: '2026-10-28', alcohol_units: 1 },                                                        // typed by hand
+        { ...base, date: '2026-10-29', alcohol_units: 2.5, from_meals: true, day_complete: false, kcal: null },   // diary, partial
+        { ...base, date: '2026-10-30', alcohol_units: 0, from_meals: true, day_complete: true, kcal: 2100, added_sugar_g: 22, evening_kcal_pct: 45 },
+      ],
+    })['nutrition.csv'];
+    expect(row(csv, 1)[col(csv, 'day_complete')]).toBe('');
+    expect(row(csv, 2)[col(csv, 'day_complete')]).toBe('0');
+    expect(row(csv, 2)[col(csv, 'kcal')]).toBe('');
+    expect(row(csv, 3)[col(csv, 'day_complete')]).toBe('1');
+    expect(row(csv, 3)[col(csv, 'kcal')]).toBe('2100');
+    expect(row(csv, 3)[col(csv, 'evening_kcal_pct')]).toBe('45');
+    expect(csv.split('\n')[0]).not.toContain('meal_quality');
+  });
+
+  it('writes one row per meal and leaves statements out', () => {
+    const m = { date: '2026-10-30', time: '19:30', description: 'Pizza 2 slices', kcal: 600, protein_g: 24, carbs_g: 70, added_sugar_g: 5, fat_g: 24, fibre_g: 4, veg_fruit_portions: 0.5, alcohol_g: 0, candy_portions: 0, savoury_snacks: 0, sugary_drinks: 0, caffeine: false, ultra_processed: true, drink_only: false, no_alcohol_statement: false, source: 'photo' as const };
+    const csv = buildRawTables({ activities: [], wellness: [], meals: [m, { ...m, description: 'No alcohol today', no_alcohol_statement: true }] })['meals.csv'];
+    expect(csv.split('\n')).toHaveLength(2);
+    expect(row(csv, 1)[col(csv, 'description')]).toBe('Pizza 2 slices');
+    expect(row(csv, 1)[col(csv, 'ultra_processed')]).toBe('1');
   });
 
   it('omits tables that have no rows', () => {

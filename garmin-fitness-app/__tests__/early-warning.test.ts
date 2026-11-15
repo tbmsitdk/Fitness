@@ -145,11 +145,11 @@ describe('computeEarlyWarning', () => {
       const w = computeEarlyWarning({
         wellness, today: TODAY,
         nutritionLogs: [
-          { date: day(1), alcohol_units: 4, candy_portions: null, savoury_snacks: null, sugary_drinks: null, last_food_time: null, caffeine_after_14: null, meal_quality: null, notes: null },
-          { date: day(2), alcohol_units: 3, candy_portions: null, savoury_snacks: null, sugary_drinks: null, last_food_time: null, caffeine_after_14: null, meal_quality: null, notes: null },
+          { date: day(1), alcohol_units: 4, candy_portions: null, savoury_snacks: null, sugary_drinks: null, last_food_time: null, caffeine_after_14: null, notes: null },
+          { date: day(2), alcohol_units: 3, candy_portions: null, savoury_snacks: null, sugary_drinks: null, last_food_time: null, caffeine_after_14: null, notes: null },
           // Too long ago to matter, and an explicit zero: neither counts.
-          { date: day(10), alcohol_units: 6, candy_portions: null, savoury_snacks: null, sugary_drinks: null, last_food_time: null, caffeine_after_14: null, meal_quality: null, notes: null },
-          { date: day(3), alcohol_units: 0, candy_portions: null, savoury_snacks: null, sugary_drinks: null, last_food_time: null, caffeine_after_14: null, meal_quality: null, notes: null },
+          { date: day(10), alcohol_units: 6, candy_portions: null, savoury_snacks: null, sugary_drinks: null, last_food_time: null, caffeine_after_14: null, notes: null },
+          { date: day(3), alcohol_units: 0, candy_portions: null, savoury_snacks: null, sugary_drinks: null, last_food_time: null, caffeine_after_14: null, notes: null },
         ],
       });
       expect(w.level).toBe('warning'); // still reported, with its cause

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@vercel/postgres';
 import { askStructured } from '@/lib/ai';
-import { coerceNutritionLog } from '@/lib/nutrition';
+import { listMeals } from '@/lib/meals-db';
 import {
-  MAX_BACKDATE_DAYS, MAX_IMAGES, MAX_TEXT_LENGTH, QUICK_LOG_SCHEMA, QUICK_LOG_SYSTEM,
+  MAX_IMAGES, MAX_TEXT_LENGTH, QUICK_LOG_SCHEMA, QUICK_LOG_SYSTEM,
   buildQuickLogPrompt, resolveQuickLog,
 } from '@/lib/quick-log';
 import { homeDayAndTime } from '@/lib/raw-data';
@@ -22,7 +21,7 @@ const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 //
 // Reads the note and returns a PROPOSAL. Nothing is saved here: the client
 // shows the proposal and, on confirmation, posts each part to the ordinary
-// /api/nutrition, /api/exercises and /api/travel routes, which validate again.
+// /api/meals, /api/exercises and /api/travel routes, which validate again.
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({})) as { text?: unknown; images?: unknown };
@@ -43,14 +42,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Write a note or add a photo.' }, { status: 400 });
     }
 
-    const today = homeDayAndTime(new Date().toISOString()).day;
-    const { rows } = await sql`
-      SELECT id, date::text, alcohol_units, candy_portions, savoury_snacks, sugary_drinks,
-             to_char(last_food_time, 'HH24:MI') AS last_food_time,
-             caffeine_after_14, meal_quality, notes
-      FROM nutrition_logs WHERE date >= ${daysAgo(today, MAX_BACKDATE_DAYS)} ORDER BY date
-    `;
-    const existing = rows.map(coerceNutritionLog);
+    const now = homeDayAndTime(new Date().toISOString());
+    const today = now.day;
+    // What is already in the diary, so the same meal is not proposed twice.
+    const recentMeals = await listMeals(daysAgo(today, 2));
 
     const reply = await askStructured({
       system: QUICK_LOG_SYSTEM,
@@ -60,12 +55,13 @@ export async function POST(req: NextRequest) {
       prompt: buildQuickLogPrompt({
         text, today,
         weekday: WEEKDAYS[new Date(`${today}T12:00:00Z`).getUTCDay()],
-        recentLogs: existing.filter(l => l.date.slice(0, 10) >= daysAgo(today, 3)),
+        nowTime: now.time,
+        recentMeals,
         hasImages: images.length > 0,
       }),
     });
 
-    return NextResponse.json({ proposal: resolveQuickLog(reply.text, existing, today) });
+    return NextResponse.json({ proposal: resolveQuickLog(reply.text, today, images.length > 0 ? 'photo' : 'text') });
   } catch (e) {
     console.error('[quick-log] POST', e);
     return NextResponse.json({ error: 'Could not read that note. Try again, or use the forms.' }, { status: 500 });

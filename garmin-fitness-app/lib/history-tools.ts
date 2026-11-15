@@ -7,7 +7,7 @@
 
 import { buildRawTables, type RawDataInput } from '@/lib/raw-data';
 
-export const HISTORY_TABLES = ['wellness', 'activities', 'nutrition', 'exercise_log', 'travel'] as const;
+export const HISTORY_TABLES = ['wellness', 'activities', 'nutrition', 'meals', 'exercise_log', 'travel'] as const;
 export type HistoryTable = typeof HISTORY_TABLES[number];
 
 export const MAX_ROWS_RETURNED = 60;

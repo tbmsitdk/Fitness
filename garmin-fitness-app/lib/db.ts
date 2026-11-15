@@ -162,6 +162,63 @@ export async function initializeDatabase() {
   await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS savoury_snacks DECIMAL(4,1)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_nutrition_date ON nutrition_logs(date)`;
 
+  // Meal diary. One row per thing eaten or drunk; on a day that has meals, the
+  // nutrition_logs row is DERIVED from them (lib/meals.ts) and the columns
+  // below hold the result. Totals stay NULL unless the day was marked complete.
+  await sql`
+    CREATE TABLE IF NOT EXISTS meals (
+      id SERIAL PRIMARY KEY,
+      date DATE NOT NULL,
+      time TIME,
+      description TEXT NOT NULL,
+      kcal INTEGER,
+      protein_g DECIMAL(6,1),
+      carbs_g DECIMAL(6,1),
+      added_sugar_g DECIMAL(6,1),
+      fat_g DECIMAL(6,1),
+      fibre_g DECIMAL(6,1),
+      veg_fruit_portions DECIMAL(4,1),
+      alcohol_g DECIMAL(6,1) NOT NULL DEFAULT 0,
+      candy_portions DECIMAL(4,1) NOT NULL DEFAULT 0,
+      savoury_snacks DECIMAL(4,1) NOT NULL DEFAULT 0,
+      sugary_drinks DECIMAL(4,1) NOT NULL DEFAULT 0,
+      caffeine BOOLEAN NOT NULL DEFAULT FALSE,
+      ultra_processed BOOLEAN NOT NULL DEFAULT FALSE,
+      drink_only BOOLEAN NOT NULL DEFAULT FALSE,
+      no_alcohol_statement BOOLEAN NOT NULL DEFAULT FALSE,
+      source TEXT NOT NULL DEFAULT 'text',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_meals_date ON meals(date)`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS from_meals BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS day_complete BOOLEAN NOT NULL DEFAULT FALSE`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS meal_count SMALLINT`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS kcal INTEGER`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS protein_g DECIMAL(6,1)`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS carbs_g DECIMAL(6,1)`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS added_sugar_g DECIMAL(6,1)`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS fat_g DECIMAL(6,1)`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS fibre_g DECIMAL(6,1)`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS veg_fruit_portions DECIMAL(4,1)`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS evening_kcal_pct SMALLINT`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS ultra_processed_pct SMALLINT`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS first_food_time TIME`;
+  await sql`ALTER TABLE nutrition_logs ADD COLUMN IF NOT EXISTS eating_window_h DECIMAL(4,1)`;
+
+  // The 1-5 meal-quality score was retired in favour of the meal diary, and
+  // its old values deleted at the owner's request. The column is left in place
+  // (unused) so nothing that still names it breaks; this clears what it held.
+  await sql`UPDATE nutrition_logs SET meal_quality = NULL WHERE meal_quality IS NOT NULL`;
+  // A row that held nothing but a score is now empty: remove it rather than
+  // leave a blank "logged day" behind.
+  await sql`
+    DELETE FROM nutrition_logs
+    WHERE alcohol_units IS NULL AND candy_portions IS NULL AND savoury_snacks IS NULL
+      AND sugary_drinks IS NULL AND last_food_time IS NULL AND caffeine_after_14 IS NOT TRUE
+      AND notes IS NULL AND from_meals = FALSE
+  `;
+
   // Travel. One row per TRIP — per-day consequences (days away, days spent
   // mid-adaptation) are derived in lib/travel.ts rather than entered.
   // return_date is nullable so a trip can be logged on departure and closed on

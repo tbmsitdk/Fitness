@@ -8,7 +8,7 @@ import type { WellnessRecord } from '@/types';
 
 const log = (date: string, over: Partial<NutritionLog> = {}): NutritionLog => ({
   date, alcohol_units: null, candy_portions: null, savoury_snacks: null, sugary_drinks: null,
-  last_food_time: null, caffeine_after_14: null, meal_quality: null, notes: null, ...over,
+  last_food_time: null, caffeine_after_14: null, notes: null, ...over,
 });
 
 const wellness = (date: string, over: Partial<WellnessRecord>): WellnessRecord => ({
@@ -46,6 +46,17 @@ describe('dayCompliance', () => {
     expect(dayCompliance(dry, log('2026-11-02', { alcohol_units: 0 }), undefined)).toBe(true);
     expect(dayCompliance(dry, log('2026-11-02', { alcohol_units: 0.5 }), undefined)).toBe(false);
     expect(dayCompliance({ type: 'max_per_day', field: 'candy_portions', value: 1 }, log('x', { candy_portions: 1 }), undefined)).toBe(true);
+  });
+
+  // Added sugar is a day TOTAL, known only when the diary day was marked complete.
+  it('judges an added-sugar limit only on days that have a total', () => {
+    const rule = { type: 'max_per_day', field: 'added_sugar_g', value: 30 } as const;
+    expect(dayCompliance(rule, log('x', { added_sugar_g: 22 }), undefined)).toBe(true);
+    expect(dayCompliance(rule, log('x', { added_sugar_g: 48 }), undefined)).toBe(false);
+    expect(dayCompliance(rule, log('x', { added_sugar_g: null, alcohol_units: 0 }), undefined)).toBeNull();
+    expect(dayCompliance(rule, log('x'), undefined)).toBeNull();
+    expect(cleanRule({ type: 'max_per_day', field: 'added_sugar_g', value: 30 })).toEqual({ type: 'max_per_day', field: 'added_sugar_g', value: 30 });
+    expect(cleanRule({ type: 'max_per_day', field: 'alcohol_units', value: 100 })).toBeNull();
   });
 
   it('judges last-food time, treating after-midnight eating as late', () => {

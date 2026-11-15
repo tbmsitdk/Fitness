@@ -12,11 +12,11 @@ import type { NutritionLog } from '@/lib/nutrition';
 import { dateOnly } from '@/lib/raw-data';
 
 export type RuleType = 'max_per_day' | 'last_food_before' | 'no_late_caffeine' | 'manual';
-export type RuleField = 'alcohol_units' | 'candy_portions' | 'savoury_snacks' | 'sugary_drinks';
-export const RULE_FIELDS: RuleField[] = ['alcohol_units', 'candy_portions', 'savoury_snacks', 'sugary_drinks'];
+export type RuleField = 'alcohol_units' | 'candy_portions' | 'savoury_snacks' | 'sugary_drinks' | 'added_sugar_g';
+export const RULE_FIELDS: RuleField[] = ['alcohol_units', 'candy_portions', 'savoury_snacks', 'sugary_drinks', 'added_sugar_g'];
 export const RULE_FIELD_LABEL: Record<RuleField, string> = {
   alcohol_units: 'alcohol units', candy_portions: 'candy portions',
-  savoury_snacks: 'savoury snacks', sugary_drinks: 'sugary drinks',
+  savoury_snacks: 'savoury snacks', sugary_drinks: 'sugary drinks', added_sugar_g: 'g of added sugar',
 };
 
 export interface ExperimentRule {
@@ -73,7 +73,8 @@ export function cleanRule(raw: unknown): ExperimentRule | null {
     case 'max_per_day': {
       if (!RULE_FIELDS.includes(r.field as RuleField)) return null;
       const value = Number(r.value);
-      if (!Number.isFinite(value) || value < 0 || value > 40) return null;
+      // Grams of sugar run far higher than a count of drinks or portions.
+      if (!Number.isFinite(value) || value < 0 || value > (r.field === 'added_sugar_g' ? 300 : 40)) return null;
       return { type: 'max_per_day', field: r.field, value };
     }
     case 'last_food_before': {
@@ -261,7 +262,7 @@ export const PROPOSALS_SCHEMA = {
           hypothesis: { type: 'string', description: 'What is expected to change, and by roughly how much.' },
           why:        { type: 'string', description: 'What in the data suggests this is worth testing, with numbers.' },
           rule_type:  { type: 'string', enum: ['max_per_day', 'last_food_before', 'no_late_caffeine', 'manual'] },
-          rule_field: { type: 'string', enum: ['alcohol_units', 'candy_portions', 'savoury_snacks', 'sugary_drinks', 'none'] },
+          rule_field: { type: 'string', enum: ['alcohol_units', 'candy_portions', 'savoury_snacks', 'sugary_drinks', 'added_sugar_g', 'none'] },
           rule_value: { type: 'number', description: 'max_per_day only: most allowed per day, 0 for none. Otherwise 0.' },
           rule_time:  { type: 'string', description: 'last_food_before only: HH:MM. Otherwise empty.' },
           duration_days: { type: 'integer', description: 'Between 14 and 28 unless there is a reason.' },

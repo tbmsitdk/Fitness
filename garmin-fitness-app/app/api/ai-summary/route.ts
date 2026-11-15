@@ -11,6 +11,7 @@ import type { UserSettings } from '@/lib/settings';
 import { buildRawTablesWithin, rawDataPromptSection } from '@/lib/raw-data';
 import { loadMemorySection, recordAdvice } from '@/lib/coach-memory-db';
 import { loadExperimentsSection } from '@/lib/experiments-db';
+import { listMeals } from '@/lib/meals-db';
 import { homeDayAndTime } from '@/lib/raw-data';
 
 export const dynamic = 'force-dynamic';
@@ -39,10 +40,7 @@ async function buildSummary(userSettings?: UserSettings) {
     sql`SELECT id, date::text, exercise_key, sets, reps, duration_seconds, load_kg,
                vital_capacity_l, inspiratory_strength, expiratory_strength, notes
         FROM exercise_logs WHERE date >= ${actCutoff.slice(0, 10)} ORDER BY date`,
-    sql`SELECT id, date::text, alcohol_units, candy_portions, savoury_snacks, sugary_drinks,
-               to_char(last_food_time, 'HH24:MI') AS last_food_time,
-               caffeine_after_14, meal_quality, notes
-        FROM nutrition_logs WHERE date >= ${actCutoff.slice(0, 10)} ORDER BY date`,
+    sql`SELECT *, date::text AS day FROM nutrition_logs WHERE date >= ${actCutoff.slice(0, 10)} ORDER BY date`,
     // SELECT * deliberately: three hand-written column lists had drifted, and
       // this one still predated multi-stop support — so the coach saw a
       // Delhi-only trip and called the flight home 4.5 zones west instead of 7,
@@ -57,10 +55,7 @@ async function buildSummary(userSettings?: UserSettings) {
     sql`SELECT id, date::text, exercise_key, sets, reps, duration_seconds, load_kg,
                vital_capacity_l, inspiratory_strength, expiratory_strength, notes
         FROM exercise_logs ORDER BY date`,
-    sql`SELECT id, date::text, alcohol_units, candy_portions, savoury_snacks, sugary_drinks,
-               to_char(last_food_time, 'HH24:MI') AS last_food_time,
-               caffeine_after_14, meal_quality, notes
-        FROM nutrition_logs ORDER BY date`,
+    sql`SELECT *, date::text AS day FROM nutrition_logs ORDER BY date`,
   ]);
 
   const activities = actResult.rows.map(coerceActivity);
@@ -79,6 +74,7 @@ async function buildSummary(userSettings?: UserSettings) {
     wellness:      allWellResult.rows.map(coerceWellness),
     exerciseLogs:  allExerciseResult.rows.map(coerceExerciseLog),
     nutritionLogs: allNutritionResult.rows.map(coerceNutritionLog),
+    meals: await listMeals('1970-01-01').catch(() => []),
     travelLogs,
   }, RAW_DATA_TOKEN_BUDGET);
   const windowNote = raw.windowDays === null

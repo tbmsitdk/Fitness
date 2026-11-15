@@ -19,7 +19,7 @@ const idOf = (v: unknown) => { const n = Number(v); return Number.isInteger(n) &
 const PROPOSE_SYSTEM = `You design small personal experiments for one person, from their own health and training data. An experiment changes ONE habit for two to four weeks so that its effect on recovery (sleep score, sleep hours, resting heart rate, stress, body battery) can be measured cleanly afterwards.
 
 - Propose three, most promising first. Each must be something the data suggests matters for THIS person; say what in the data suggests it, with numbers.
-- Prefer habits the app can check from the daily log: alcohol units, candy portions, savoury snacks, sugary drinks (rule_type max_per_day with rule_field and rule_value), time of last food (last_food_before with rule_time HH:MM), caffeine after 14:00 (no_late_caffeine). Use manual only for something the log cannot see, such as a fixed bedtime.
+- Prefer habits the app can check from the daily log: alcohol units, candy portions, savoury snacks, sugary drinks, grams of added sugar (rule_type max_per_day with rule_field and rule_value; added_sugar_g can only be judged on days the meal diary is marked complete, so propose it only if the person logs whole days), time of last food (last_food_before with rule_time HH:MM), caffeine after 14:00 (no_late_caffeine). Use manual only for something the log cannot see, such as a fixed bedtime.
 - For rule types that do not use a field, set rule_field to "none". Set rule_value to 0 and rule_time to "" when unused.
 - Do not propose something already being tested or just finished (see the notes). Do not propose changing two things at once.
 - The hypothesis states the expected direction and rough size. Keep each text field to a sentence or two.`;

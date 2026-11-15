@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   coerceNutritionLog, hasAnyEntry, lastFoodMinutes,
-  MEAL_QUALITY_LEVELS, NUTRITION_FIELDS, alcoholUnits, ALCOHOL_REFERENCE, type NutritionLog,
+  NUTRITION_FIELDS, alcoholUnits, ALCOHOL_REFERENCE, type NutritionLog,
 } from '@/lib/nutrition';
 import {
   addDays, isWeekend, mean, stdDev, doseResponse, effectSize, rankEffects,
@@ -13,7 +13,7 @@ import {
 function log(o: Partial<NutritionLog> & { date: string }): NutritionLog {
   return {
     alcohol_units: null, candy_portions: null, savoury_snacks: null, sugary_drinks: null,
-    last_food_time: null, caffeine_after_14: null, meal_quality: null, notes: null,
+    last_food_time: null, caffeine_after_14: null, notes: null,
     ...o,
   };
 }
@@ -32,14 +32,6 @@ describe('field definitions', () => {
       expect(f.doesNotCount.length, f.key).toBeGreaterThan(0);
       expect(f.summary.length, f.key).toBeGreaterThan(10);
     }
-  });
-
-  it('anchors all five meal-quality levels to observable behaviour', () => {
-    expect(MEAL_QUALITY_LEVELS).toHaveLength(5);
-    for (const l of MEAL_QUALITY_LEVELS) {
-      expect(l.description.length, `level ${l.value}`).toBeGreaterThan(40);
-    }
-    expect(MEAL_QUALITY_LEVELS.map(l => l.value)).toEqual([1, 2, 3, 4, 5]);
   });
 });
 
@@ -122,12 +114,11 @@ describe('coerceNutritionLog', () => {
     const r = coerceNutritionLog({
       id: '3', date: '2026-09-01', alcohol_units: '2.5', candy_portions: '1.0',
       sugary_drinks: null, last_food_time: '21:30:00', caffeine_after_14: true,
-      meal_quality: '4', notes: null,
+      notes: null,
     });
     expect(r.alcohol_units).toBe(2.5);
     expect(typeof r.alcohol_units).toBe('number');
     expect(r.last_food_time).toBe('21:30');
-    expect(r.meal_quality).toBe(4);
   });
 
   it('keeps nulls as null rather than turning them into 0', () => {
@@ -763,5 +754,33 @@ describe('baselineCheck — when the two cards disagree', () => {
       stressDay('2026-09-10', 50), stressDay('2026-09-12', 50),
     ]);
     expect(baselineCheck(logs, m2, STRESS).conflicts).toBe(true);
+  });
+});
+
+describe('coerceNutritionLog — meal-diary columns', () => {
+  it('reads the derived columns when the row has them, keeping unknown totals null', () => {
+    const r = coerceNutritionLog({
+      id: 1, day: '2026-11-15', date: new Date('2026-11-14T23:00:00Z'), alcohol_units: '2.5',
+      from_meals: true, day_complete: false, meal_count: 2, kcal: null, protein_g: null,
+      added_sugar_g: null, evening_kcal_pct: null, first_food_time: null, last_food_time: '20:00:00',
+    });
+    // `day` (date::text) wins over the Date object, which would shift in zones ahead of UTC.
+    expect(r.date).toBe('2026-11-15');
+    expect(r.from_meals).toBe(true);
+    expect(r.day_complete).toBe(false);
+    expect(r.kcal).toBeNull();
+    expect(r.added_sugar_g).toBeNull();
+    expect(r.last_food_time).toBe('20:00');
+  });
+
+  it('leaves the diary fields off a row read without them', () => {
+    const r = coerceNutritionLog({ id: 1, date: '2026-11-15', alcohol_units: '1.0' });
+    expect('from_meals' in r).toBe(false);
+  });
+});
+
+describe('the retired 1-5 meal score', () => {
+  it('is gone from the fields the form and the model are told about', () => {
+    expect(NUTRITION_FIELDS.map(f => f.key)).not.toContain('meal_quality');
   });
 });

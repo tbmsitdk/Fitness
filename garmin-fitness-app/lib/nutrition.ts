@@ -16,8 +16,7 @@ export type NutritionField =
   | 'savoury_snacks'
   | 'sugary_drinks'
   | 'last_food_time'
-  | 'caffeine_after_14'
-  | 'meal_quality';
+  | 'caffeine_after_14';
 
 export interface NutritionLog {
   id?: number;
@@ -28,12 +27,36 @@ export interface NutritionLog {
   sugary_drinks: number | null;
   last_food_time: string | null;      // 'HH:MM'
   caffeine_after_14: boolean | null;
-  meal_quality: number | null;        // 1-5
   notes: string | null;
+
+  // ── Derived from the meal diary (lib/meals.ts). Absent on hand-logged days. ──
+  /** True when this row was computed from logged meals rather than typed in. */
+  from_meals?: boolean;
+  /** The person confirmed that every meal of the day is logged. */
+  day_complete?: boolean;
+  meal_count?: number | null;
+  /**
+   * Day totals. Null unless the day is complete AND every meal has an
+   * estimate — a total over half a day would read as a real, tiny number.
+   */
+  kcal?: number | null;
+  protein_g?: number | null;
+  carbs_g?: number | null;
+  added_sugar_g?: number | null;
+  fat_g?: number | null;
+  fibre_g?: number | null;
+  veg_fruit_portions?: number | null;
+  /** Share of the day's calories eaten at or after 19:00, 0-100. */
+  evening_kcal_pct?: number | null;
+  /** Share of the day's calories from mostly ultra-processed meals, 0-100. */
+  ultra_processed_pct?: number | null;
+  first_food_time?: string | null;
+  /** Hours from first to last food. */
+  eating_window_h?: number | null;
 }
 
 export const NUTRITION_NUMERIC_FIELDS = [
-  'alcohol_units', 'candy_portions', 'savoury_snacks', 'sugary_drinks', 'meal_quality',
+  'alcohol_units', 'candy_portions', 'savoury_snacks', 'sugary_drinks',
 ] as const;
 
 /**
@@ -53,7 +76,7 @@ export const NUTRITION_NUMERIC_FIELDS = [
 export function hasAnyEntry(log: Partial<NutritionLog>): boolean {
   return [
     log.alcohol_units, log.candy_portions, log.savoury_snacks, log.sugary_drinks,
-    log.meal_quality, log.last_food_time,
+    log.last_food_time,
   ].some(v => v != null && v !== '') || log.caffeine_after_14 === true;
 }
 
@@ -215,58 +238,45 @@ export const NUTRITION_FIELDS: FieldDef[] = [
       'Chocolate, unless over 50 g of dark.',
     ],
   },
-  {
-    key: 'meal_quality',
-    label: 'Meal quality',
-    summary: 'Your actual MEALS on a 1–5 scale — ignore alcohol and candy, already logged above.',
-    counts: [
-      'Judge only the meals themselves: composition, preparation, and snacking between them.',
-      'Pick the level whose description best matches the day. Do not average.',
-      'If two levels fit equally, choose the lower one.',
-    ],
-    doesNotCount: [
-      'Alcohol, candy and sugary drinks — those are separate fields, do not double-count.',
-      'How you felt, how hard you trained, or whether you were "good".',
-    ],
-  },
-];
-
-/**
- * Anchored levels for meal quality. Each is described by OBSERVABLE behaviour,
- * not by a feeling — "how clean was today" means something different on a bad
- * week than a good one, and that drift is indistinguishable from a real change.
- */
-export const MEAL_QUALITY_LEVELS: { value: number; label: string; description: string }[] = [
-  { value: 1, label: 'Mostly processed',
-    description: 'Takeaway, fast food or ready meals for the main meal. Few or no vegetables all day. Grazing between meals.' },
-  { value: 2, label: 'Ad hoc',
-    description: 'One proper meal; the rest skipped, grabbed, or assembled from snacks. Vegetables at most once.' },
-  { value: 3, label: 'Typical',
-    description: '2–3 regular meals, mostly home-prepared. Vegetables at one or two of them. Some unplanned snacking.' },
-  { value: 4, label: 'Good',
-    description: 'All meals home-prepared and eaten at a table. Vegetables at two or more meals. No unplanned snacking.' },
-  { value: 5, label: 'Very good',
-    description: 'As level 4, plus protein at every main meal, vegetables at every main meal, and nothing eaten between meals.' },
 ];
 
 /** Postgres DECIMAL columns arrive as strings; dates may arrive as Date objects. */
 export function coerceNutritionLog(row: Record<string, unknown>): NutritionLog {
   const num = (v: unknown) => (v != null ? Number(v) : null);
-  const date = row.date instanceof Date
-    ? row.date.toISOString().slice(0, 10)
-    : String(row.date).slice(0, 10);
-  return {
+  const time = (v: unknown) => (v != null ? String(v).slice(0, 5) : null);
+  // Queries select `date::text AS day` so the calendar day never passes
+  // through a Date object (which would shift it in any zone ahead of UTC).
+  const raw = row.day ?? row.date;
+  const date = raw instanceof Date ? raw.toISOString().slice(0, 10) : String(raw).slice(0, 10);
+  const log: NutritionLog = {
     id: row.id != null ? Number(row.id) : undefined,
     date,
     alcohol_units: num(row.alcohol_units),
     candy_portions: num(row.candy_portions),
     savoury_snacks: num(row.savoury_snacks),
     sugary_drinks: num(row.sugary_drinks),
-    last_food_time: row.last_food_time != null ? String(row.last_food_time).slice(0, 5) : null,
+    last_food_time: time(row.last_food_time),
     caffeine_after_14: row.caffeine_after_14 == null ? null : Boolean(row.caffeine_after_14),
-    meal_quality: num(row.meal_quality),
     notes: row.notes != null ? String(row.notes) : null,
   };
+  // Diary columns exist only on rows read with SELECT *; leave them off otherwise.
+  if ('from_meals' in row) {
+    log.from_meals = row.from_meals === true;
+    log.day_complete = row.day_complete === true;
+    log.meal_count = num(row.meal_count);
+    log.kcal = num(row.kcal);
+    log.protein_g = num(row.protein_g);
+    log.carbs_g = num(row.carbs_g);
+    log.added_sugar_g = num(row.added_sugar_g);
+    log.fat_g = num(row.fat_g);
+    log.fibre_g = num(row.fibre_g);
+    log.veg_fruit_portions = num(row.veg_fruit_portions);
+    log.evening_kcal_pct = num(row.evening_kcal_pct);
+    log.ultra_processed_pct = num(row.ultra_processed_pct);
+    log.first_food_time = time(row.first_food_time);
+    log.eating_window_h = num(row.eating_window_h);
+  }
+  return log;
 }
 
 /** Minutes past midnight, for correlating "late eating" numerically. */

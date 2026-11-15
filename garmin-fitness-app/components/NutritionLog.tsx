@@ -3,8 +3,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Check, Loader2, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDataVersion, useRefreshAfter } from '@/lib/data-refresh';
+import MealDiary from '@/components/MealDiary';
 import {
-  NUTRITION_FIELDS, MEAL_QUALITY_LEVELS, ALCOHOL_REFERENCE, CANDY_REFERENCE, SAVOURY_REFERENCE,
+  NUTRITION_FIELDS, ALCOHOL_REFERENCE, CANDY_REFERENCE, SAVOURY_REFERENCE,
   hasAnyEntry, type NutritionLog as NLog, type FieldDef,
 } from '@/lib/nutrition';
 
@@ -16,12 +17,12 @@ const todayStr = () => {
 
 type Draft = {
   alcohol_units: string; candy_portions: string; savoury_snacks: string; sugary_drinks: string;
-  last_food_time: string; caffeine_after_14: boolean; meal_quality: string; notes: string;
+  last_food_time: string; caffeine_after_14: boolean; notes: string;
 };
 
 const EMPTY: Draft = {
   alcohol_units: '', candy_portions: '', savoury_snacks: '', sugary_drinks: '',
-  last_food_time: '', caffeine_after_14: false, meal_quality: '', notes: '',
+  last_food_time: '', caffeine_after_14: false, notes: '',
 };
 
 /** The written definition for one field — collapsed by default, never removed. */
@@ -113,7 +114,6 @@ export default function NutritionLog() {
       sugary_drinks: row.sugary_drinks?.toString() ?? '',
       last_food_time: row.last_food_time ?? '',
       caffeine_after_14: row.caffeine_after_14 === true,
-      meal_quality: row.meal_quality?.toString() ?? '',
       notes: row.notes ?? '',
     });
   }, [all, date]);
@@ -135,7 +135,6 @@ export default function NutritionLog() {
           sugary_drinks: payload.sugary_drinks === '' ? null : Number(payload.sugary_drinks),
           last_food_time: payload.last_food_time || null,
           caffeine_after_14: payload.caffeine_after_14,
-          meal_quality: payload.meal_quality === '' ? null : Number(payload.meal_quality),
           notes: payload.notes,
         }),
       });
@@ -154,6 +153,9 @@ export default function NutritionLog() {
   const save = useRefreshAfter(doSave);
 
   const field = (k: string) => NUTRITION_FIELDS.find(f => f.key === k)!;
+  // On a day with a meal diary these amounts are computed from the meals;
+  // typing over them would only be overwritten by the next meal.
+  const fromMeals = (all ?? []).find(l => l.date.slice(0, 10) === date)?.from_meals === true;
   const loggedDays = useMemo(() => (all ?? []).length, [all]);
 
   const nothingEntered = !hasAnyEntry({
@@ -161,15 +163,15 @@ export default function NutritionLog() {
     candy_portions: draft.candy_portions === '' ? null : Number(draft.candy_portions),
     savoury_snacks: draft.savoury_snacks === '' ? null : Number(draft.savoury_snacks),
     sugary_drinks: draft.sugary_drinks === '' ? null : Number(draft.sugary_drinks),
-    meal_quality: draft.meal_quality === '' ? null : Number(draft.meal_quality),
     last_food_time: draft.last_food_time || null,
     caffeine_after_14: draft.caffeine_after_14,
   });
 
   const numInput = (k: 'alcohol_units' | 'candy_portions' | 'savoury_snacks' | 'sugary_drinks', step: string, ph: string) => (
     <input
-      type="number" min="0" step={step} placeholder={ph}
-      value={draft[k]} onChange={e => set(k, e.target.value)}
+      type="number" min="0" step={step} placeholder={fromMeals ? 'not known yet' : ph}
+      value={draft[k]} onChange={e => set(k, e.target.value)} disabled={fromMeals}
+      title={fromMeals ? 'Computed from the meal diary' : undefined}
       className="w-24 rounded border border-border bg-secondary px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
     />
   );
@@ -185,21 +187,26 @@ export default function NutritionLog() {
         <div className="ml-auto flex items-center gap-2">
           {savedAt && <span className="text-[11px] text-green-400 flex items-center gap-1"><Check className="w-3 h-3" />Saved</span>}
           {error && <span className="text-[11px] text-red-400">{error}</span>}
-          <Button size="sm" onClick={() => save(draft)} disabled={saving || nothingEntered}
-            title={nothingEntered ? 'Nothing entered yet' : 'Save this day'}>
+          <Button size="sm" onClick={() => save(draft)} disabled={saving || (nothingEntered && !fromMeals)}
+            title={fromMeals ? 'Saves the note; the amounts come from the meal diary' : nothingEntered ? 'Nothing entered yet' : 'Save this day'}>
             {saving ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
-            Save day
+            {fromMeals ? 'Save note' : 'Save day'}
           </Button>
         </div>
       </div>
 
+      <MealDiary date={date} />
+
       <p className="text-[11px] text-muted-foreground border-l-2 border-border pl-2.5 leading-relaxed">
-        This is not calorie tracking. It records a few things that are easy to recall and
-        plausibly affect your sleep and training.{' '}
-        <strong>Enter 0 for anything you had none of</strong> — that is what makes a day usable
-        as a comparison baseline. <strong>Leave a field blank only if you genuinely don&apos;t
-        know</strong>: blank means &ldquo;not recorded&rdquo; and is excluded from the analysis,
-        so a forgotten day never counts as a clean one.
+        {fromMeals ? (
+          <>The amounts below are <strong>computed from this day&apos;s meal diary</strong> and cannot be typed over.
+          A blank means &ldquo;not known yet&rdquo;: it becomes 0 once you tick that the day is complete.</>
+        ) : (
+          <>The meal diary above is the quickest way to log. You can still type amounts by hand for a day without one:{' '}
+          <strong>enter 0 for anything you had none of</strong>, and leave a field blank only if you genuinely
+          don&apos;t know. Blank means &ldquo;not recorded&rdquo; and is left out of the analysis, so a forgotten day
+          never counts as a clean one.</>
+        )}
       </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -257,11 +264,11 @@ export default function NutritionLog() {
           <label className="text-xs font-semibold">{field('last_food_time').label}</label>
           <p className="text-[11px] text-muted-foreground mb-2">{field('last_food_time').summary}</p>
           <div className="flex items-center gap-3">
-            <input type="time" value={draft.last_food_time}
+            <input type="time" value={draft.last_food_time} disabled={fromMeals}
               onChange={e => set('last_food_time', e.target.value)}
               className="rounded border border-border bg-secondary px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring" />
             <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer">
-              <input type="checkbox" checked={draft.caffeine_after_14}
+              <input type="checkbox" checked={draft.caffeine_after_14} disabled={fromMeals}
                 onChange={e => set('caffeine_after_14', e.target.checked)}
                 className="rounded border-border" />
               Caffeine after 14:00
@@ -270,29 +277,6 @@ export default function NutritionLog() {
           <Definition def={field('last_food_time')} />
           <Definition def={field('caffeine_after_14')} />
         </div>
-      </div>
-
-      {/* Meal quality — anchored levels, chosen not scored */}
-      <div className="rounded-md border border-border bg-card p-3">
-        <label className="text-xs font-semibold">{field('meal_quality').label}</label>
-        <p className="text-[11px] text-muted-foreground mb-2">{field('meal_quality').summary}</p>
-        <div className="space-y-1">
-          {MEAL_QUALITY_LEVELS.map(lvl => {
-            const selected = draft.meal_quality === String(lvl.value);
-            return (
-              <button key={lvl.value} type="button"
-                onClick={() => set('meal_quality', selected ? '' : String(lvl.value))}
-                className={`w-full text-left rounded border px-2.5 py-1.5 transition-colors ${
-                  selected ? 'border-primary bg-primary/10' : 'border-border bg-secondary/30 hover:border-muted-foreground/40'
-                }`}>
-                <span className="text-[11px] font-mono text-muted-foreground mr-2">{lvl.value}</span>
-                <span className="text-[11px] font-semibold">{lvl.label}</span>
-                <span className="block text-[11px] text-muted-foreground leading-snug mt-0.5">{lvl.description}</span>
-              </button>
-            );
-          })}
-        </div>
-        <Definition def={field('meal_quality')} />
       </div>
 
       <input type="text" placeholder="notes (optional) — anything unusual about today"

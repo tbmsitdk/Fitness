@@ -8,12 +8,15 @@ import { coerceTravelLog, type TravelLog } from '@/lib/travel';
 import { coerceExerciseLog, type ExerciseLog } from '@/lib/exercises';
 import { DEFAULT_HOME_TIMEZONE, homeDayAndTime } from '@/lib/raw-data';
 import type { Activity, WellnessRecord } from '@/types';
+import type { Meal } from '@/lib/meals';
+import { listMeals } from '@/lib/meals-db';
 
 export interface CoachData {
   activities: Activity[];
   wellness: WellnessRecord[];
   exerciseLogs: ExerciseLog[];
   nutritionLogs: NutritionLog[];
+  meals: Meal[];
   travelLogs: TravelLog[];
   manualFtpWatts: number | null;
   homeTimezone: string;
@@ -35,20 +38,19 @@ async function homeTimezone(): Promise<string> {
 }
 
 export async function loadCoachData(): Promise<CoachData> {
-  const [actResult, wellResult, ftpResult, exerciseResult, nutritionResult, travelResult, tz] = await Promise.all([
+  const [actResult, wellResult, ftpResult, exerciseResult, nutritionResult, travelResult, tz, meals] = await Promise.all([
     sql`SELECT * FROM activities ORDER BY date`,
     sql`SELECT * FROM wellness ORDER BY date`,
     sql`SELECT ftp_watts FROM ftp_entries ORDER BY date DESC LIMIT 1`,
     sql`SELECT id, date::text, exercise_key, sets, reps, duration_seconds, load_kg,
                vital_capacity_l, inspiratory_strength, expiratory_strength, notes
         FROM exercise_logs ORDER BY date`,
-    sql`SELECT id, date::text, alcohol_units, candy_portions, savoury_snacks, sugary_drinks,
-               to_char(last_food_time, 'HH24:MI') AS last_food_time,
-               caffeine_after_14, meal_quality, notes
-        FROM nutrition_logs ORDER BY date`,
+    sql`SELECT *, date::text AS day FROM nutrition_logs ORDER BY date`,
     // SELECT * deliberately: coerceTravelLog decides what is read.
     sql`SELECT * FROM travel_logs ORDER BY depart_date`,
     homeTimezone(),
+    // A broken diary must not take the whole coach down with it.
+    listMeals('1970-01-01').catch((e): Meal[] => { console.error('[coach-data] meals', e); return []; }),
   ]);
 
   return {
@@ -56,6 +58,7 @@ export async function loadCoachData(): Promise<CoachData> {
     wellness: wellResult.rows.map(coerceWellness),
     exerciseLogs: exerciseResult.rows.map(coerceExerciseLog),
     nutritionLogs: nutritionResult.rows.map(coerceNutritionLog),
+    meals,
     travelLogs: travelResult.rows.map(coerceTravelLog),
     manualFtpWatts: ftpResult.rows[0]?.ftp_watts ? Number(ftpResult.rows[0].ftp_watts) : null,
     homeTimezone: tz,

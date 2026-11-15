@@ -1,21 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { QUICK_LOG_SCHEMA, QUICK_LOG_SYSTEM, buildQuickLogPrompt, resolveQuickLog, unitsFor } from '@/lib/quick-log';
-import { alcoholUnits, type NutritionLog } from '@/lib/nutrition';
+import { alcoholUnits } from '@/lib/nutrition';
 
 const TODAY = '2026-11-15';
 
-const log = (date: string, over: Partial<NutritionLog> = {}): NutritionLog => ({
-  date, alcohol_units: null, candy_portions: null, savoury_snacks: null, sugary_drinks: null,
-  last_food_time: null, caffeine_after_14: null, meal_quality: null, notes: null, ...over,
-});
-
-const day = (over: Record<string, unknown> = {}) => ({
-  date: TODAY, is_day_total: false, drinks: [], no_alcohol: false, candy_portions: null, savoury_snacks: null,
-  sugary_drinks: null, last_food_time: '', caffeine_after_14: 'not_mentioned', meal_quality: null, ...over,
+const meal = (over: Record<string, unknown> = {}) => ({
+  date: TODAY, time: '19:30', description: 'Pasta bolognese', kcal: 650, protein_g: 32, carbs_g: 70, added_sugar_g: 4,
+  fat_g: 24, fibre_g: 7, veg_fruit_portions: 1, ultra_processed: false, drinks: [], candy_portions: 0,
+  savoury_snacks: 0, sugary_drinks: 0, caffeine: false, drink_only: false, ...over,
 });
 const reply = (over: Record<string, unknown> = {}) =>
-  JSON.stringify({ understood: 'ok', questions: [], nutrition: [], exercises: [], trips: [], ...over });
-const resolve = (over: Record<string, unknown>, existing: NutritionLog[] = []) => resolveQuickLog(reply(over), existing, TODAY);
+  JSON.stringify({ understood: 'ok', questions: [], meals: [], day_statements: [], exercises: [], trips: [], ...over });
+const resolve = (over: Record<string, unknown>) => resolveQuickLog(reply(over), TODAY);
 
 describe('unitsFor', () => {
   it('matches the form\'s own arithmetic for a single drink', () => {
@@ -30,78 +26,71 @@ describe('unitsFor', () => {
   });
 });
 
-describe('resolveQuickLog — nutrition', () => {
-  // Lesson 4, and the reason this feature has a confirmation step at all.
-  it('leaves every field nobody mentioned exactly as it was — never a zero', () => {
-    const p = resolve({ nutrition: [day({ drinks: [{ description: 'red wine', volume_ml: 150, abv_percent: 13, count: 2 }] })] });
-    const row = p.nutrition[0].row;
-    expect(row.alcohol_units).toBe(2.5);
-    expect(row.candy_portions).toBeNull();
-    expect(row.savoury_snacks).toBeNull();
-    expect(row.sugary_drinks).toBeNull();
-    expect(row.caffeine_after_14).toBeNull();
-    expect(row.last_food_time).toBeNull();
-    expect(p.nutrition[0].changes).toEqual([{ label: 'Alcohol units', from: 'not logged', to: '2.5' }]);
+describe('resolveQuickLog — meals', () => {
+  it('turns a meal into a diary entry with its estimates', () => {
+    const p = resolve({ meals: [meal()] });
+    expect(p.days).toHaveLength(1);
+    const m = p.days[0].meals[0];
+    expect(m).toMatchObject({ date: TODAY, time: '19:30', description: 'Pasta bolognese', kcal: 650, protein_g: 32, alcohol_g: 0, source: 'text' });
+    expect(p.days[0].lines[0]).toBe('19:30 Pasta bolognese — ~650 kcal, 32 g protein, 4 g added sugar, 7 g fibre');
+    expect(p.days[0].noAlcohol).toBe(false);
+    expect(p.days[0].complete).toBe(false);
   });
 
-  it('adds to what is already logged for the day', () => {
-    const p = resolve(
-      { nutrition: [day({ drinks: [{ description: 'beer', volume_ml: 330, abv_percent: 4.6, count: 1 }], candy_portions: 1 })] },
-      [log(TODAY, { alcohol_units: 2, candy_portions: 1, savoury_snacks: 2, notes: 'dinner out' })],
-    );
-    const row = p.nutrition[0].row;
-    expect(row.alcohol_units).toBe(3);
-    expect(row.candy_portions).toBe(2);
-    expect(row.savoury_snacks).toBe(2);   // untouched
-    expect(row.notes).toBe('dinner out'); // untouched
+  it('computes the alcohol in code from volume and strength', () => {
+    const p = resolve({ meals: [meal({ description: '2 glasses of red', drink_only: true, kcal: 250, drinks: [{ description: 'red wine', volume_ml: 150, abv_percent: 13, count: 2 }] })] });
+    expect(p.days[0].meals[0].alcohol_g).toBe(30.8);
+    expect(p.days[0].lines[0]).toContain('2.5 alcohol units');
   });
 
-  it('replaces the day when the person gave totals', () => {
-    const p = resolve(
-      { nutrition: [day({ is_day_total: true, drinks: [{ description: 'beer', volume_ml: 330, abv_percent: 4.6, count: 1 }] })] },
-      [log(TODAY, { alcohol_units: 4 })],
-    );
-    expect(p.nutrition[0].row.alcohol_units).toBe(1);
+  // Lesson 4: the model is never allowed to decide that a day had none of something.
+  it('marks a day alcohol-free or complete ONLY when the person said so', () => {
+    const silent = resolve({ meals: [meal()] });
+    expect(silent.days[0].noAlcohol).toBe(false);
+    expect(silent.days[0].complete).toBe(false);
+    const said = resolve({ meals: [meal()], day_statements: [{ date: TODAY, no_alcohol: true, day_complete: true }] });
+    expect(said.days[0].noAlcohol).toBe(true);
+    expect(said.days[0].complete).toBe(true);
   });
 
-  it('logs an explicit "no alcohol" as 0, but only when it was said', () => {
-    expect(resolve({ nutrition: [day({ no_alcohol: true })] }).nutrition[0].row.alcohol_units).toBe(0);
-    // Nothing said about alcohol, something said about candy: alcohol stays unlogged.
-    expect(resolve({ nutrition: [day({ candy_portions: 1 })] }).nutrition[0].row.alcohol_units).toBeNull();
+  it('accepts a statement on its own, with no meal', () => {
+    const p = resolve({ day_statements: [{ date: TODAY, no_alcohol: true, day_complete: false }] });
+    expect(p.days).toEqual([{ date: TODAY, meals: [], lines: [], noAlcohol: true, complete: false }]);
+    expect(resolve({ day_statements: [{ date: TODAY, no_alcohol: false, day_complete: false }] }).days).toEqual([]);
   });
 
-  it('does not let "no alcohol" wipe drinks already logged when adding', () => {
-    const p = resolve({ nutrition: [day({ no_alcohol: true, candy_portions: 1 })] }, [log(TODAY, { alcohol_units: 2 })]);
-    expect(p.nutrition[0].row.alcohol_units).toBe(2);
+  it('asks instead of guessing when "no alcohol" comes with a drink', () => {
+    const p = resolve({
+      meals: [meal({ drinks: [{ description: 'beer', volume_ml: 330, abv_percent: 4.6, count: 1 }] })],
+      day_statements: [{ date: TODAY, no_alcohol: true, day_complete: false }],
+    });
+    expect(p.days[0].noAlcohol).toBe(false);
+    expect(p.questions.join(' ')).toMatch(/no alcohol .* but also listed a drink/);
   });
 
-  it('does not let "no caffeine" undo a late coffee already logged when adding', () => {
-    const p = resolve({ nutrition: [day({ caffeine_after_14: 'no', candy_portions: 1 })] }, [log(TODAY, { caffeine_after_14: true })]);
-    expect(p.nutrition[0].row.caffeine_after_14).toBe(true);
-    expect(resolve({ nutrition: [day({ caffeine_after_14: 'no' })] }).nutrition[0].row.caffeine_after_14).toBe(false);
-  });
-
-  it('proposes nothing when the reading changes nothing', () => {
-    expect(resolve({ nutrition: [day()] }).nutrition).toEqual([]);
-  });
-
-  it('ignores impossible drinks and values', () => {
-    const p = resolve({ nutrition: [day({
-      drinks: [{ description: 'x', volume_ml: -5, abv_percent: 13, count: 1 }, { description: 'y', volume_ml: 100, abv_percent: 400, count: 1 }],
-      candy_portions: -3, meal_quality: 9, last_food_time: '27:00',
-    })] });
-    expect(p.nutrition).toEqual([]);
+  it('keeps an impossible estimate as unknown rather than zero, and ignores impossible drinks', () => {
+    const p = resolve({ meals: [meal({ kcal: -50, protein_g: 'lots', time: '7pm', drinks: [{ description: 'x', volume_ml: -5, abv_percent: 13, count: 1 }, { description: 'y', volume_ml: 100, abv_percent: 400, count: 1 }] })] });
+    const m = p.days[0].meals[0];
+    expect(m.kcal).toBeNull();
+    expect(m.protein_g).toBeNull();
+    expect(m.time).toBeNull();
+    expect(m.alcohol_g).toBe(0);
   });
 
   it('refuses dates in the future or too far back, and asks instead', () => {
-    const p = resolve({ nutrition: [day({ date: '2026-11-16', candy_portions: 1 }), day({ date: '2025-01-01', candy_portions: 1 }), day({ date: 'yesterday', candy_portions: 1 })] });
-    expect(p.nutrition).toEqual([]);
+    const p = resolve({ meals: [meal({ date: '2026-11-16' }), meal({ date: '2025-01-01' }), meal({ date: 'yesterday' })] });
+    expect(p.days).toEqual([]);
     expect(p.questions).toHaveLength(3);
   });
 
-  it('matches an existing day stored as an ISO timestamp', () => {
-    const p = resolve({ nutrition: [day({ candy_portions: 1 })] }, [log(`${TODAY}T00:00:00.000Z`, { candy_portions: 2 })]);
-    expect(p.nutrition[0].row.candy_portions).toBe(3);
+  it('groups several meals by day, in date order, and marks photo entries', () => {
+    const p = resolveQuickLog(reply({ meals: [meal(), meal({ date: '2026-11-14', description: 'Late kebab', time: '00:30' }), meal({ description: 'Lunch', time: '12:00' })] }), TODAY, 'photo');
+    expect(p.days.map(d => [d.date, d.meals.length])).toEqual([['2026-11-14', 1], [TODAY, 2]]);
+    expect(p.days[1].meals[0].source).toBe('photo');
+  });
+
+  it('drops an entry with no description', () => {
+    expect(resolve({ meals: [meal({ description: '  ' })] }).days).toEqual([]);
   });
 });
 
@@ -177,26 +166,29 @@ describe('resolveQuickLog — trips', () => {
 
 describe('resolveQuickLog — the reply itself', () => {
   it('throws on a reply that is not JSON', () => {
-    expect(() => resolveQuickLog('Logged 2 beers for you!', [], TODAY)).toThrow(/not JSON/);
+    expect(() => resolveQuickLog('Logged 2 beers for you!', TODAY)).toThrow(/not JSON/);
   });
 
   it('survives a reply with missing sections', () => {
-    const p = resolveQuickLog('{}', [], TODAY);
-    expect(p).toEqual({ understood: '', questions: [], nutrition: [], exercises: [], trips: [] });
+    const p = resolveQuickLog('{}', TODAY);
+    expect(p).toEqual({ understood: '', questions: [], days: [], exercises: [], trips: [] });
   });
 });
 
 describe('prompt and schema', () => {
-  it('tells the model never to fill in a zero, and carries the form\'s own definitions', () => {
-    expect(QUICK_LOG_SYSTEM).toMatch(/Never fill in a zero/);
+  it('tells the model never to infer "none", and carries the form\'s own definitions', () => {
+    expect(QUICK_LOG_SYSTEM).toMatch(/not mentioned and none are different facts/);
     expect(QUICK_LOG_SYSTEM).toContain('dead_hang = Dead hang');
     expect(QUICK_LOG_SYSTEM).toMatch(/Does not count:/);
+    expect(QUICK_LOG_SYSTEM).not.toMatch(/meal.quality/i);
   });
 
-  it('wraps the note and shows what is already logged', () => {
-    const p = buildQuickLogPrompt({ text: 'two beers', today: TODAY, weekday: 'Sunday', recentLogs: [log(TODAY, { alcohol_units: 1 })], hasImages: false });
+  it('wraps the note, gives the time, and shows what is already in the diary', () => {
+    const existing = resolve({ meals: [meal()] }).days[0].meals;
+    const p = buildQuickLogPrompt({ text: 'two beers', today: TODAY, weekday: 'Sunday', nowTime: '20:15', recentMeals: existing, hasImages: false });
     expect(p).toContain('<note>\ntwo beers\n</note>');
-    expect(p).toContain('2026-11-15: alcohol 1, candy —');
+    expect(p).toContain('it is now 20:15');
+    expect(p).toContain('2026-11-15 19:30 Pasta bolognese');
   });
 
   it('has closed objects with every property required, at every level', () => {

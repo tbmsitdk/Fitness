@@ -292,3 +292,27 @@ value falls to the cautious reading — "cannot check", never "agrees".
 
 **Tests:** `quick-log.test.ts`, `early-warning.test.ts`, `experiments.test.ts`,
 `history-tools.test.ts`, and the card-check cases in `analysis.test.ts`.
+
+## 21. A diary of parts needs to know when the whole is in
+
+The 1-5 meal score was replaced by a meal diary: each meal is logged by
+sentence or photo, and the day's nutrition row is derived from the day's meals
+(`lib/meals.ts`). The trap is the one in lesson 4, one level up: with lunch
+logged and nothing else, "no alcohol among the meals so far" is not "no
+alcohol today", and 500 kcal so far is not a 500 kcal day.
+
+**Rules.**
+- A positive amount in the meals is known. A zero is known only when the day
+  was marked complete (or, for alcohol, the person said "none today").
+- Day totals exist only for a complete day in which every meal has an
+  estimate; otherwise they are null, and reach the model as empty cells.
+- The diary is the single source of truth on a day that has one. Amounts typed
+  by hand earlier are carried into the diary as one entry — not lost, not
+  counted twice — and the form's fields become read-only for that day.
+- The model never decides a day was alcohol-free or complete; those come only
+  from the person's own words, and "no alcohol" alongside a listed drink is
+  asked about, not resolved.
+
+**Tests:** `__tests__/meals.test.ts` ("does NOT report zero alcohol or sweets
+just because none are logged yet", "reports no day totals for a partial day",
+carry-over round trip), and the meals cases in `quick-log.test.ts`.

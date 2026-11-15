@@ -60,7 +60,7 @@ that ignores the manually-logged sections reads as though the user's effort was 
   activities. Never state the user does no strength training when this section has data.
 - respiratory — Airofit lung capacity and inspiratory/expiratory strength, with predicted
   values. Distinct from the Airofit SESSION TIME in strength_and_mobility.
-- nutrition — alcohol, sugar, crisps, caffeine and meal quality, with the measured effect of
+- nutrition — alcohol, sugar, crisps, caffeine and (on days logged in full) meal-diary totals, with the measured effect of
   each on next-morning recovery. Where an effect is large and reliable, name the number.
 - travel — timezone shifts and their measured cost. If likely_still_adapting is true, do not
   read low HRV as overtraining.

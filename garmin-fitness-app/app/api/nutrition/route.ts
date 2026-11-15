@@ -33,10 +33,7 @@ export async function GET(req: NextRequest) {
 
     await client.connect();
     const { rows } = await client.query(
-      `SELECT id, date::text, alcohol_units, candy_portions, savoury_snacks, sugary_drinks,
-              to_char(last_food_time, 'HH24:MI') AS last_food_time,
-              caffeine_after_14, meal_quality, notes
-       FROM nutrition_logs
+      `SELECT *, date::text AS day FROM nutrition_logs
        WHERE date >= $1
        ORDER BY date DESC`,
       [cutoff]
@@ -74,16 +71,25 @@ export async function POST(req: NextRequest) {
       sugary_drinks:  num(body.sugary_drinks, 0, 40),
       last_food_time: timeOrNull(body.last_food_time),
       caffeine_after_14: body.caffeine_after_14 == null ? null : Boolean(body.caffeine_after_14),
-      meal_quality: num(body.meal_quality, 1, 5),
       notes: typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim().slice(0, 500) : null,
     };
 
     await client.connect();
+
+    // A day with a meal diary is computed from its meals. Typed amounts would
+    // be overwritten the next time a meal changed, and until then would
+    // disagree with the diary — so on such a day only the note is saved.
+    const existing = await client.query(`SELECT from_meals FROM nutrition_logs WHERE date = $1`, [date]);
+    if (existing.rows[0]?.from_meals === true) {
+      await client.query(`UPDATE nutrition_logs SET notes = $2, updated_at = NOW() WHERE date = $1`, [date, row.notes]);
+      return NextResponse.json({ ok: true, date, fromMeals: true }, { headers: NO_STORE });
+    }
+
     await client.query(
       `INSERT INTO nutrition_logs
          (date, alcohol_units, candy_portions, savoury_snacks, sugary_drinks,
-          last_food_time, caffeine_after_14, meal_quality, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          last_food_time, caffeine_after_14, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        ON CONFLICT (date) DO UPDATE SET
          alcohol_units     = EXCLUDED.alcohol_units,
          candy_portions    = EXCLUDED.candy_portions,
@@ -91,11 +97,10 @@ export async function POST(req: NextRequest) {
          sugary_drinks     = EXCLUDED.sugary_drinks,
          last_food_time    = EXCLUDED.last_food_time,
          caffeine_after_14 = EXCLUDED.caffeine_after_14,
-         meal_quality      = EXCLUDED.meal_quality,
          notes             = EXCLUDED.notes,
          updated_at        = NOW()`,
       [date, row.alcohol_units, row.candy_portions, row.savoury_snacks, row.sugary_drinks,
-       row.last_food_time, row.caffeine_after_14, row.meal_quality, row.notes]
+       row.last_food_time, row.caffeine_after_14, row.notes]
     );
 
     return NextResponse.json({ ok: true, date }, { headers: NO_STORE });
@@ -117,6 +122,8 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Valid date required' }, { status: 400 });
     }
     await client.connect();
+    // The day's meals go with it; otherwise the next diary change would bring the row back.
+    await client.query(`DELETE FROM meals WHERE date = $1`, [date]);
     await client.query(`DELETE FROM nutrition_logs WHERE date = $1`, [date]);
     return NextResponse.json({ ok: true }, { headers: NO_STORE });
   } catch (e) {

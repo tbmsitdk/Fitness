@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
       activities: lastDays(data.activities, 14, data.today),
       wellness: lastDays(data.wellness, 14, data.today),
       nutritionLogs: lastDays(data.nutritionLogs, 14, data.today),
+      meals: lastDays(data.meals, 14, data.today),
       exerciseLogs: lastDays(data.exerciseLogs, 14, data.today),
       // Trips still open, or ended within the last three weeks.
       travelLogs: data.travelLogs.filter(t => !t.return_date || t.return_date.slice(0, 10) >= daysAgo(data.today, 21)),

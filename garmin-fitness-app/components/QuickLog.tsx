@@ -79,7 +79,7 @@ export default function QuickLog() {
     let saved = 0;
     try {
       // The ordinary routes do the saving, with their own validation.
-      for (const n of proposal.nutrition) { await post('/api/nutrition', n.row); saved++; }
+      for (const d of proposal.days) { await post('/api/meals', { date: d.date, meals: d.meals, no_alcohol: d.noAlcohol, ...(d.complete ? { complete: true } : {}) }); saved++; }
       for (const e of proposal.exercises) { await post('/api/exercises', { date: e.date, entries: e.entries }); saved++; }
       for (const t of proposal.trips) { await post('/api/travel', t.payload); saved++; }
       setDone(`Saved ${saved} ${saved === 1 ? 'entry' : 'entries'}.`);
@@ -91,7 +91,7 @@ export default function QuickLog() {
     } finally { setBusy(null); }
   }
 
-  const nothing = proposal && proposal.nutrition.length + proposal.exercises.length + proposal.trips.length === 0;
+  const nothing = proposal && proposal.days.length + proposal.exercises.length + proposal.trips.length === 0;
 
   return (
     <Card>
@@ -99,7 +99,7 @@ export default function QuickLog() {
         <div className="flex items-center gap-2">
           <PencilLine className="w-4 h-4 text-muted-foreground" />
           <span className="text-sm font-medium">Quick log</span>
-          <span className="text-[11px] text-muted-foreground">food, drink, exercises or a trip — in a sentence or a photo</span>
+          <span className="text-[11px] text-muted-foreground">what you ate and drank, exercises or a trip — in a sentence or a photo</span>
         </div>
 
         <div className="flex gap-2">
@@ -108,7 +108,7 @@ export default function QuickLog() {
             onChange={e => setText(e.target.value.slice(0, MAX_TEXT_LENGTH))}
             onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !busy) read(); }}
             rows={2}
-            placeholder="e.g. two glasses of red and some crisps, last ate 21:30 · or: no alcohol today · or: 2 x 20 s dead hang"
+            placeholder="e.g. lunch: chicken salad and a roll · two glasses of red with dinner at 19:30 · that's everything for today · 2 x 20 s dead hang"
             className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring"
           />
           <div className="flex flex-col gap-2">
@@ -144,12 +144,14 @@ export default function QuickLog() {
           <div className="rounded-md border border-border p-3 space-y-3">
             {proposal.understood && <p className="text-xs text-muted-foreground">{proposal.understood}</p>}
 
-            {proposal.nutrition.map(n => (
-              <div key={n.date}>
-                <p className="text-xs font-medium">Food and drink, {when(n.date)}</p>
-                <ul className="mt-1 space-y-0.5">{n.changes.map(c => (
-                  <li key={c.label} className="text-xs text-muted-foreground">{c.label}: {c.from} → <span className="text-foreground">{c.to}</span></li>
-                ))}</ul>
+            {proposal.days.map(d => (
+              <div key={d.date}>
+                <p className="text-xs font-medium">Meal diary, {when(d.date)}</p>
+                <ul className="mt-1 space-y-0.5">
+                  {d.lines.map((l, i) => <li key={i} className="text-xs text-muted-foreground">{l}</li>)}
+                  {d.noAlcohol && <li className="text-xs text-muted-foreground">No alcohol this day</li>}
+                  {d.complete && <li className="text-xs text-muted-foreground">Marks the day as complete: totals will count</li>}
+                </ul>
               </div>
             ))}
             {proposal.exercises.map(e => (
@@ -169,6 +171,9 @@ export default function QuickLog() {
               <ul className="space-y-0.5">{proposal.questions.map(q => <li key={q} className="text-xs text-amber-400">{q}</li>)}</ul>
             )}
             {nothing && proposal.questions.length === 0 && <p className="text-xs text-muted-foreground">Nothing to log from that.</p>}
+            {proposal.days.some(d => d.meals.length > 0) && (
+              <p className="text-[11px] text-muted-foreground/70">Amounts are estimates. You can adjust a portion or delete a meal in the meal diary afterwards.</p>
+            )}
 
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setProposal(null)} disabled={busy !== null}>Discard</Button>
