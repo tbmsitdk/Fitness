@@ -4,7 +4,6 @@ import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis
 import { format, parseISO } from 'date-fns';
 import type { WellnessRecord } from '@/types';
 import { localDateKey } from '@/lib/training-load';
-import { stepCoach } from '@/lib/step-coach';
 import { stepTracking } from '@/lib/step-tracking';
 
 const TOOLTIP_STYLE = { background: 'hsl(240 10% 7%)', border: '1px solid hsl(240 3.7% 13%)', borderRadius: '8px', fontSize: 11 };
@@ -29,17 +28,14 @@ function Tile({ label, value, sub, tone }: { label: string; value: string; sub?:
 interface Props {
   /** The period the dashboard is set to. */
   wellness: WellnessRecord[];
-  /** Full history, used only for today's coaching line, which needs eight weeks whatever the period. */
-  allWellness: WellnessRecord[];
   goal: number;
   height?: number;
 }
 
 /** How steps track against the goal over the selected period, and what is holding them back. */
-export default function StepsVsTarget({ wellness, allWellness, goal, height = 200 }: Props) {
+export default function StepsVsTarget({ wellness, goal, height = 200 }: Props) {
   const today = localDateKey(new Date());
   const t = useMemo(() => stepTracking({ wellness, goal, today }), [wellness, goal, today]);
-  const coach = useMemo(() => stepCoach({ wellness: allWellness, goal, today }), [allWellness, goal, today]);
 
   // Weekly bars for up to ~80 weeks; beyond that, months, or the bars become slivers.
   const monthly = t.weeks.length > 80;
@@ -179,11 +175,6 @@ export default function StepsVsTarget({ wellness, allWellness, goal, height = 20
           </table>
         </div>
       )}
-
-      <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-1">
-        <p className="text-xs font-medium">Today, {coach.today.name}</p>
-        <p className="text-xs text-muted-foreground leading-relaxed">{coach.nudge}</p>
-      </div>
 
       <p className="text-[10px] text-muted-foreground/70">
         Only finished days count: counts arrive with the daily Garmin sync, so today is never judged. The goal is set in Settings.
