@@ -652,10 +652,16 @@ export async function generateWeeklySummary(
         required: ['summary', 'recommendations', 'injury_risks', 'longevity_insights'],
       },
     }],
-    tool_choice: { type: 'tool', name: 'coaching_report' },
+    // `auto`, NOT a forced tool call. Fable 5.2 / 5.1 and Sonnet 5.5 reject
+    // tool_choice "tool"/"any" with a 400, so forcing it pins us to older
+    // models. The prompt names the tool instead; the guards below cover the
+    // case where the model answers in prose anyway.
+    tool_choice: { type: 'auto' },
     messages: [{
       role: 'user',
-      content: `Analyse my complete fitness and health data below and produce a comprehensive coaching report via the coaching_report tool.
+      content: `Analyse my complete fitness and health data below and produce a comprehensive coaching report.
+
+You MUST respond by calling the coaching_report tool. Do not reply with prose.
 
 Data:
 ${JSON.stringify(context, null, 2)}
@@ -667,8 +673,22 @@ Be specific. Cite exact numbers. Give actionable targets not vague advice.`,
   const toolBlock = response.content.find(
     (b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use'
   );
+  // With tool_choice "auto" the model CAN answer in prose. Silently returning
+  // an empty report would render a blank coaching card as if it had succeeded,
+  // so fail loudly instead — the caller turns this into a 500.
+  if (!toolBlock) {
+    const text = response.content
+      .filter((b): b is Anthropic.Messages.TextBlock => b.type === 'text')
+      .map(b => b.text)
+      .join(' ')
+      .slice(0, 200);
+    throw new Error(
+      `Coach did not call coaching_report (stop_reason: ${response.stop_reason})` +
+      (text ? `; replied with text instead: "${text}"` : ''),
+    );
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parsed = (toolBlock?.input ?? {}) as any;
+  const parsed = toolBlock.input as any;
 
   return {
     summary:            typeof parsed.summary === 'string' ? parsed.summary : '',

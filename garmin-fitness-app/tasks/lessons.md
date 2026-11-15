@@ -211,3 +211,20 @@ method.
 and how the days were combined. Where two cards can disagree by construction,
 detect it and name the more reliable one rather than leaving the reader to
 reconcile them.
+
+## 16. Model ids and request shapes rot without failing a test
+
+Two defects that only the live API would have reported:
+
+- `claude-sonnet-4-5` stayed in the training-plan route past its deprecation;
+  it retires 2026-11-30 and the route would have started erroring on that day.
+- The coach forced its tool call (`tool_choice: {type:'tool'}`). Fable 5.2/5.1
+  and Sonnet 5.5 reject that with a 400, so the code quietly pinned the app to
+  older models. Its fallback (`toolBlock?.input ?? {}`) would also have
+  rendered a blank report as a success.
+
+**Rule:** `tool_choice: auto` plus a prompt line naming the tool; throw when no
+tool block comes back. Never put backticks inside a template-literal prompt —
+that broke the build while fixing this.
+**Tests:** `__tests__/model-compat.test.ts` scans the source for retired model
+ids, forced tool choice and assistant prefill.

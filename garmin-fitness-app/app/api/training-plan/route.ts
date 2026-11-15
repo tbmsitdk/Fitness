@@ -93,7 +93,8 @@ Return ONLY valid JSON matching this exact structure (no markdown, no explanatio
 }`;
 
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-5',
+      // Sonnet 4.5 was deprecated and retires 2026-11-30; 5.5 is the current Sonnet.
+      model: 'claude-sonnet-5-5',
       max_tokens: 3000,
       system: 'You are an expert cycling coach. Always return only valid JSON, no markdown code blocks, no explanations.',
       messages: [{ role: 'user', content: prompt }],
