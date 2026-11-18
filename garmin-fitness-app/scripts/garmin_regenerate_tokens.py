@@ -45,6 +45,9 @@ def headers(secret: str, bypass: str) -> dict:
     return h
 
 
+READBACK_RETRY_SECONDS = 4
+
+
 def store_tokens(app_url: str, secret: str, bypass: str, encoded: str) -> bool:
     """Put the new tokens in the app's database, the copy the daily sync loads
     first, and check they arrived. Never raises.
@@ -63,16 +66,29 @@ def store_tokens(app_url: str, secret: str, bypass: str, encoded: str) -> bool:
         if not r.ok:
             print(f"  ⚠  The app refused the tokens: HTTP {r.status_code}")
             return False
-        back = requests.get(url, headers=headers(secret, bypass), timeout=15)
-        stored = (back.json() or {}).get("token_data") if back.ok else None
+        def read_back():
+            back = requests.get(url, headers=headers(secret, bypass), timeout=15)
+            return (back.json() or {}).get("token_data") if back.ok else None
+
+        stored = read_back()
         if stored != encoded:
-            # Say what came back, never the value itself.
+            # A read straight after a write can be stale; look once more before giving up.
+            time.sleep(READBACK_RETRY_SECONDS)
+            stored = read_back()
+        if stored != encoded:
+            # Say how the values differ, never the values themselves.
             if stored is None:
                 seen = "nothing (the app has no stored tokens)"
             elif not isinstance(stored, str):
                 seen = f"a {type(stored).__name__}, not text"
             else:
-                seen = f"{len(stored)} characters against {len(encoded)} sent"
+                same = 0
+                for x, y in zip(stored, encoded):
+                    if x != y:
+                        break
+                    same += 1
+                seen = (f"{len(stored)} characters against {len(encoded)} sent, "
+                        f"identical for the first {same}; sent value {'is' if encoded in stored else 'is not'} contained in it")
             print(f"  ⚠  PUT returned HTTP {r.status_code}, but reading back gave {seen}; treating them as NOT stored.")
             return False
         return True

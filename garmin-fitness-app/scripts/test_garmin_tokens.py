@@ -200,8 +200,26 @@ class RegenerateStoresTheTokens(unittest.TestCase):
         with mock.patch.object(gr.requests, "put", return_value=self.reply(ok=False, status=401)):
             self.assertFalse(gr.store_tokens("https://app.example", "s", "", "TOKENS"))
 
-    def test_tokens_that_cannot_be_read_back_are_not_a_success(self):
+    def test_a_stale_first_read_is_retried_and_then_succeeds(self):
+        reads = [self.reply(body={"token_data": "OLD"}), self.reply(body={"token_data": "TOKENS"})]
         with mock.patch.object(gr.requests, "put", return_value=self.reply()), \
+             mock.patch.object(gr.requests, "get", side_effect=reads), \
+             mock.patch.object(gr.time, "sleep"):
+            self.assertTrue(gr.store_tokens("https://app.example", "s", "", "TOKENS"))
+
+    def test_mismatch_reports_lengths_and_common_prefix_not_values(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), \
+             mock.patch.object(gr.requests, "put", return_value=self.reply()), \
+             mock.patch.object(gr.requests, "get", return_value=self.reply(body={"token_data": "SECRETabcdef"})), \
+             mock.patch.object(gr.time, "sleep"):
+            self.assertFalse(gr.store_tokens("https://app.example", "s", "", "SECRETxyz"))
+        self.assertIn("12 characters against 9 sent, identical for the first 6", out.getvalue())
+        self.assertNotIn("abcdef", out.getvalue())
+
+    def test_tokens_that_cannot_be_read_back_are_not_a_success(self):
+        with mock.patch.object(gr.time, "sleep"), \
+             mock.patch.object(gr.requests, "put", return_value=self.reply()), \
              mock.patch.object(gr.requests, "get", return_value=self.reply(body={"token_data": "OLD-STALE-TOKENS"})):
             self.assertFalse(gr.store_tokens("https://app.example", "s", "", "TOKENS"))
 
