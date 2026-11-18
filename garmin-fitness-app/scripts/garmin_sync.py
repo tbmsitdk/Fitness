@@ -464,27 +464,114 @@ def _login_failure(exc: Exception, api) -> tuple[str, str]:
     return kind, detail
 
 
+def _extract_tokens(b64_data: str) -> bool:
+    """Extract a base64-encoded token tarball next to TOKEN_DIR. True on success."""
+    try:
+        buf = io.BytesIO(base64.b64decode(b64_data))
+        kwargs = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}   # refuse unsafe members
+        with tarfile.open(fileobj=buf, mode="r:gz") as tar:
+            tar.extractall(os.path.dirname(TOKEN_DIR), **kwargs)
+        return os.path.exists(TOKEN_DIR)
+    except Exception as exc:
+        print(f"  ⚠  Failed to extract tokens: {_redact(str(exc))}")
+        return False
+
+
+def _save_tokens_to_db() -> bool:
+    """Store the CURRENT token store, so the next run starts from it. Never raises.
+
+    Garmin rotates the refresh token each time it is used. A run that logs in
+    but does not save leaves the stored copy pointing at a refresh token that
+    has already been spent, and the next run is rejected (401). So this runs
+    after EVERY successful login, whichever token source it came from.
+    """
+    try:
+        buf_out = io.BytesIO()
+        with tarfile.open(fileobj=buf_out, mode="w:gz") as tar:
+            tar.add(TOKEN_DIR, arcname="garmin_token_store")
+        fresh_b64 = base64.b64encode(buf_out.getvalue()).decode()
+        r = requests.put(f"{APP_URL}/api/garmin-tokens", headers=HEADERS, json={"token_data": fresh_b64}, timeout=10)
+        if r.ok:
+            print("  ✓ Refreshed tokens saved to DB")
+            return True
+        print(f"  ⚠  Could not save tokens to DB: {r.status_code}")
+    except Exception as exc:
+        print(f"  ⚠  Token save failed (non-fatal): {_redact(str(exc))}")
+    return False
+
+
+def _login(api, token_source: str) -> None:
+    """Log in with the loaded tokens. Retries transient failures, falls back from
+    the DB copy to the GitHub secret, and exits if neither works."""
+    waits = [30, 60, 120]
+    for attempt in range(len(waits) + 1):
+        try:
+            api.login(tokenstore=TOKEN_DIR)
+            print(f"  ✓ Logged in as: {api.display_name}")
+            _save_tokens_to_db()
+            return
+        except Exception as exc:
+            s = str(exc).lower()
+            is_429 = "429" in str(exc)
+            is_net = not is_429 and any(k in s for k in ("timed out", "timeout", "connection"))
+            if (is_429 or is_net) and attempt < len(waits):
+                kind = "rate limited" if is_429 else "network error"
+                print(f"  ⚠  {kind} on login (attempt {attempt + 1}/{len(waits) + 1}), retrying in {waits[attempt]}s…")
+                time.sleep(waits[attempt])
+                continue
+
+            # The DB copy is tried first, so a stale one there must not stop a
+            # run that the GitHub secret could carry.
+            if token_source == "db" and os.environ.get("GARMIN_TOKENS", ""):
+                print(f"  ⚠  Login failed with the DB tokens ({_redact(str(exc))})")
+                print("    Retrying with GARMIN_TOKENS from the GitHub secret…")
+                if _extract_tokens(os.environ["GARMIN_TOKENS"]):
+                    try:
+                        api.login(tokenstore=TOKEN_DIR)
+                        print(f"  ✓ Logged in as: {api.display_name} (secret tokens)")
+                        print("    The DB copy was stale; replacing it with the refreshed tokens.")
+                        # This save was MISSING: the run succeeded, the stale copy stayed in
+                        # the DB, and the secret's refresh token was spent and never replaced.
+                        _save_tokens_to_db()
+                        return
+                    except Exception as exc2:
+                        exc = exc2
+                else:
+                    print("    GARMIN_TOKENS could not be extracted either.")
+
+            kind, detail = _login_failure(exc, api)
+            print(f"  ✗ Login failed: {_redact(str(exc))}")
+            print(f"    What Garmin actually said: {detail}")
+            if kind == "rejected":
+                print("    Garmin rejected the tokens (401): both stored copies are spent or invalid.")
+                print("    Fix: GitHub Actions → 'Regenerate Garmin Tokens' → Run workflow, then")
+                print("    submit the SMS code at <APP_URL>/garmin-setup while it runs. It stores the")
+                print("    new tokens in the app's database itself; nothing needs pasting anywhere.")
+            elif kind == "blocked":
+                print("    Garmin refused the REQUEST (403), which is usually the network (GitHub's")
+                print("    runners), not the tokens. Regenerating tokens will probably not help:")
+                print("    re-run in a few hours, and if it persists, tell whoever maintains the app.")
+            elif kind == "rate_limited":
+                print("    Garmin is rate limiting logins (429). Wait an hour or more and re-run.")
+                print("    Regenerating tokens would add another login and make it worse.")
+            elif kind == "network":
+                print("    This looks like a network problem reaching Garmin. Re-run in a few minutes.")
+            else:
+                print("    The cause could not be told from the error. If a re-run fails the same way,")
+                print("    regenerating the tokens is the last thing to try; send this log with it.")
+            sys.exit(1)
+
+
 def main():
     from datetime import date, timedelta
 
     _start = time.time()
 
-    # ── Load token store: try DB first (stays fresh after each sync), fall back to secret
+    # ── Load token store: try DB first (kept fresh by every successful run), fall back to the secret
     print("Loading Garmin auth tokens…")
 
-    def _extract_tokens(b64_data: str) -> bool:
-        """Extract base64-encoded tarball into TOKEN_DIR. Returns True on success."""
-        try:
-            buf = io.BytesIO(base64.b64decode(b64_data))
-            with tarfile.open(fileobj=buf, mode="r:gz") as tar:
-                tar.extractall("/tmp")
-            return os.path.exists(TOKEN_DIR)
-        except Exception as exc:
-            print(f"  ⚠  Failed to extract tokens: {exc}")
-            return False
-
     token_loaded = False
-    token_source = None  # 'db' or 'secret' — needed for the retry below
+    token_source = None  # 'db' or 'secret' — needed for the fallback in _login
     try:
         r = requests.get(
             f"{APP_URL}/api/garmin-tokens",
@@ -502,7 +589,7 @@ def main():
                 else:
                     print("  ⚠  DB tokens corrupt, falling back to secret")
     except Exception as exc:
-        print(f"  ⚠  Could not reach token API ({exc}), falling back to secret")
+        print(f"  ⚠  Could not reach token API ({_redact(str(exc))}), falling back to secret")
 
     # 2. Fall back to GARMIN_TOKENS env var (GitHub Secret)
     if not token_loaded:
@@ -515,88 +602,14 @@ def main():
             print("    Re-run the Regenerate Garmin Tokens workflow to refresh.")
             sys.exit(1)
         print("  ✓ Tokens loaded from GitHub Secret")
+        _describe_token_store()
         token_source = "secret"
 
     # ── Login (loads tokens + fetches profile via SSO, not OAuth exchange)
     # garminconnect 0.3.x uses its own SSO client — no garth, no rate-limited
     # /oauth-service/oauth/exchange/user/2.0 endpoint.
     api = Garmin()
-    _LOGIN_WAITS = [30, 60, 120]
-    for attempt in range(len(_LOGIN_WAITS) + 1):
-        try:
-            api.login(tokenstore=TOKEN_DIR)
-            print(f"  ✓ Logged in as: {api.display_name}")
-            # ── Save refreshed token store back to DB so next run uses up-to-date tokens
-            try:
-                buf_out = io.BytesIO()
-                with tarfile.open(fileobj=buf_out, mode="w:gz") as tar:
-                    tar.add(TOKEN_DIR, arcname="garmin_token_store")
-                fresh_b64 = base64.b64encode(buf_out.getvalue()).decode()
-                r = requests.put(
-                    f"{APP_URL}/api/garmin-tokens",
-                    headers=HEADERS,
-                    json={"token_data": fresh_b64},
-                    timeout=10,
-                )
-                if r.ok:
-                    print("  ✓ Refreshed tokens saved to DB")
-                else:
-                    print(f"  ⚠  Could not save tokens to DB: {r.status_code}")
-            except Exception as exc:
-                print(f"  ⚠  Token save failed (non-fatal): {exc}")
-            break
-        except Exception as exc:
-            s = str(exc).lower()
-            is_429 = "429" in str(exc)
-            is_net  = not is_429 and any(k in s for k in ("timed out", "timeout", "connection"))
-            if (is_429 or is_net) and attempt < len(_LOGIN_WAITS):
-                wait = _LOGIN_WAITS[attempt]
-                kind = "rate limited" if is_429 else "network error"
-                print(f"  ⚠  {kind} on login (attempt {attempt+1}/{len(_LOGIN_WAITS)+1}), retrying in {wait}s…")
-                time.sleep(wait)
-            else:
-                # The DB copy is preferred on load, so a stale one there made
-                # the run fail even after GARMIN_TOKENS had been refreshed —
-                # and the message below told the user to update exactly the
-                # secret that was already being ignored. Try the other source
-                # before giving up.
-                if token_source == "db" and os.environ.get("GARMIN_TOKENS", ""):
-                    print(f"  ⚠  Login failed with the DB tokens ({exc})")
-                    print("    Retrying with GARMIN_TOKENS from the GitHub secret…")
-                    if _extract_tokens(os.environ["GARMIN_TOKENS"]):
-                        token_source = "secret"
-                        try:
-                            api.login(tokenstore=TOKEN_DIR)
-                            print(f"  ✓ Logged in as: {api.display_name} (secret tokens)")
-                            print("    The DB copy was stale; it will be overwritten below.")
-                            break
-                        except Exception as exc2:
-                            exc = exc2
-                    else:
-                        print("    GARMIN_TOKENS could not be extracted either.")
-
-                kind, detail = _login_failure(exc, api)
-                print(f"  ✗ Login failed: {_redact(str(exc))}")
-                print(f"    What Garmin actually said: {detail}")
-                if kind == "rejected":
-                    print("    Garmin rejected the tokens (401), so they have expired or were invalidated.")
-                    print("    Fix: GitHub Actions → 'Regenerate Garmin Tokens' → Run workflow,")
-                    print("    then submit the SMS code at <APP_URL>/garmin-setup while it runs.")
-                    print("    That workflow writes the new tokens to the DB, which this script")
-                    print("    prefers — updating the GARMIN_TOKENS secret alone is NOT enough.")
-                elif kind == "blocked":
-                    print("    Garmin refused the REQUEST (403), which is usually the network (GitHub's")
-                    print("    runners), not the tokens. Regenerating tokens will probably not help:")
-                    print("    re-run in a few hours, and if it persists, tell whoever maintains the app.")
-                elif kind == "rate_limited":
-                    print("    Garmin is rate limiting logins (429). Wait an hour or more and re-run.")
-                    print("    Regenerating tokens would add another login and make it worse.")
-                elif kind == "network":
-                    print("    This looks like a network problem reaching Garmin. Re-run in a few minutes.")
-                else:
-                    print("    The cause could not be told from the error. If a re-run fails the same way,")
-                    print("    regenerating the tokens is the last thing to try; send this log with it.")
-                sys.exit(1)
+    _login(api, token_source)
 
     # ── Body composition from Garmin smart scale
     # Extracts weight + fat% + muscle + bone + water + visceral fat + metabolic age per day.
@@ -829,6 +842,9 @@ def main():
                 print(f"  ✓ Saved FTP {garmin_ftp}W to settings")
         except Exception as exc:
             print(f"  ⚠  Could not save FTP to settings: {exc}")
+
+    # Tokens can be refreshed again during a long run; keep the newest copy.
+    _save_tokens_to_db()
 
     duration = int(time.time() - _start)
     # Stash the per-second sample-sync diagnostic in error_message even on a

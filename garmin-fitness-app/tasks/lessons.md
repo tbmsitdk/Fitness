@@ -459,3 +459,32 @@ The library is pinned (`garminconnect==0.3.20`), because an unpinned
 `>=` meant a surprise release could change the token format between a
 regeneration and the next sync.
 **Tests:** `scripts/test_garmin_sync_helpers.py`, run by `npm run verify`.
+
+## 30. A recovery path that does not persist its result is a one-shot
+
+The Garmin sync kept failing a day or two after every "fix". Three defects
+combined, and the first was my own:
+
+1. **A claim I made without reading the code.** The error message said the
+   Regenerate workflow "writes the new tokens to the DB, which this script
+   prefers". It never did: it only printed the tokens for pasting into the
+   GARMIN_TOKENS secret, while the sync loaded the DATABASE copy first. So a
+   regeneration never replaced the stale tokens the sync tried first.
+2. **A fallback that did not save.** When the database copy failed the sync
+   used the secret and logged in, printed "it will be overwritten below", and
+   `break`-ed out of the loop past the only save. Garmin rotates the refresh
+   token on each use, so the secret's token was spent and the stale database
+   copy stayed: the next run was rejected (401). Visible in the log as an
+   access token that "expired 377.0 h ago" in a copy that had supposedly been
+   refreshed three days earlier.
+3. **An error that hid its cause.** One generic message for four different
+   failures (lesson 29), so none of this was visible until the diagnostics
+   were added and the person ran the sync once more.
+
+**Rules.** Every successful login saves its tokens, from whichever source, in
+one routine (`_save_tokens_to_db`) and again at the end of the run. The
+regenerate workflow stores the new tokens in the database itself, reads them
+back to confirm, never prints them when that worked, and fails loudly if it
+could not. Before telling the person what a workflow does, read the workflow.
+**Tests:** `scripts/test_garmin_tokens.py`, including the regression
+(checked by removing the fix and watching it fail), run by `npm run verify`.

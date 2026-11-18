@@ -45,6 +45,32 @@ def headers(secret: str, bypass: str) -> dict:
     return h
 
 
+def store_tokens(app_url: str, secret: str, bypass: str, encoded: str) -> bool:
+    """Put the new tokens in the app's database, the copy the daily sync loads
+    first, and check they arrived. Never raises.
+
+    Until now this workflow only PRINTED the tokens for pasting into the
+    GARMIN_TOKENS secret, while the sync preferred the database copy. A
+    regeneration therefore never replaced the stale tokens the sync used.
+    """
+    url = f"{app_url.rstrip('/')}/api/garmin-tokens"
+    hdr = {**headers(secret, bypass), "Content-Type": "application/json"}
+    try:
+        r = requests.put(url, headers=hdr, json={"token_data": encoded}, timeout=15)
+        if not r.ok:
+            print(f"  ⚠  The app refused the tokens: HTTP {r.status_code}")
+            return False
+        back = requests.get(url, headers=headers(secret, bypass), timeout=15)
+        stored = (back.json() or {}).get("token_data") if back.ok else None
+        if stored != encoded:
+            print("  ⚠  The tokens were sent but could not be read back; treating them as NOT stored.")
+            return False
+        return True
+    except Exception as exc:
+        print(f"  ⚠  Could not store the tokens in the app: {type(exc).__name__}")
+        return False
+
+
 def poll_for_code(app_url: str, secret: str, bypass: str) -> str:
     """Poll /api/garmin-mfa-code until the user posts a code (or we time out)."""
     deadline = time.time() + POLL_TIMEOUT
@@ -145,27 +171,41 @@ def main() -> None:
 
     print(f"✓ Token blob ready ({len(encoded)} chars)")
 
-    # ── Job summary (rendered as markdown on the run page)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    stored = store_tokens(app_url, secret, bypass, encoded)
+
+    if stored:
+        # The tokens are credentials: they are NOT printed when the app already has them.
+        print("✓ New tokens are stored in the app's database. Nothing to paste anywhere.")
+        print("  The daily sync will use them on its next run; you can start it now.")
+        if summary_path:
+            with open(summary_path, "a") as f:
+                f.write("# 🔑 New Garmin tokens stored\n\n")
+                f.write("The new tokens are saved in the app's database, which is where the daily sync loads them from. ")
+                f.write("Nothing needs to be pasted into a secret. Run **Daily Garmin Sync** to try them.\n")
+        return
+
+    # Fallback: the app could not be reached, so hand the tokens over the old way.
+    print("✗ The tokens could NOT be stored in the app. Falling back to the manual step:")
     if summary_path:
         repo = os.environ.get("GITHUB_REPOSITORY", "")
         secret_url = f"https://github.com/{repo}/settings/secrets/actions/GARMIN_TOKENS"
         with open(summary_path, "a") as f:
-            f.write("# 🔑 New Garmin tokens generated\n\n")
+            f.write("# 🔑 New Garmin tokens generated, but NOT stored in the app\n\n")
             f.write("**Step 1.** Copy the entire string in the code block below.\n\n")
             f.write(f"**Step 2.** [Open the GARMIN_TOKENS secret]({secret_url})\n")
             f.write("→ click **Update** → paste → click **Update secret**.\n\n")
-            f.write("---\n\n")
-            f.write("```\n")
+            f.write("---\n\n```\n")
             f.write(encoded)
             f.write("\n```\n\n")
-            f.write("That's it — the daily sync will use the new tokens on its next run.\n")
-
+            f.write("The daily sync only falls back to this secret when the database copy fails, ")
+            f.write("so also re-run this workflow once the app is reachable.\n")
     print("=" * 70)
     print("NEW GARMIN_TOKENS VALUE — copy the line below into the secret:")
     print("=" * 70)
     print(encoded)
     print("=" * 70)
+    sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -7,10 +7,13 @@ name: Regenerate Garmin Tokens
 #   2. Within ~5 s, Garmin will text you the SMS code
 #   3. On your phone (or any browser): open  <APP_URL>/garmin-setup
 #      and paste the SMS code. Tap "Submit".
-#   4. The workflow picks up the code automatically and finishes in a few seconds
-#   5. Open the completed run → "Summary" tab — it has the new token blob and
-#      a one-click link to the GARMIN_TOKENS secret
-#   6. Paste the blob into the secret. Done.
+#   4. The workflow picks up the code and finishes in a few seconds. It stores the
+#      new tokens in the app's database, where the daily sync loads them from.
+#      Nothing needs pasting into a secret. Then run "Daily Garmin Sync".
+#
+#   Only if the app cannot be reached does the run fall back to the old manual
+#   step (new token blob in the run's Summary tab, to paste into GARMIN_TOKENS)
+#   and end in failure, so it cannot be mistaken for a finished job.
 
 on:
   workflow_dispatch:
