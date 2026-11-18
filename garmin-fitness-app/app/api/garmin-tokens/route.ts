@@ -19,9 +19,10 @@ export async function GET(req: NextRequest) {
   if (!bearerOk(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   await initializeDatabase();
   try {
-    const { rows } = await sql`SELECT token_data FROM garmin_tokens WHERE id = 'default'`;
+    const { rows } = await sql`SELECT token_data, updated_at, NOW() AS now FROM garmin_tokens WHERE id = 'default'`;
     if (rows.length === 0) return NextResponse.json({ token_data: null });
-    return NextResponse.json({ token_data: rows[0].token_data });
+    // updated_at/now let a caller tell a stale row from a fresh one without seeing the value.
+    return NextResponse.json({ token_data: rows[0].token_data, updated_at: rows[0].updated_at, now: rows[0].now });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
@@ -32,10 +33,11 @@ export async function PUT(req: NextRequest) {
   const { token_data } = await req.json();
   if (!token_data) return NextResponse.json({ error: 'missing token_data' }, { status: 400 });
   await initializeDatabase();
-  await sql`
+  const { rows } = await sql`
     INSERT INTO garmin_tokens (id, token_data, updated_at)
     VALUES ('default', ${token_data}, NOW())
     ON CONFLICT (id) DO UPDATE SET token_data = EXCLUDED.token_data, updated_at = NOW()
+    RETURNING length(token_data) AS stored_length, updated_at
   `;
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, stored_length: rows[0]?.stored_length ?? null, updated_at: rows[0]?.updated_at ?? null });
 }
