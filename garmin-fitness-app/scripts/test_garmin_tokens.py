@@ -183,7 +183,7 @@ class Extraction(Flow):
 
 class RegenerateStoresTheTokens(unittest.TestCase):
     def reply(self, ok=True, body=None, status=200):
-        return types.SimpleNamespace(ok=ok, status_code=status, json=lambda: body)
+        return types.SimpleNamespace(ok=ok, status_code=status, json=lambda: body, headers={}, text="{}")
 
     def test_stores_and_confirms_by_reading_back(self):
         with mock.patch.object(gr.requests, "put", return_value=self.reply()) as put, \
