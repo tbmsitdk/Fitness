@@ -488,3 +488,8 @@ back to confirm, never prints them when that worked, and fails loudly if it
 could not. Before telling the person what a workflow does, read the workflow.
 **Tests:** `scripts/test_garmin_tokens.py`, including the regression
 (checked by removing the fix and watching it fail), run by `npm run verify`.
+
+## 31. A duplicate script at the repo root silently wins in CI
+**What happened:** Fixed `garmin-fitness-app/scripts/garmin_regenerate_tokens.py`, but the workflow ran the stale copy at `scripts/` in the repo root. The run "succeeded", printed a live token blob in the log, and never stored it. Same trap as lesson 11.
+**Fix:** one copy only (root `scripts/` deleted), both workflows point at `garmin-fitness-app/scripts/`, and `__tests__/workflow-paths.test.ts` fails if a root `scripts/` returns, a referenced path is missing, or the regenerate script lacks `store_tokens`.
+**Lesson:** After editing any script, grep the workflows for the path they actually run. Never keep a second copy.
