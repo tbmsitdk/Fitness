@@ -90,7 +90,7 @@ export default function GarminSetupPage() {
             <h2 className="text-base font-medium">Code submitted</h2>
             <p className="text-sm text-muted-foreground">
               The GitHub Actions workflow should pick it up within a few seconds and
-              finish the login. Refresh the workflow run page to see the new token.
+              finish the login and store the new tokens in the app. Refresh the workflow run page; it should say the tokens are stored. Nothing needs pasting anywhere.
             </p>
             <button
               onClick={() => { setStatus('idle'); setCode(''); }}
