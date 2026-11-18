@@ -439,3 +439,23 @@ orders of arrival, locked values, rows stored before the columns existed, and
 a check that the SQL and the TypeScript `deriveSteps()` agree. A mistake in
 that statement would break the daily sync, and a type check cannot see inside
 a SQL string.
+
+## 29. Never print a cause you have not established
+
+The sync's failure message said "Both token sources were rejected by Garmin, so
+they have expired", and told the person to regenerate them with an SMS code.
+It could not know that: the library raises the same "Failed to retrieve social
+profile" for a rejected token (401), a refused request (403, usually the
+network), rate limiting (429) and a dropped connection, and keeps the real
+reason one level down where nothing looked. Tokens that stopped working three
+days after a regeneration were blamed on expiry without evidence.
+
+**Rule:** a diagnostic names what it saw, not what it guesses. The sync now
+logs the library's own warnings, walks the exception chain, classifies the
+failure (rejected / blocked / rate-limited / network / unknown), prints
+whether the loaded token is expired and whether a refresh token exists
+(never the tokens), and gives different advice for each. "Unknown" says so.
+The library is pinned (`garminconnect==0.3.20`), because an unpinned
+`>=` meant a surprise release could change the token format between a
+regeneration and the next sync.
+**Tests:** `scripts/test_garmin_sync_helpers.py`, run by `npm run verify`.

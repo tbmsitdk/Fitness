@@ -14,8 +14,8 @@ Optional:
   SYNC_DAYS      — days back to fetch (default 2)
 """
 
-import base64, io, os, sys, tarfile, time
-from datetime import datetime as _dt
+import base64, io, json, logging, os, re, sys, tarfile, time
+from datetime import datetime as _dt, timezone as _tz
 
 import requests
 from garminconnect import Garmin
@@ -24,6 +24,11 @@ APP_URL              = os.environ["APP_URL"].rstrip("/")
 SYNC_DAYS            = int(os.environ.get("SYNC_DAYS", "2"))
 SYNC_SECRET          = os.environ.get("SYNC_SECRET", "")
 VERCEL_BYPASS_SECRET = os.environ.get("VERCEL_BYPASS_SECRET", "")
+
+# The library writes the REAL reason a request failed (the HTTP status, a
+# 'blocked network' hint on a 403) to its logger, and nothing printed it: every
+# failure looked like "Failed to retrieve social profile". Show its warnings.
+logging.basicConfig(level=logging.WARNING, format="    [garminconnect] %(message)s")
 
 TOKEN_DIR = "/tmp/garmin_token_store"
 HEADERS   = {"Content-Type": "application/json"}
@@ -392,6 +397,73 @@ def _post_sync_log(status, sync_days, activities_synced, wellness_synced, durati
         print(f"  ⚠  Could not write sync log ({exc})")
 
 
+_JWT_RE = re.compile(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]*")
+
+
+def _redact(text: str) -> str:
+    """Never let a token reach the log, whatever an exception message contains."""
+    return _JWT_RE.sub("[token]", text)
+
+
+def _describe_token_store() -> None:
+    """Say how old the loaded tokens are, without printing any of them."""
+    path = os.path.join(TOKEN_DIR, "garmin_tokens.json")
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+    except Exception as exc:
+        print(f"    (could not read the token file: {type(exc).__name__})")
+        return
+    has_refresh = bool(data.get("di_refresh_token"))
+    access = data.get("di_token") or data.get("jwt_web") or ""
+    note = "no access token in the file"
+    try:
+        part = access.split(".")[1]
+        payload = json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
+        exp = _dt.fromtimestamp(float(payload["exp"]), tz=_tz.utc)
+        hours = (exp - _dt.now(_tz.utc)).total_seconds() / 3600
+        note = (f"access token expires in {hours:.1f} h" if hours >= 0
+                else f"access token expired {-hours:.1f} h ago (the refresh token renews it)")
+    except Exception:
+        pass
+    print(f"    {note}; refresh token {'present' if has_refresh else 'MISSING'}")
+
+
+def _login_failure(exc: Exception, api) -> tuple[str, str]:
+    """Work out WHY a login failed: (kind, one-line detail).
+
+    The library wraps every failure of its profile call as "Failed to retrieve
+    social profile", whether Garmin rejected the token (401), refused the
+    request itself (403, usually the network), rate-limited it (429) or the
+    connection dropped. Only the first of those is fixed by new tokens, so
+    telling them apart is the difference between a useful message and a wrong one.
+    """
+    chain, e = [], exc
+    while e is not None and all(e is not seen for seen in chain) and len(chain) < 6:
+        chain.append(e)
+        e = e.__cause__ or e.__context__
+    names = [type(x).__name__ for x in chain]
+    text = _redact(" ".join(str(x) for x in chain))
+    low = text.lower()
+    status = getattr(getattr(api, "client", None), "_last_rejection_status", None)
+    if status is None:
+        m = re.search(r"\b(401|403|429|5\d\d)\b", text)
+        status = int(m.group(1)) if m else None
+
+    if status == 429 or any("TooManyRequests" in n for n in names):
+        kind = "rate_limited"
+    elif status == 403:
+        kind = "blocked"
+    elif status == 401 or "invalid_grant" in low or "no di refresh token" in low:
+        kind = "rejected"
+    elif any(k in low for k in ("timed out", "timeout", "connection", "resolve")):
+        kind = "network"
+    else:
+        kind = "unknown"
+    detail = " <- ".join(f"{n}: {_redact(str(x))[:140]}" for n, x in zip(names, chain[:4]))
+    return kind, detail
+
+
 def main():
     from datetime import date, timedelta
 
@@ -424,6 +496,7 @@ def main():
             if db_token:
                 if _extract_tokens(db_token):
                     print("  ✓ Tokens loaded from DB (most recent)")
+                    _describe_token_store()
                     token_loaded = True
                     token_source = "db"
                 else:
@@ -502,12 +575,27 @@ def main():
                     else:
                         print("    GARMIN_TOKENS could not be extracted either.")
 
-                print(f"  ✗ Login failed: {exc}")
-                print("    Both token sources were rejected by Garmin, so they have expired.")
-                print("    Fix: GitHub Actions → 'Regenerate Garmin Tokens' → Run workflow,")
-                print("    then submit the SMS code at <APP_URL>/garmin-setup while it runs.")
-                print("    That workflow writes the new tokens to the DB, which this script")
-                print("    prefers — updating the GARMIN_TOKENS secret alone is NOT enough.")
+                kind, detail = _login_failure(exc, api)
+                print(f"  ✗ Login failed: {_redact(str(exc))}")
+                print(f"    What Garmin actually said: {detail}")
+                if kind == "rejected":
+                    print("    Garmin rejected the tokens (401), so they have expired or were invalidated.")
+                    print("    Fix: GitHub Actions → 'Regenerate Garmin Tokens' → Run workflow,")
+                    print("    then submit the SMS code at <APP_URL>/garmin-setup while it runs.")
+                    print("    That workflow writes the new tokens to the DB, which this script")
+                    print("    prefers — updating the GARMIN_TOKENS secret alone is NOT enough.")
+                elif kind == "blocked":
+                    print("    Garmin refused the REQUEST (403), which is usually the network (GitHub's")
+                    print("    runners), not the tokens. Regenerating tokens will probably not help:")
+                    print("    re-run in a few hours, and if it persists, tell whoever maintains the app.")
+                elif kind == "rate_limited":
+                    print("    Garmin is rate limiting logins (429). Wait an hour or more and re-run.")
+                    print("    Regenerating tokens would add another login and make it worse.")
+                elif kind == "network":
+                    print("    This looks like a network problem reaching Garmin. Re-run in a few minutes.")
+                else:
+                    print("    The cause could not be told from the error. If a re-run fails the same way,")
+                    print("    regenerating the tokens is the last thing to try; send this log with it.")
                 sys.exit(1)
 
     # ── Body composition from Garmin smart scale

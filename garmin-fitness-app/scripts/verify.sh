@@ -15,6 +15,16 @@ npx tsc --noEmit || fail=1
 step "Tests"
 npx vitest run --reporter=dot || fail=1
 
+step "Garmin sync helpers (Python)"
+# The sync's login diagnostics decide what the person is told to do; a wrong
+# classification sends them to regenerate tokens that were never the problem.
+if command -v python3 >/dev/null 2>&1; then
+  python3 scripts/test_garmin_sync_helpers.py 2>&1 | grep -v "Warning\|warnings.warn" | tail -4
+  [ "${PIPESTATUS[0]}" -eq 0 ] || fail=1
+else
+  echo "python3 not found: skipped"
+fi
+
 step "Production build"
 npx next build >/tmp/verify-build.log 2>&1 \
   && echo "build ok" \
