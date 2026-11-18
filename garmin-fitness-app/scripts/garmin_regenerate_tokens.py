@@ -66,8 +66,12 @@ def store_tokens(app_url: str, secret: str, bypass: str, encoded: str) -> bool:
         if not r.ok:
             print(f"  ⚠  The app refused the tokens: HTTP {r.status_code}")
             return False
+        seen_headers = {}
+
         def read_back():
             back = requests.get(url, headers=headers(secret, bypass), timeout=15)
+            h = back.headers
+            seen_headers.update({k: h.get(k) for k in ("x-vercel-cache", "age", "cache-control", "x-matched-path") if h.get(k)})
             return (back.json() or {}).get("token_data") if back.ok else None
 
         stored = read_back()
@@ -89,6 +93,8 @@ def store_tokens(app_url: str, secret: str, bypass: str, encoded: str) -> bool:
                     same += 1
                 seen = (f"{len(stored)} characters against {len(encoded)} sent, "
                         f"identical for the first {same}; sent value {'is' if encoded in stored else 'is not'} contained in it")
+            body = (r.text or "")[:80].replace(chr(10), " ")
+            print(f"  ⚠  PUT answered {body!r}; the read-back came with headers {seen_headers}")
             print(f"  ⚠  PUT returned HTTP {r.status_code}, but reading back gave {seen}; treating them as NOT stored.")
             return False
         return True
