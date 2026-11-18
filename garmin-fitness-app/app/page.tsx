@@ -1,23 +1,20 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import Upload from '@/components/Upload';
 import Dashboard from '@/components/Dashboard';
 import AICoach from '@/components/AICoach';
 import SettingsPanel from '@/components/Settings';
 import InsightCards from '@/components/InsightCards';
-import MorningBrief from '@/components/MorningBrief';
 import QuickLog from '@/components/QuickLog';
-import SyncStatus from '@/components/SyncStatus';
 import DataManager from '@/components/DataManager';
 import { Activity, WellnessRecord, FtpEntry } from '@/types';
-import { Activity as ActivityIcon, BarChart3, Sparkles, Upload as UploadIcon, Settings as SettingsIcon, Database } from 'lucide-react';
+import { Activity as ActivityIcon, BarChart3, Sparkles, Settings as SettingsIcon, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { subDays, startOfYear, parseISO } from 'date-fns';
 import { UserSettings, loadSettings, DEFAULT_SETTINGS } from '@/lib/settings';
 import { DataRefreshProvider } from '@/lib/data-refresh';
 
-type Tab = 'upload' | 'dashboard' | 'ai-coach' | 'data' | 'settings';
+type Tab = 'dashboard' | 'ai-coach' | 'data' | 'settings';
 
 const PERIODS = [
   { label: '1W',   days: 7 },
@@ -42,7 +39,7 @@ function cutoffForPeriod(label: PeriodLabel): Date {
 }
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<Tab>('upload');
+  const [activeTab, setActiveTab] = useState<Tab>('data');
   const [allActivities, setAllActivities] = useState<Activity[]>([]);
   const [allWellness, setAllWellness] = useState<WellnessRecord[]>([]);
   const [hasData, setHasData] = useState(false);
@@ -139,10 +136,9 @@ export default function Home() {
   }, [allActivities]);
 
   const tabs = [
-    { id: 'upload' as Tab, label: 'Upload', icon: UploadIcon },
     { id: 'dashboard' as Tab, label: 'Dashboard', icon: BarChart3, disabled: !hasData },
     { id: 'ai-coach' as Tab, label: 'AI Coach', icon: Sparkles, disabled: !hasData },
-    { id: 'data' as Tab, label: 'Data', icon: Database, disabled: !hasData },
+    { id: 'data' as Tab, label: 'Data', icon: Database },
     { id: 'settings' as Tab, label: 'Settings', icon: SettingsIcon },
   ];
 
@@ -218,24 +214,16 @@ export default function Home() {
           <div className="flex items-center justify-center h-64">
             <div className="w-5 h-5 border border-border border-t-foreground rounded-full animate-spin" />
           </div>
-        ) : activeTab === 'upload' ? (
-          <div className="space-y-6">
-            <SyncStatus />
-            <Upload onUploadComplete={onUploadComplete} />
-          </div>
         ) : activeTab === 'dashboard' ? (
           <div className="space-y-4">
-            <div className="grid gap-4 lg:grid-cols-2">
-              <MorningBrief />
-              <QuickLog />
-            </div>
+            <QuickLog />
             <InsightCards />
             <Dashboard activities={activities} allActivities={allActivities} wellness={wellness} allWellness={allWellness} cutoff={cutoff} settings={settings} ftpEntries={ftpEntries} />
           </div>
         ) : activeTab === 'ai-coach' ? (
           <AICoach activities={allActivities} wellness={allWellness} settings={settings} />
         ) : activeTab === 'data' ? (
-          <DataManager />
+          <DataManager onUploadComplete={onUploadComplete} />
         ) : (
           <SettingsPanel
             settings={settings}

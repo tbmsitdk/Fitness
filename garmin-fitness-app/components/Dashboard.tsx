@@ -30,6 +30,10 @@ import CardiovascularAge from './charts/CardiovascularAge';
 import ExerciseProgress from './charts/ExerciseProgress';
 import AirofitProgress from './charts/AirofitProgress';
 import NutritionSection from './charts/NutritionSection';
+import NutritionLog from './NutritionLog';
+import TravelLog from './TravelLog';
+import ExerciseLogForm from './ExerciseLog';
+import MorningBrief from './MorningBrief';
 import TravelSection from './charts/TravelSection';
 import SleepDebtChart from './charts/SleepDebtChart';
 import BodyBatteryChart from './charts/BodyBatteryChart';
@@ -98,7 +102,7 @@ function periodLabel(cutoff: Date): string {
   return 'All';
 }
 
-/** Groups the Health tab, which is long enough that unlabelled cards read as a pile. */
+/** Groups the cards on a tab so a long page reads as sections, not a pile. */
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <h3 className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground pt-2">
@@ -108,7 +112,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 export default function Dashboard({ activities, allActivities, wellness, allWellness, cutoff, settings = DEFAULT_SETTINGS, ftpEntries = [] }: Props) {
-  const [subTab, setSubTab] = useState<'home' | 'running' | 'cycling' | 'walking' | 'health' | 'training'>('home');
+  const [subTab, setSubTab] = useState<'home' | 'running' | 'cycling' | 'walking' | 'recovery' | 'body' | 'lifestyle' | 'training'>('home');
   const [volMetric, setVolMetric] = useState<'km' | 'hours'>('km');
   const [wellMetric, setWellMetric] = useState<WellnessMetric>('rhr');
   const [cadenceSport, setCadenceSport] = useState<'running' | 'cycling'>('running');
@@ -240,7 +244,9 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
     { id: 'running',  label: 'Running'  },
     { id: 'cycling',  label: 'Cycling'  },
     { id: 'walking',  label: 'Walking'  },
-    { id: 'health',   label: 'Health'   },
+    { id: 'recovery', label: 'Recovery' },
+    { id: 'body',     label: 'Body'     },
+    { id: 'lifestyle', label: 'Lifestyle' },
   ] as const;
 
   return (
@@ -300,9 +306,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       {/* ── HOME ─────────────────────────────────────────────────────────── */}
       {subTab === 'home' && (
         <div className="space-y-4">
-          {/* Today's status */}
+          {/* Today: the three "how am I today?" answers together */}
+          <SectionHeading>Today</SectionHeading>
+          <MorningBrief />
           <ReadinessScore wellness={sortedAllWellness} />
-          <WeeklyReport />
           <DailySuggestion trainingLoad={trainingLoad} wellness={sortedAllWellness} activities={allActivities} allActivities={allActivities} settings={settings} ftp={latestFtp} exerciseDays={exerciseDays} />
 
           {/* Volume overview */}
@@ -325,6 +332,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             <CardHeader className="pb-2"><CardTitle>Personal Bests (all-time)</CardTitle></CardHeader>
             <CardContent><PersonalBests data={personalBests} /></CardContent>
           </Card>
+
+          {/* Read once a week, so it sits below the daily material */}
+          <SectionHeading>This week</SectionHeading>
+          <WeeklyReport />
         </div>
       )}
 
@@ -342,6 +353,10 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           {/* Manually-logged mobility / strength / respiratory routine */}
           <ExpandableCard title="Strength & Mobility Routine">
             {(expanded) => <ExerciseProgress cutoff={cutoff} height={expanded ? 520 : undefined} />}
+          </ExpandableCard>
+          {/* Logging sits beside the results it feeds */}
+          <ExpandableCard title="Log exercises">
+            {() => <ExerciseLogForm />}
           </ExpandableCard>
 
           {/* Load management */}
@@ -365,9 +380,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               {(expanded) => <TrainingMonotony activities={allActivities} thresholdHR={thresholdHR} cutoff={cutoff} height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
-          <ExpandableCard title="Injury Risk">
-            {() => <InjuryRiskScore activities={allActivities} trainingLoad={trainingLoad} wellness={sortedWellness} thresholdHR={thresholdHR} />}
-          </ExpandableCard>
           <ExpandableCard title="Training Heatmap">
             {() => <TrainingHeatmap activities={allActivities} extraTssByDate={exerciseTssByDate} thresholdHR={thresholdHR} />}
           </ExpandableCard>
@@ -440,12 +452,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
       {/* ── CYCLING ──────────────────────────────────────────────────────── */}
       {subTab === 'cycling' && (
         <div className="space-y-4">
-          {/* Manual FTP history */}
+          <SectionHeading>Power</SectionHeading>
+          <p className="text-[10px] text-muted-foreground -mt-2">FTP is entered under Settings; the history below reads from it.</p>
           <ExpandableCard title="Zwift FTP History">
             {(expanded) => <FtpHistoryChart entries={ftpEntries} height={expanded ? 480 : 220} />}
           </ExpandableCard>
-
-          {/* Power & performance */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="FTP Progression (p20 estimate from activities)">
               {(expanded) => <FTPProgressionChart activities={powerAllActivities} weightKg={weightKg} garminFtp={manualFtp ?? settings.garminFtp} height={expanded ? 480 : undefined} />}
@@ -459,6 +470,11 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
                 this is a power statistic, per the original min-cycling-power spec. */}
             {(expanded) => <PowerChart activities={powerActivities} weightKg={weightKg} ftp={latestFtp} height={expanded ? 480 : undefined} />}
           </ExpandableCard>
+          <ExpandableCard title="Power Curve">
+            {(expanded) => <PowerCurveChart activities={powerAllActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
+          </ExpandableCard>
+
+          <SectionHeading>Zones</SectionHeading>
           {latestFtp && (
             <ExpandableCard title="Zone Distribution">
               {(expanded) => <PowerZonesChart ftp={latestFtp} cutoff={cutoff} minCyclingPower={settings.minCyclingPower} height={expanded ? 400 : undefined} />}
@@ -467,28 +483,26 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           <ExpandableCard title="HR Zone Distribution (Cycling)">
             {(expanded) => <HRZoneDistribution cutoff={cutoff} fallbackMaxHR={maxHR} sport="cycling" height={expanded ? 400 : undefined} />}
           </ExpandableCard>
+
+          <SectionHeading>Efficiency</SectionHeading>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ExpandableCard title="Aerobic Efficiency">
               {(expanded) => <EfficiencyFactorChart data={efData} sport="cycling" height={expanded ? 480 : undefined} />}
             </ExpandableCard>
-            <ExpandableCard title="Power Curve">
-              {(expanded) => <PowerCurveChart activities={powerAllActivities} weightKg={weightKg} height={expanded ? 480 : undefined} />}
+            <ExpandableCard title="Cadence">
+              {(expanded) => <CadenceChart activities={activities} sport="cycling" height={expanded ? 480 : undefined} />}
             </ExpandableCard>
           </div>
-          <ExpandableCard title="Cadence">
-            {(expanded) => <CadenceChart activities={activities} sport="cycling" height={expanded ? 480 : undefined} />}
-          </ExpandableCard>
           {/* Sleep is a health measure, not a cycling one: no sleep chart on this tab. */}
-          {/* Planning tools */}
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground pt-2">Planning</p>
+
+          <SectionHeading>Planning</SectionHeading>
           <ExpandableCard title="Training Plan Generator">
             {() => <TrainingPlanGenerator activities={allActivities} ftp={latestFtp} />}
           </ExpandableCard>
         </div>
       )}
 
-      {/* ── HEALTH ───────────────────────────────────────────────────────── */}
-      {subTab === 'walking' && (
+            {subTab === 'walking' && (
         <div className="space-y-4">
           {/* Where you stand and what to do today comes first. Uses the FULL history:
               today's plan needs eight weeks whatever the period is set to. */}
@@ -525,22 +539,12 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
         </div>
       )}
 
-      {subTab === 'health' && (
+      {/* ── RECOVERY: am I ready to train today? ─────────────────────────── */}
+      {subTab === 'recovery' && (
         <div className="space-y-4">
-          <SectionHeading>Recovery &amp; Readiness</SectionHeading>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ExpandableCard title="HRV Readiness">
-              {() => <HRVReadinessCard wellness={sortedAllWellness} />}
-            </ExpandableCard>
-            <ExpandableCard title="Longevity Score">
-              {() => <LongevityScore wellness={sortedWellness} activities={allActivities} settings={settings} />}
-            </ExpandableCard>
-          </div>
-          {/* Composite age scores sit with the other whole-body summaries rather
-              than beside the walking charts they used to be paired with. */}
-          <ExpandableCard title="Cardiovascular Age">
-            {/* Computes its own latest-reading + rolling windows — needs unfiltered history */}
-            {() => <CardiovascularAge settings={settings} wellness={sortedAllWellness} activities={allActivities} cutoff={cutoff} />}
+          <SectionHeading>Readiness</SectionHeading>
+          <ExpandableCard title="HRV Readiness">
+            {() => <HRVReadinessCard wellness={sortedAllWellness} />}
           </ExpandableCard>
           <ExpandableCard title="Heart Rate">
             {(expanded) => <HeartRateChart wellness={sortedWellness} activities={activities} height={expanded ? 500 : undefined} />}
@@ -548,8 +552,6 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
           <ExpandableCard title="HRV & Training Load">
             {(expanded) => <HRVTrainingLoadChart trainingLoad={trainingLoad} wellness={sortedWellness} height={expanded ? 500 : undefined} />}
           </ExpandableCard>
-
-          {/* Daily metrics */}
           <ExpandableCard
             title="Daily Metrics"
             headerRight={
@@ -580,35 +582,35 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
             </ExpandableCard>
           </div>
 
-          <SectionHeading>Body</SectionHeading>
+          <SectionHeading>Risk</SectionHeading>
+          {/* Driven by load and recovery together, so it sits with recovery, not with planning */}
+          <ExpandableCard title="Injury Risk">
+            {() => <InjuryRiskScore activities={allActivities} trainingLoad={trainingLoad} wellness={sortedWellness} thresholdHR={thresholdHR} />}
+          </ExpandableCard>
+        </div>
+      )}
+
+      {/* ── BODY: how is my body changing? ───────────────────────────────── */}
+      {subTab === 'body' && (
+        <div className="space-y-4">
+          <SectionHeading>Composition</SectionHeading>
           <ExpandableCard title="Body Composition">
             {(expanded) => <BodyCompositionChart wellness={sortedWellness} activities={allActivities} settings={settings} height={expanded ? 500 : undefined} />}
           </ExpandableCard>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ExpandableCard title="Weight">
-              {(expanded) => <WeightChart wellness={sortedWellness} heightCm={settings.heightCm} height={expanded ? 480 : undefined} />}
-            </ExpandableCard>
-            <ExpandableCard title="Weekly Calories">
-              {(expanded) => <CaloriesChart activities={activities} height={expanded ? 480 : undefined} />}
-            </ExpandableCard>
-          </div>
-
-          <SectionHeading>Respiratory</SectionHeading>
-          {/* Device CAPACITY readings — lung capacity and inspiratory/expiratory
-              strength are physiological markers benchmarked against clinical
-              reference equations, so they belong here. The time spent training
-              with the device stays in the routine card under Training. */}
-          <ExpandableCard title="Airofit · Respiratory Capacity">
-            {(expanded) => <AirofitProgress cutoff={cutoff} height={expanded ? 460 : undefined} />}
+          <ExpandableCard title="Weight">
+            {(expanded) => <WeightChart wellness={sortedWellness} heightCm={settings.heightCm} height={expanded ? 480 : undefined} />}
           </ExpandableCard>
 
-          <SectionHeading>Lifestyle &amp; Environment</SectionHeading>
-          {/* Both of these measure effects on sleep, HRV and resting HR, so they
-              answer health questions even though the inputs are behavioural. */}
-          <NutritionSection allWellness={allWellness} allActivities={allActivities}
-            cutoff={cutoff} />
-          <TravelSection allWellness={allWellness} allActivities={allActivities}
-            cutoff={cutoff} />
+          <SectionHeading>Whole-body scores</SectionHeading>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ExpandableCard title="Longevity Score">
+              {() => <LongevityScore wellness={sortedWellness} activities={allActivities} settings={settings} />}
+            </ExpandableCard>
+            <ExpandableCard title="Cardiovascular Age">
+              {/* Computes its own latest-reading + rolling windows — needs unfiltered history */}
+              {() => <CardiovascularAge settings={settings} wellness={sortedAllWellness} activities={allActivities} cutoff={cutoff} />}
+            </ExpandableCard>
+          </div>
 
           <SectionHeading>Mobility &amp; Vitals</SectionHeading>
           <ExpandableCard title="Apple Health Vitals">
@@ -618,6 +620,38 @@ export default function Dashboard({ activities, allActivities, wellness, allWell
               </ChartErrorBoundary>
             )}
           </ExpandableCard>
+
+          <SectionHeading>Respiratory</SectionHeading>
+          {/* Device CAPACITY readings — lung capacity and inspiratory/expiratory
+              strength are physiological markers benchmarked against clinical
+              reference equations, so they belong here. The time spent training
+              with the device stays in the routine card under Training. */}
+          <ExpandableCard title="Airofit · Respiratory Capacity">
+            {(expanded) => <AirofitProgress cutoff={cutoff} height={expanded ? 460 : undefined} />}
+          </ExpandableCard>
+        </div>
+      )}
+
+      {/* ── LIFESTYLE: what goes in, and what else affects me ────────────── */}
+      {subTab === 'lifestyle' && (
+        <div className="space-y-4">
+          <SectionHeading>Food &amp; Drink</SectionHeading>
+          {/* Log and results together: this is where meals are entered and read back */}
+          <ExpandableCard title="Log food & drink">
+            {() => <NutritionLog />}
+          </ExpandableCard>
+          <NutritionSection allWellness={allWellness} allActivities={allActivities}
+            cutoff={cutoff} />
+          <ExpandableCard title="Weekly Calories">
+            {(expanded) => <CaloriesChart activities={activities} height={expanded ? 480 : undefined} />}
+          </ExpandableCard>
+
+          <SectionHeading>Travel</SectionHeading>
+          <ExpandableCard title="Log travel">
+            {() => <TravelLog />}
+          </ExpandableCard>
+          <TravelSection allWellness={allWellness} allActivities={allActivities}
+            cutoff={cutoff} />
 
           <SectionHeading>Explore</SectionHeading>
           {/* Correlation explorer — finds statistical relationships across your own metrics */}

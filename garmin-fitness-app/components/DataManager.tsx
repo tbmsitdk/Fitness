@@ -7,9 +7,8 @@ import { cn } from '@/lib/utils';
 import { Trash2, Lock, LockOpen, Pencil, Check, X, AlertTriangle, Loader2, ShieldCheck, Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import type { OutlierProposal } from '@/app/api/data/outliers/route';
-import ExerciseLog from '@/components/ExerciseLog';
-import NutritionLog from '@/components/NutritionLog';
-import TravelLog from '@/components/TravelLog';
+import Upload from '@/components/Upload';
+import SyncStatus from '@/components/SyncStatus';
 import { useDataRefresh, useRefreshAfter } from '@/lib/data-refresh';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -736,18 +735,16 @@ function AnomalyDetector({ onApplied }: { onApplied: () => void }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-type SubTab = 'wellness' | 'activities' | 'exercises' | 'nutrition' | 'travel' | 'anomalies';
+type SubTab = 'import' | 'wellness' | 'activities' | 'anomalies';
 
-export default function DataManager() {
-  const [subTab, setSubTab] = useState<SubTab>('wellness');
+export default function DataManager({ onUploadComplete }: { onUploadComplete: () => void }) {
+  const [subTab, setSubTab] = useState<SubTab>('import');
   const [refreshKey, setRefreshKey] = useState(0);
 
   const tabs: { id: SubTab; label: string }[] = [
+    { id: 'import', label: 'Import & Sync' },
     { id: 'wellness', label: 'Wellness' },
     { id: 'activities', label: 'Activities' },
-    { id: 'exercises', label: 'Exercise Log' },
-    { id: 'nutrition', label: 'Food & Drink' },
-    { id: 'travel', label: 'Travel' },
     { id: 'anomalies', label: 'Anomaly Detector' },
   ];
 
@@ -756,7 +753,7 @@ export default function DataManager() {
       <div>
         <h2 className="text-base font-semibold">Data Management</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          View, edit, and delete individual data points. Locked fields (<Lock className="inline w-2.5 h-2.5 text-amber-400" />) survive re-uploads.
+          Import and sync data; view, edit, and delete individual data points. Food, exercise and travel are logged under Lifestyle and Training. Locked fields (<Lock className="inline w-2.5 h-2.5 text-amber-400" />) survive re-uploads.
         </p>
       </div>
 
@@ -782,9 +779,12 @@ export default function DataManager() {
         <CardContent className="pt-4">
           {subTab === 'wellness' && <WellnessTable key={refreshKey} />}
           {subTab === 'activities' && <ActivitiesTable key={refreshKey} />}
-          {subTab === 'exercises' && <ExerciseLog key={refreshKey} />}
-          {subTab === 'nutrition' && <NutritionLog key={refreshKey} />}
-          {subTab === 'travel' && <TravelLog key={refreshKey} />}
+          {subTab === 'import' && (
+            <div className="space-y-6">
+              <SyncStatus />
+              <Upload onUploadComplete={onUploadComplete} />
+            </div>
+          )}
           {subTab === 'anomalies' && <AnomalyDetector onApplied={() => setRefreshKey(k => k + 1)} />}
         </CardContent>
       </Card>
