@@ -56,14 +56,24 @@ def store_tokens(app_url: str, secret: str, bypass: str, encoded: str) -> bool:
     url = f"{app_url.rstrip('/')}/api/garmin-tokens"
     hdr = {**headers(secret, bypass), "Content-Type": "application/json"}
     try:
-        r = requests.put(url, headers=hdr, json={"token_data": encoded}, timeout=15)
+        r = requests.put(url, headers=hdr, json={"token_data": encoded}, timeout=15, allow_redirects=False)
+        if 300 <= r.status_code < 400:
+            print(f"  ⚠  The app redirected the upload (HTTP {r.status_code}). APP_URL should be the final, stable address.")
+            return False
         if not r.ok:
             print(f"  ⚠  The app refused the tokens: HTTP {r.status_code}")
             return False
         back = requests.get(url, headers=headers(secret, bypass), timeout=15)
         stored = (back.json() or {}).get("token_data") if back.ok else None
         if stored != encoded:
-            print("  ⚠  The tokens were sent but could not be read back; treating them as NOT stored.")
+            # Say what came back, never the value itself.
+            if stored is None:
+                seen = "nothing (the app has no stored tokens)"
+            elif not isinstance(stored, str):
+                seen = f"a {type(stored).__name__}, not text"
+            else:
+                seen = f"{len(stored)} characters against {len(encoded)} sent"
+            print(f"  ⚠  PUT returned HTTP {r.status_code}, but reading back gave {seen}; treating them as NOT stored.")
             return False
         return True
     except Exception as exc:
