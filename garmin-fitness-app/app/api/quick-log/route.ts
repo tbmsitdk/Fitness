@@ -7,6 +7,7 @@ import {
 } from '@/lib/quick-log';
 import { homeDayAndTime } from '@/lib/raw-data';
 import { daysAgo } from '@/lib/coach-data';
+import { describeAiError } from '@/lib/ai-errors';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ proposal: resolveQuickLog(reply.text, today, images.length > 0 ? 'photo' : 'text', diary) });
   } catch (e) {
     console.error('[quick-log] POST', e);
-    return NextResponse.json({ error: 'Could not read that note. Try again, or use the forms.' }, { status: 500 });
+    const f = describeAiError(e, 'Could not read that note. Try again, or use the forms.');
+    return NextResponse.json({ error: f.message }, { status: f.status });
   }
 }
