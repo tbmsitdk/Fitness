@@ -29,7 +29,10 @@ interface Job {
   aggregates: unknown;
   memory: string | null;
   previousReview: string | null;
+  /** Set when this run builds on an earlier analysis and sees only what changed. */
+  update?: { previousDate: string; previousRunId: number; previous: string; changes: string; changeFiles: string[] } | null;
   claims?: string | null;
+  skipped?: boolean;
   today: string;
 }
 
@@ -79,7 +82,13 @@ async function nextJob(): Promise<Job | null> {
   if (!type.includes('application/json')) {
     throw new Error('The app returned a page, not JSON — probably the Vercel login wall. Check VERCEL_BYPASS_SECRET and APP_URL.');
   }
-  return await res.json() as Job;
+  const job = await res.json() as Job;
+  if (job.skipped) {
+    // The app found too little had changed and carried the last analysis forward itself.
+    console.log('  ✓ Nothing material changed since the last analysis; it was carried forward without a new run.');
+    return nextJob();
+  }
+  return job;
 }
 
 async function report(body: Record<string, unknown>): Promise<void> {
@@ -109,6 +118,7 @@ async function analyse(job: Job): Promise<{ result: AnalysisResult; reasoning: s
       aggregates: JSON.stringify(job.aggregates, null, 2),
       memory: job.memory ?? undefined,
       previousReview: job.previousReview ?? undefined,
+      update: job.update ?? undefined,
       claims: job.claims ?? undefined,
       today: job.today,
     });

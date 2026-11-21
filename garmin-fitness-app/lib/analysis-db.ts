@@ -1,6 +1,7 @@
 // Postgres storage for deep-analysis and monthly-review runs.
 
 import { sql } from '@vercel/postgres';
+import type { Fingerprints } from '@/lib/analysis-delta';
 import {
   STALE_RUN_MINUTES, type AnalysisKind, type AnalysisResult, type AnalysisRun, type AnalysisStatus,
 } from '@/lib/analysis';
@@ -22,7 +23,9 @@ function ensureTable(): Promise<void> {
       error TEXT,
       model TEXT
     )
-  `.then(() => undefined, (e) => { ready = null; throw e; });
+  `.then(() => sql`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS data_state JSONB`)
+   .then(() => sql`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS built_on INTEGER`)
+   .then(() => undefined, (e) => { ready = null; throw e; });
   return ready;
 }
 
@@ -40,6 +43,7 @@ function toRun(r: any, withCharts: boolean): AnalysisRun {
   }
   return {
     id: Number(r.id),
+    built_on: r.built_on == null ? null : Number(r.built_on),
     kind: (['monthly', 'audit'].includes(r.kind) ? r.kind : 'deep') as AnalysisKind,
     question: r.question ?? null,
     status: r.status as AnalysisStatus,
@@ -155,4 +159,24 @@ export async function monthlyAlreadyRequested(): Promise<boolean> {
     LIMIT 1
   `;
   return rows.length > 0;
+}
+
+/** Records which rows a run saw, and which earlier run it was built on. */
+export async function saveDataState(id: number, state: Fingerprints, builtOn: number | null): Promise<void> {
+  await ensureTable();
+  await sql`UPDATE analysis_runs SET data_state = ${JSON.stringify(state)}::jsonb, built_on = ${builtOn} WHERE id = ${id}`;
+}
+
+/**
+ * The latest finished general deep analysis (no custom question) that recorded what data it saw.
+ * Question runs are not baselines: they answered one thing, not the broad picture.
+ */
+export async function lastBaselineRun(exceptId: number): Promise<{ run: AnalysisRun; state: Fingerprints } | null> {
+  await ensureTable();
+  const { rows } = await sql`
+    SELECT * FROM analysis_runs
+    WHERE kind = 'deep' AND status = 'done' AND question IS NULL AND data_state IS NOT NULL AND id <> ${exceptId}
+    ORDER BY finished_at DESC LIMIT 1
+  `;
+  return rows[0] ? { run: toRun(rows[0], false), state: rows[0].data_state as Fingerprints } : null;
 }

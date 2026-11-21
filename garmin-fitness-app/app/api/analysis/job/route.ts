@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildFullContext } from '@/lib/ai';
+import { computeDelta, describeDelta, fingerprintTables, MIN_CHANGED_ROWS } from '@/lib/analysis-delta';
 import { loadActivityDetail } from '@/lib/activity-detail-db';
 import { loadCoachData, lastDays } from '@/lib/coach-data';
 import { buildRawTables } from '@/lib/raw-data';
-import { sanitiseIncomingResult, summariseForNextReview } from '@/lib/analysis';
+import { reuseUnchanged, sanitiseIncomingResult, summariseForNextReview, summariseForUpdate } from '@/lib/analysis';
 import {
-  claimNextRun, completeRun, failRun, getRun, lastMonthlyReview, monthlyAlreadyRequested, queueRun,
+  claimNextRun, completeRun, failRun, getRun, lastMonthlyReview, monthlyAlreadyRequested, queueRun, saveDataState, lastBaselineRun,
 } from '@/lib/analysis-db';
 import { loadMemorySection, recordAdvice } from '@/lib/coach-memory-db';
 
@@ -61,7 +62,7 @@ export async function GET(req: NextRequest) {
     if (req.nextUrl.searchParams.get('schedule') === 'monthly' && !(await monthlyAlreadyRequested())) {
       await queueRun('monthly', null);
     }
-    const run = await claimNextRun();
+    let run = await claimNextRun();
     if (!run) return new NextResponse(null, { status: 204 });
 
     try {
@@ -70,9 +71,39 @@ export async function GET(req: NextRequest) {
         loadMemorySection(),
         run.kind === 'monthly' ? lastMonthlyReview(run.id) : Promise.resolve(null),
       ]);
+
+      // A general deep analysis builds on the last one: it is shown only the rows
+      // that are new or changed, plus what the last run found.
+      let update: Record<string, unknown> | null = null;
+      let changeTables: Record<string, string> = {};
+      if (run.kind === 'deep') {
+        const state = fingerprintTables(bundle.tables);
+        const baseline = run.question ? null : await lastBaselineRun(run.id);
+        const baselineResult = baseline?.run.result;
+        await saveDataState(run.id, state, baseline && baselineResult ? baseline.run.id : null);
+
+        if (baseline && baselineResult) {
+          const delta = computeDelta(bundle.tables, baseline.state);
+          const previousDate = (baseline.run.finished_at ?? baseline.run.requested_at).slice(0, 10);
+          if (delta.total < MIN_CHANGED_ROWS) {
+            // Too little has changed for a new run to say anything new: carry the last one forward.
+            await completeRun(run.id, reuseUnchanged(baselineResult, previousDate, delta.total), null, baseline.run.model);
+            return NextResponse.json({ skipped: true, reason: 'unchanged', id: run.id });
+          }
+          changeTables = Object.fromEntries(Object.entries(delta.tables).map(([n, csv]) => [`changes_${n}`, csv]));
+          update = {
+            previousDate, previousRunId: baseline.run.id,
+            previous: summariseForUpdate(baselineResult),
+            changes: describeDelta(delta),
+            changeFiles: Object.keys(changeTables),
+          };
+        }
+      }
+
       return NextResponse.json({
         run: { id: run.id, kind: run.kind, question: run.question },
-        tables: bundle.tables,
+        tables: { ...bundle.tables, ...changeTables },
+        update,
         aggregates: bundle.aggregates,
         memory: memory ?? null,
         previousReview: previous?.result ? summariseForNextReview(previous.result) : null,

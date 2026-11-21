@@ -123,6 +123,11 @@ function RunCard({ run, onDelete }: { run: AnalysisRun; onDelete: (id: number) =
                       <p className="text-xs font-medium">{f.title}</p>
                       <div className="flex gap-1.5 flex-shrink-0">
                         <Badge variant="outline" className={CONFIDENCE_STYLE[f.confidence]}>{f.confidence} confidence</Badge>
+                        {f.status && f.status !== 'new' && (
+                          <Badge variant="outline" className="text-muted-foreground">
+                            {f.status === 'unchanged' ? 'unchanged since last run' : f.status === 'updated' ? 'updated' : 'reversed'}
+                          </Badge>
+                        )}
                         <Badge variant="outline">{f.n > 0 ? `n = ${f.n}` : 'n not given'}</Badge>
                       </div>
                     </div>
