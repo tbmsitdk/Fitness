@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildFullContext } from '@/lib/ai';
+import { loadActivityDetail } from '@/lib/activity-detail-db';
 import { loadCoachData, lastDays } from '@/lib/coach-data';
 import { buildRawTables } from '@/lib/raw-data';
 import { sanitiseIncomingResult, summariseForNextReview } from '@/lib/analysis';
@@ -26,7 +27,8 @@ async function loadBundle(kind: string) {
 
   // The files hold the WHOLE history: they go to the sandbox, not into the
   // prompt, so there is no token budget to fit.
-  const tables = buildRawTables(data);
+  const activityDetail = await loadActivityDetail(data.activities, data.today, data.manualFtpWatts);
+  const tables = buildRawTables({ ...data, activityDetail });
 
   // The aggregates are tuned to a 90-day window, same as the weekly report.
   const aggregates = buildFullContext(

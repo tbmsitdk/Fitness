@@ -8,6 +8,7 @@ import { coerceTravelLog } from '@/lib/travel';
 import { coerceExerciseLog } from '@/lib/exercises';
 import { AISummary } from '@/types';
 import type { UserSettings } from '@/lib/settings';
+import { loadActivityDetail } from '@/lib/activity-detail-db';
 import { buildRawTablesWithin, rawDataPromptSection } from '@/lib/raw-data';
 import { loadMemorySection, recordAdvice } from '@/lib/coach-memory-db';
 import { loadExperimentsSection } from '@/lib/experiments-db';
@@ -76,6 +77,7 @@ async function buildSummary(userSettings?: UserSettings) {
     nutritionLogs: allNutritionResult.rows.map(coerceNutritionLog),
     meals: await listMeals('1970-01-01').catch(() => []),
     travelLogs,
+    activityDetail: await loadActivityDetail(allActResult.rows.map(coerceActivity), new Date().toISOString().slice(0, 10), manualFtpWatts),
   }, RAW_DATA_TOKEN_BUDGET);
   const windowNote = raw.windowDays === null
     ? 'These tables hold the complete history.'
