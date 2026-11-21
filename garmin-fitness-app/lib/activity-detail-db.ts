@@ -4,7 +4,7 @@
 import { sql } from '@vercel/postgres';
 import type { Activity } from '@/types';
 import type { ActivitySample } from '@/lib/activity-analysis';
-import { buildActivityDetailRows, type ActivityDetailRow } from '@/lib/activity-detail';
+import { buildActivityDetailRows, MAX_SAMPLE_ACTIVITIES, type ActivityDetailRow } from '@/lib/activity-detail';
 import { daysAgo } from '@/lib/coach-data';
 
 /** A year of samples is on the order of 100k rows; older than that stays out of memory. */
@@ -43,4 +43,43 @@ export async function loadActivityDetail(
     console.error('[activity-detail]', e);
     return [];
   }
+}
+
+export interface SampleActivity { id: number; start: string; type: string; title: string; rows: number }
+
+/**
+ * The activities whose raw samples go to a run: the newest `limit` that have samples.
+ * `since` (a date) limits it to activities newer than the previous analysis; null looks back a year.
+ */
+export async function listSampleActivities(since: string | null, today: string, limit = MAX_SAMPLE_ACTIVITIES): Promise<SampleActivity[]> {
+  const from = since ?? daysAgo(today, ACTIVITY_DETAIL_DAYS);
+  try {
+    const { rows } = await sql`
+      SELECT a.id, a.date, a.activity_type, a.title, COUNT(*)::int AS n
+      FROM activities a JOIN activity_samples s ON s.activity_id = a.id
+      WHERE a.date >= ${from} AND a.activity_type IN ('running', 'cycling', 'walking')
+      GROUP BY a.id, a.date, a.activity_type, a.title
+      ORDER BY a.date DESC LIMIT ${limit}`;
+    return rows.map(r => ({
+      id: Number(r.id),
+      start: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+      type: String(r.activity_type), title: String(r.title ?? ''), rows: Number(r.n),
+    }));
+  } catch (e) {
+    console.error('[activity-detail] sample list', e);
+    return [];
+  }
+}
+
+/** One activity's samples, in time order. */
+export async function loadSamplesFor(activityId: number): Promise<ActivitySample[]> {
+  const { rows } = await sql`
+    SELECT elapsed_seconds, hr, power, cadence FROM activity_samples
+    WHERE activity_id = ${activityId} ORDER BY elapsed_seconds`;
+  return rows.map(r => ({
+    elapsed_seconds: Number(r.elapsed_seconds),
+    hr: r.hr != null ? Number(r.hr) : null,
+    power: r.power != null ? Number(r.power) : null,
+    cadence: r.cadence != null ? Number(r.cadence) : null,
+  }));
 }

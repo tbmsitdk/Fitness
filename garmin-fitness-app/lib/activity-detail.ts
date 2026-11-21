@@ -109,3 +109,21 @@ export function buildActivityDetailRows(
   }
   return rows.sort((x, y) => x.date.localeCompare(y.date));
 }
+
+// ── Raw 10-second samples for the few activities a run should look inside ──
+
+/** Most activities whose samples one analysis run is given. Keeps the upload small. */
+export const MAX_SAMPLE_ACTIVITIES = 30;
+
+export const SAMPLE_FILE_COLUMNS = ['activity_id', 'start', 'type', 'elapsed_seconds', 'hr', 'power', 'cadence'] as const;
+
+const cell = (v: number | string | null) => (v == null ? '' : String(v));
+
+/** CSV rows (no header) for one activity. Empty means not recorded, never zero. */
+export function sampleCsvRows(
+  activity: { id: number; start: string; type: string }, samples: ActivitySample[],
+): string[] {
+  return [...samples]
+    .sort((a, b) => a.elapsed_seconds - b.elapsed_seconds)
+    .map(s => [activity.id, activity.start, activity.type, s.elapsed_seconds, s.hr, s.power, s.cadence].map(cell).join(','));
+}

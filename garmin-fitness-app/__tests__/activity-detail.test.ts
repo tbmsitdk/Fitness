@@ -90,3 +90,27 @@ describe('activity_detail.csv in the raw tables', () => {
     expect(DATA_DICTIONARY).toContain('never zero');
   });
 });
+
+import { sampleCsvRows, SAMPLE_FILE_COLUMNS, MAX_SAMPLE_ACTIVITIES } from '@/lib/activity-detail';
+
+describe('raw sample rows', () => {
+  const a = { id: 42, start: '2026-11-21T11:58:00.000Z', type: 'cycling' };
+  it('writes one row per sample in time order, with empty cells for what was not recorded', () => {
+    const rows = sampleCsvRows(a, [
+      { elapsed_seconds: 10, hr: 141, power: null, cadence: 80 },
+      { elapsed_seconds: 0, hr: null, power: 150, cadence: null },
+    ]);
+    expect(rows).toEqual([
+      '42,2026-11-21T11:58:00.000Z,cycling,0,,150,',
+      '42,2026-11-21T11:58:00.000Z,cycling,10,141,,80',
+    ]);
+    expect(rows[0].split(',')).toHaveLength(SAMPLE_FILE_COLUMNS.length);
+  });
+  it('is limited to a handful of activities per run', () => {
+    expect(MAX_SAMPLE_ACTIVITIES).toBeLessThanOrEqual(30);
+  });
+  it('is described in the data dictionary as partial, not the full history', () => {
+    expect(DATA_DICTIONARY).toContain('activity_samples.csv');
+    expect(DATA_DICTIONARY).toContain('NOT the whole history');
+  });
+});

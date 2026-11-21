@@ -32,6 +32,9 @@ interface Job {
   /** Set when this run builds on an earlier analysis and sees only what changed. */
   update?: { previousDate: string; previousRunId: number; previous: string; changes: string; changeFiles: string[] } | null;
   claims?: string | null;
+  /** Activities whose raw 10-second samples the runner should fetch, one at a time. */
+  sampleActivities?: { id: number; rows: number }[];
+  sampleFile?: string;
   skipped?: boolean;
   today: string;
 }
@@ -91,6 +94,26 @@ async function nextJob(): Promise<Job | null> {
   return job;
 }
 
+const SAMPLE_HEADER = 'activity_id,start,type,elapsed_seconds,hr,power,cadence';
+const MAX_SAMPLE_BYTES = 8_000_000;
+
+async function fetchSamples(activities: { id: number }[]): Promise<string | null> {
+  if (activities.length === 0) return null;
+  const parts = [SAMPLE_HEADER];
+  let bytes = SAMPLE_HEADER.length;
+  let got = 0;
+  for (const a of activities) {
+    const res = await fetch(`${APP_URL}/api/analysis/samples?id=${a.id}`, { headers });
+    if (!res.ok) { console.log(`  ⚠ samples for activity ${a.id}: HTTP ${res.status}, skipped`); continue; }
+    const text = (await res.text()).trim();
+    if (!text) continue;
+    if (bytes + text.length > MAX_SAMPLE_BYTES) { console.log('  ⚠ sample size limit reached; the rest are left out'); break; }
+    parts.push(text); bytes += text.length; got++;
+  }
+  console.log(`  ↓ raw samples for ${got} of ${activities.length} activities`);
+  return got > 0 ? parts.join('\n') : null;
+}
+
 async function report(body: Record<string, unknown>): Promise<void> {
   const res = await fetch(`${APP_URL}/api/analysis/job`, { method: 'POST', headers, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(`The app answered ${res.status} when storing the result.`);
@@ -103,12 +126,19 @@ async function analyse(job: Job): Promise<{ result: AnalysisResult; reasoning: s
     // 1. The tables go to the sandbox as files, not into the prompt.
     const names = Object.keys(job.tables);
     if (names.length === 0) throw new Error('The app sent no data tables.');
+
+    // Raw samples, one activity per request so no response nears the body limit.
+    const sampleCsv = await fetchSamples(job.sampleActivities ?? []);
+    const sampleName = job.sampleFile ?? 'activity_samples.csv';
+    const tablesToUpload: Record<string, string> = { ...job.tables };
+    if (sampleCsv) { tablesToUpload[sampleName] = sampleCsv; names.push(sampleName); }
+
     for (const name of names) {
       const file = await client.files.upload({
-        file: await toFile(Buffer.from(job.tables[name], 'utf8'), name, { type: 'text/csv' }),
+        file: await toFile(Buffer.from(tablesToUpload[name], 'utf8'), name, { type: 'text/csv' }),
       });
       uploaded.push(file.id);
-      console.log(`  ↑ ${name} (${Math.round(job.tables[name].length / 1024)} KB)`);
+      console.log(`  ↑ ${name} (${Math.round(tablesToUpload[name].length / 1024)} KB)`);
     }
 
     const prompt = buildAnalysisPrompt({

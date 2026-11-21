@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildFullContext } from '@/lib/ai';
 import { computeDelta, describeDelta, fingerprintTables, MIN_CHANGED_ROWS } from '@/lib/analysis-delta';
-import { loadActivityDetail } from '@/lib/activity-detail-db';
+import { listSampleActivities, loadActivityDetail } from '@/lib/activity-detail-db';
 import { loadCoachData, lastDays } from '@/lib/coach-data';
 import { buildRawTables } from '@/lib/raw-data';
 import { reuseUnchanged, sanitiseIncomingResult, summariseForNextReview, summariseForUpdate } from '@/lib/analysis';
@@ -76,6 +76,7 @@ export async function GET(req: NextRequest) {
       // that are new or changed, plus what the last run found.
       let update: Record<string, unknown> | null = null;
       let changeTables: Record<string, string> = {};
+      let sampleSince: string | null = null;
       if (run.kind === 'deep') {
         const state = fingerprintTables(bundle.tables);
         const baseline = run.question ? null : await lastBaselineRun(run.id);
@@ -85,6 +86,7 @@ export async function GET(req: NextRequest) {
         if (baseline && baselineResult) {
           const delta = computeDelta(bundle.tables, baseline.state);
           const previousDate = (baseline.run.finished_at ?? baseline.run.requested_at).slice(0, 10);
+          sampleSince = previousDate;
           if (delta.total < MIN_CHANGED_ROWS) {
             // Too little has changed for a new run to say anything new: carry the last one forward.
             await completeRun(run.id, reuseUnchanged(baselineResult, previousDate, delta.total), null, baseline.run.model);
@@ -100,8 +102,14 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // Raw 10-second samples: only for activities new since the last analysis, or the newest
+      // few when it is a first run or a question. The runner fetches them one activity at a time.
+      const sampleActivities = run.kind === 'deep' ? await listSampleActivities(sampleSince, bundle.today) : [];
+
       return NextResponse.json({
         run: { id: run.id, kind: run.kind, question: run.question },
+        sampleActivities,
+        sampleFile: update ? 'changes_activity_samples.csv' : 'activity_samples.csv',
         tables: { ...bundle.tables, ...changeTables },
         update,
         aggregates: bundle.aggregates,
