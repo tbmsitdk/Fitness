@@ -48,6 +48,15 @@ export interface CardCheck {
   note: string;
 }
 
+/** What the model saw in one activity's raw samples. An observation, not a measurement. */
+export interface ActivityNote {
+  activity_id: number;
+  note: string;
+}
+export const MAX_NOTE_LENGTH = 240;
+/** Older activities read per general run, besides every new one. */
+export const BACKFILL_PER_RUN = 3;
+
 export interface AnalysisResult {
   headline: string;
   findings: AnalysisFinding[];
@@ -58,6 +67,8 @@ export interface AnalysisResult {
   charts: AnalysisChart[];
   /** Filled by the cross-check run; empty for the others. */
   card_checks: CardCheck[];
+  /** One short observation per activity whose raw samples this run read; empty otherwise. */
+  activity_notes: ActivityNote[];
 }
 
 export interface AnalysisRun {
@@ -121,6 +132,19 @@ export const ANALYSIS_SCHEMA = {
         additionalProperties: false,
       },
     },
+    activity_notes: {
+      type: 'array',
+      description: 'One entry per activity listed under raw samples read this run, when the run has them. Empty array otherwise.',
+      items: {
+        type: 'object',
+        properties: {
+          activity_id: { type: 'integer', description: 'The activity_id from the sample index.' },
+          note:        { type: 'string', description: 'At most two short sentences on what the samples show: interval structure, pacing, drift, recovery, gaps. An observation, no general conclusions.' },
+        },
+        required: ['activity_id', 'note'],
+        additionalProperties: false,
+      },
+    },
     card_checks: {
       type: 'array',
       description: 'Cross-check runs only: one entry per claim checked. Empty array for every other kind of run.',
@@ -138,7 +162,7 @@ export const ANALYSIS_SCHEMA = {
       },
     },
   },
-  required: ['headline', 'findings', 'not_significant', 'caveats', 'next_steps', 'charts', 'card_checks'],
+  required: ['headline', 'findings', 'not_significant', 'caveats', 'next_steps', 'charts', 'card_checks', 'activity_notes'],
   additionalProperties: false,
 } as const;
 
@@ -192,6 +216,10 @@ export interface AnalysisPromptInput {
     /** Names of the files holding only the changed rows. */
     changeFiles: string[];
   };
+  /** Raw-sample activities this run reads: index lines, and the older ones among them. */
+  samplesRead?: { id: number; start: string; type: string; title: string; backfill: boolean }[];
+  /** Notes written about activities in earlier runs, newest first, as text. */
+  priorNotes?: string;
   today: string;
 }
 
@@ -251,6 +279,18 @@ How to work:
 3. Look for new patterns only in the changed rows and the period they cover. Anything found goes in with status "new".
 4. The headline must begin with what changed since ${u.previousDate}, in plain words. If little changed, say so.
 5. Aim for 6 to 8 sandbox steps, not 10 to 15.`);
+  }
+  if (input.samplesRead?.length && input.kind === 'deep' && !input.question) {
+    const lines = input.samplesRead.map(a =>
+      `- activity_id ${a.id}: ${a.start.slice(0, 16).replace('T', ' ')} ${a.type} "${a.title.slice(0, 80)}"${a.backfill ? ' (older, read for the first time)' : ' (new)'}`);
+    parts.push(`Raw samples read this run (activity_samples file):
+${lines.join('\n')}
+For EACH of these, add one activity_notes entry: at most two short sentences on what its samples show (interval structure, pacing, drift, recovery, gaps). Notes are observations about one activity, kept for later runs; draw no general conclusion from a single one.${input.priorNotes ? `
+
+Notes from earlier runs (leads to test, not facts):
+<activity-notes>
+${input.priorNotes}
+</activity-notes>` : ''}`);
   }
   if (input.memory) parts.push(input.memory);
   if (input.previousReview) {
@@ -319,9 +359,16 @@ export function parseAnalysisResult(text: string): AnalysisResult {
       note: typeof c.note === 'string' ? c.note.slice(0, 500) : '',
     }));
 
+  const activity_notes: ActivityNote[] = (Array.isArray(parsed.activity_notes) ? parsed.activity_notes : [])
+    .filter((n): n is Record<string, unknown> => !!n && typeof n === 'object')
+    .filter(n => Number.isInteger(n.activity_id) && (n.activity_id as number) > 0 && typeof n.note === 'string' && n.note.trim() !== '')
+    .slice(0, 40)
+    .map(n => ({ activity_id: n.activity_id as number, note: (n.note as string).replace(/\s+/g, ' ').trim().slice(0, MAX_NOTE_LENGTH) }));
+
   return {
     headline:        parsed.headline,
     card_checks,
+    activity_notes,
     findings,
     not_significant: strings(parsed.not_significant),
     caveats:         strings(parsed.caveats),
@@ -385,6 +432,7 @@ export function reuseUnchanged(prev: AnalysisResult, previousDate: string, chang
     ...prev,
     headline: `${why} since the analysis of ${previousDate}, so its findings stand. ${prev.headline}`,
     findings: prev.findings.map(f => ({ ...f, status: 'unchanged' as const })),
+    activity_notes: [],
     caveats: [`This is the ${previousDate} analysis carried forward; it was not re-run.`, ...prev.caveats],
   };
 }

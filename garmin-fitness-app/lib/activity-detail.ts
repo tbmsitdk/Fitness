@@ -127,3 +127,26 @@ export function sampleCsvRows(
     .sort((a, b) => a.elapsed_seconds - b.elapsed_seconds)
     .map(s => [activity.id, activity.start, activity.type, s.elapsed_seconds, s.hr, s.power, s.cadence].map(cell).join(','));
 }
+
+export interface SampleChoice { id: number; start: string; type: string; title: string; rows: number; backfill: boolean }
+
+/** New activities first (capped), then the older ones, never the same activity twice. */
+export function chooseSampleActivities<T extends { id: number; start: string; type: string; title: string; rows: number }>(
+  fresh: T[], backfill: T[], maxNew = MAX_SAMPLE_ACTIVITIES, maxBackfill = 3,
+): SampleChoice[] {
+  const seen = new Set<number>();
+  const out: SampleChoice[] = [];
+  for (const a of fresh) {
+    if (out.length >= maxNew || seen.has(a.id)) continue;
+    seen.add(a.id); out.push({ ...a, backfill: false });
+  }
+  let older = 0;
+  for (const a of backfill) {
+    if (older >= maxBackfill || seen.has(a.id)) continue;
+    seen.add(a.id); older++; out.push({ ...a, backfill: true });
+  }
+  return out;
+}
+
+/** A Postgres int[] literal for a bound parameter; only whole numbers get through. */
+export const pgIntArray = (ids: number[]) => `{${ids.filter(Number.isInteger).join(',')}}`;

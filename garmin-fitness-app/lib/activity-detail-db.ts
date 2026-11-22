@@ -4,7 +4,7 @@
 import { sql } from '@vercel/postgres';
 import type { Activity } from '@/types';
 import type { ActivitySample } from '@/lib/activity-analysis';
-import { buildActivityDetailRows, MAX_SAMPLE_ACTIVITIES, type ActivityDetailRow } from '@/lib/activity-detail';
+import { buildActivityDetailRows, MAX_SAMPLE_ACTIVITIES, pgIntArray, type ActivityDetailRow } from '@/lib/activity-detail';
 import { daysAgo } from '@/lib/coach-data';
 
 /** A year of samples is on the order of 100k rows; older than that stays out of memory. */
@@ -82,4 +82,29 @@ export async function loadSamplesFor(activityId: number): Promise<ActivitySample
     power: r.power != null ? Number(r.power) : null,
     cadence: r.cadence != null ? Number(r.cadence) : null,
   }));
+}
+
+/**
+ * Older activities with samples that no earlier run has read, newest first.
+ * `exclude` holds ids already chosen for this run (the new ones).
+ */
+export async function listBackfillActivities(covered: number[], exclude: number[], limit: number): Promise<SampleActivity[]> {
+  const skip = [...new Set([...covered, ...exclude])];
+  try {
+    const { rows } = await sql`
+      SELECT a.id, a.date, a.activity_type, a.title, COUNT(*)::int AS n
+      FROM activities a JOIN activity_samples s ON s.activity_id = a.id
+      WHERE a.activity_type IN ('running', 'cycling', 'walking')
+        AND NOT (a.id = ANY(${pgIntArray(skip)}::int[]))
+      GROUP BY a.id, a.date, a.activity_type, a.title
+      ORDER BY a.date DESC LIMIT ${limit}`;
+    return rows.map(r => ({
+      id: Number(r.id),
+      start: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+      type: String(r.activity_type), title: String(r.title ?? ''), rows: Number(r.n),
+    }));
+  } catch (e) {
+    console.error('[activity-detail] backfill list', e);
+    return [];
+  }
 }

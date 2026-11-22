@@ -173,6 +173,7 @@ function RunCard({ run, onDelete }: { run: AnalysisRun; onDelete: (id: number) =
 
 export default function DeepAnalysis() {
   const [runs, setRuns] = useState<AnalysisRun[]>([]);
+  const [coverage, setCoverage] = useState<{ read: number; total: number } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);
@@ -185,6 +186,7 @@ export default function DeepAnalysis() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       setRuns(json.runs ?? []);
+      setCoverage(json.coverage ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -249,6 +251,12 @@ export default function DeepAnalysis() {
             how sure it is, and what does not hold up. Ask a question, or leave it empty for the strongest relationships in your data.
             Each run costs a few dollars of model time.
           </p>
+          {coverage && coverage.total > 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              Raw second-by-second data read so far: {coverage.read} of {coverage.total} activities.
+              Each general run reads every new activity plus a few older ones, so the history fills in over time.
+            </p>
+          )}
           <textarea
             value={question}
             onChange={e => setQuestion(e.target.value.slice(0, MAX_QUESTION_LENGTH))}

@@ -59,7 +59,7 @@ describe('computeDelta', () => {
 const prev: AnalysisResult = {
   headline: 'Late meals cost sleep.',
   findings: [{ title: 'Late meals', detail: 'About 20 min less deep sleep.', evidence: 'r=-0.3, 95% CI -0.5 to -0.1', n: 120, confidence: 'medium' }],
-  not_significant: ['Caffeine, n=90'], caveats: ['Observational.'], next_steps: ['Eat earlier'], charts: [], card_checks: [],
+  not_significant: ['Caffeine, n=90'], caveats: ['Observational.'], next_steps: ['Eat earlier'], charts: [], card_checks: [], activity_notes: [],
 };
 
 describe('building on the previous run', () => {
@@ -96,5 +96,73 @@ describe('building on the previous run', () => {
       { title: 'c', detail: 'd', evidence: 'e', n: 5, confidence: 'low', status: 'banana' },
     ] }));
     expect(r.findings.map(f => f.status)).toEqual(['reversed', 'new', 'new']);
+  });
+});
+
+import { chooseSampleActivities, MAX_SAMPLE_ACTIVITIES } from '@/lib/activity-detail';
+import { BACKFILL_PER_RUN } from '@/lib/analysis';
+
+const act = (id: number) => ({ id, start: `2026-11-${String(id % 28 + 1).padStart(2, '0')}T08:00:00Z`, type: 'cycling', title: `Ride ${id}`, rows: 300 });
+
+describe('reading a little of the history every run', () => {
+  it('starts with 3 older activities per run', () => {
+    expect(BACKFILL_PER_RUN).toBe(3);
+  });
+
+  it('puts every new activity first (capped) and then at most 3 older ones, marked as such', () => {
+    const fresh = Array.from({ length: 40 }, (_, i) => act(i + 1));
+    const older = [act(101), act(102), act(103), act(104), act(105)];
+    const out = chooseSampleActivities(fresh, older, undefined, BACKFILL_PER_RUN);
+    expect(out.filter(a => !a.backfill)).toHaveLength(MAX_SAMPLE_ACTIVITIES);
+    expect(out.filter(a => a.backfill).map(a => a.id)).toEqual([101, 102, 103]);
+    expect(out.findIndex(a => a.backfill)).toBe(MAX_SAMPLE_ACTIVITIES);
+  });
+
+  it('never reads the same activity twice in one run', () => {
+    const out = chooseSampleActivities([act(1), act(2)], [act(2), act(3)], undefined, 3);
+    expect(out.map(a => a.id)).toEqual([1, 2, 3]);
+    expect(out.find(a => a.id === 2)!.backfill).toBe(false);
+  });
+
+  it('reads no older activities for a question run', () => {
+    expect(chooseSampleActivities([act(1)], [act(2)], undefined, 0).map(a => a.id)).toEqual([1]);
+  });
+
+  it('asks for one note per activity read, and shows earlier notes as leads', () => {
+    const p = buildAnalysisPrompt({
+      kind: 'deep', question: null, files: ['activity_samples.csv'], aggregates: '{}', today: '2026-11-22',
+      samplesRead: [{ id: 7, start: '2026-11-20T08:00:00Z', type: 'cycling', title: 'Zwift', backfill: false },
+                    { id: 3, start: '2025-02-02T08:00:00Z', type: 'running', title: 'Long run', backfill: true }],
+      priorNotes: '- 2026-11-01 cycling: Three 8-minute blocks, HR climbed 6 bpm.',
+    });
+    expect(p).toContain('activity_id 7');
+    expect(p).toContain('(older, read for the first time)');
+    expect(p).toContain('add one activity_notes entry');
+    expect(p).toContain('leads to test, not facts');
+    expect(p).toContain('Three 8-minute blocks');
+  });
+
+  it('asks for no notes on a question run', () => {
+    const p = buildAnalysisPrompt({
+      kind: 'deep', question: 'Why?', files: [], aggregates: '{}', today: 't',
+      samplesRead: [{ id: 7, start: '2026-11-20T08:00:00Z', type: 'cycling', title: 'Zwift', backfill: false }],
+    });
+    expect(p).not.toContain('activity_notes entry');
+  });
+
+  it('parses notes, drops unusable ones and caps their length; old results have none', () => {
+    const r = parseAnalysisResult(JSON.stringify({ headline: 'h', activity_notes: [
+      { activity_id: 7, note: `  Steady   ride.  ${'x'.repeat(400)}` },
+      { activity_id: 0, note: 'bad id' }, { activity_id: 8, note: '   ' }, { note: 'no id' }, 'junk',
+    ] }));
+    expect(r.activity_notes).toHaveLength(1);
+    expect(r.activity_notes[0].activity_id).toBe(7);
+    expect(r.activity_notes[0].note.length).toBeLessThanOrEqual(240);
+    expect(r.activity_notes[0].note.startsWith('Steady ride.')).toBe(true);
+    expect(parseAnalysisResult(JSON.stringify({ headline: 'h' })).activity_notes).toEqual([]);
+  });
+
+  it('a carried-forward result writes no new notes', () => {
+    expect(reuseUnchanged({ ...prev, activity_notes: [{ activity_id: 1, note: 'n' }] }, '2026-11-01', 0).activity_notes).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cleanQuestion, MAX_QUEUED_RUNS } from '@/lib/analysis';
-import { countQueued, deleteRun, getRun, listRuns, queueRun } from '@/lib/analysis-db';
+import { sampleCoverage, countQueued, deleteRun, getRun, listRuns, queueRun } from '@/lib/analysis-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +45,8 @@ export async function GET(req: NextRequest) {
       const run = await getRun(id);
       return run ? NextResponse.json({ run }) : NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
-    return NextResponse.json({ runs: await listRuns() });
+    const [runs, coverage] = await Promise.all([listRuns(), sampleCoverage().catch(() => null)]);
+    return NextResponse.json({ runs, coverage });
   } catch (e) {
     console.error('[analysis] GET', e);
     return NextResponse.json({ error: 'Could not load analyses' }, { status: 500 });

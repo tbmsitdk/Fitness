@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildFullContext } from '@/lib/ai';
 import { computeDelta, describeDelta, fingerprintTables, MIN_CHANGED_ROWS } from '@/lib/analysis-delta';
-import { listSampleActivities, loadActivityDetail } from '@/lib/activity-detail-db';
+import { listBackfillActivities, listSampleActivities, loadActivityDetail } from '@/lib/activity-detail-db';
 import { loadCoachData, lastDays } from '@/lib/coach-data';
 import { buildRawTables } from '@/lib/raw-data';
-import { reuseUnchanged, sanitiseIncomingResult, summariseForNextReview, summariseForUpdate } from '@/lib/analysis';
+import { chooseSampleActivities } from '@/lib/activity-detail';
+import { BACKFILL_PER_RUN, reuseUnchanged, sanitiseIncomingResult, summariseForNextReview, summariseForUpdate } from '@/lib/analysis';
 import {
-  claimNextRun, completeRun, failRun, getRun, lastMonthlyReview, monthlyAlreadyRequested, queueRun, saveDataState, lastBaselineRun,
+  claimNextRun, completeRun, failRun, getRun, lastMonthlyReview, monthlyAlreadyRequested, queueRun, saveDataState, lastBaselineRun, saveReadActivities, recordRead, coveredActivityIds, priorNotesText,
 } from '@/lib/analysis-db';
 import { loadMemorySection, recordAdvice } from '@/lib/coach-memory-db';
 
@@ -104,11 +105,29 @@ export async function GET(req: NextRequest) {
 
       // Raw 10-second samples: only for activities new since the last analysis, or the newest
       // few when it is a first run or a question. The runner fetches them one activity at a time.
-      const sampleActivities = run.kind === 'deep' ? await listSampleActivities(sampleSince, bundle.today) : [];
+      // A general run (no question) also reads a few older activities no run has read yet, and
+      // keeps what it learns; a question run just gets the newest ones and records nothing.
+      let sampleActivities: ReturnType<typeof chooseSampleActivities> = [];
+      let priorNotes = '';
+      if (run.kind === 'deep') {
+        const fresh = await listSampleActivities(sampleSince, bundle.today);
+        if (run.question) {
+          sampleActivities = chooseSampleActivities(fresh, [], undefined, 0);
+        } else {
+          const covered = await coveredActivityIds();
+          const older = await listBackfillActivities(covered, fresh.map(a => a.id), BACKFILL_PER_RUN);
+          // New activities are only "new" once; skip any a past run already covered.
+          const coveredSet = new Set(covered);
+          sampleActivities = chooseSampleActivities(fresh.filter(a => !coveredSet.has(a.id)), older, undefined, BACKFILL_PER_RUN);
+          await saveReadActivities(run.id, sampleActivities.map(a => a.id));
+          priorNotes = await priorNotesText();
+        }
+      }
 
       return NextResponse.json({
         run: { id: run.id, kind: run.kind, question: run.question },
         sampleActivities,
+        priorNotes,
         sampleFile: update ? 'changes_activity_samples.csv' : 'activity_samples.csv',
         tables: { ...bundle.tables, ...changeTables },
         update,
@@ -157,6 +176,7 @@ export async function POST(req: NextRequest) {
       typeof body.reasoning === 'string' ? body.reasoning.slice(0, 20_000) : null,
       typeof body.model === 'string' ? body.model.slice(0, 80) : null,
     );
+    if (ok) await recordRead(id, result.activity_notes);
     // The cross-check is about the app's numbers, not advice to the person.
     const stored = ok ? await getRun(id) : null;
     if (stored && stored.kind !== 'audit' && result.next_steps.length > 0) {

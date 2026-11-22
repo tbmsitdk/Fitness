@@ -25,6 +25,14 @@ function ensureTable(): Promise<void> {
     )
   `.then(() => sql`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS data_state JSONB`)
    .then(() => sql`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS built_on INTEGER`)
+   .then(() => sql`ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS read_activities JSONB`)
+   .then(() => sql`
+     CREATE TABLE IF NOT EXISTS activity_notes (
+       activity_id INTEGER PRIMARY KEY,
+       note TEXT NOT NULL DEFAULT '',
+       run_id INTEGER,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+     )`)
    .then(() => undefined, (e) => { ready = null; throw e; });
   return ready;
 }
@@ -37,6 +45,7 @@ function toRun(r: any, withCharts: boolean): AnalysisRun {
   let result: AnalysisResult | null = r.result ?? null;
   // Runs stored before the cross-check existed have no card_checks.
   if (result && !Array.isArray(result.card_checks)) result = { ...result, card_checks: [] };
+  if (result && !Array.isArray(result.activity_notes)) result = { ...result, activity_notes: [] };
   if (result && !withCharts) {
     // Chart bytes are large; the list view only needs to know they exist.
     result = { ...result, charts: (result.charts ?? []).map(c => ({ filename: c.filename, caption: c.caption })) };
@@ -179,4 +188,60 @@ export async function lastBaselineRun(exceptId: number): Promise<{ run: Analysis
     ORDER BY finished_at DESC LIMIT 1
   `;
   return rows[0] ? { run: toRun(rows[0], false), state: rows[0].data_state as Fingerprints } : null;
+}
+
+/** Remembers which activities a run is reading, so completion can mark them covered. */
+export async function saveReadActivities(id: number, ids: number[]): Promise<void> {
+  await ensureTable();
+  await sql`UPDATE analysis_runs SET read_activities = ${JSON.stringify(ids)}::jsonb WHERE id = ${id}`;
+}
+
+/**
+ * On a finished run: every activity it read is now covered, with the model's note when it wrote one.
+ * Called only after a successful completion, so a failed run leaves its activities to be read again.
+ */
+export async function recordRead(id: number, notes: { activity_id: number; note: string }[]): Promise<number> {
+  await ensureTable();
+  const { rows } = await sql`SELECT read_activities FROM analysis_runs WHERE id = ${id}`;
+  const ids: number[] = Array.isArray(rows[0]?.read_activities) ? rows[0].read_activities.map(Number) : [];
+  const byId = new Map(notes.map(n => [n.activity_id, n.note]));
+  for (const activityId of ids) {
+    await sql`
+      INSERT INTO activity_notes (activity_id, note, run_id) VALUES (${activityId}, ${byId.get(activityId) ?? ''}, ${id})
+      ON CONFLICT (activity_id) DO UPDATE SET note = CASE WHEN EXCLUDED.note <> '' THEN EXCLUDED.note ELSE activity_notes.note END,
+                                              run_id = EXCLUDED.run_id`;
+  }
+  return ids.length;
+}
+
+export async function coveredActivityIds(): Promise<number[]> {
+  await ensureTable();
+  const { rows } = await sql`SELECT activity_id FROM activity_notes`;
+  return rows.map(r => Number(r.activity_id));
+}
+
+/** Notes from earlier runs, newest activity first, capped so the prompt stays small. */
+export async function priorNotesText(maxChars = 6000): Promise<string> {
+  await ensureTable();
+  const { rows } = await sql`
+    SELECT n.note, a.date, a.activity_type FROM activity_notes n
+    JOIN activities a ON a.id = n.activity_id WHERE n.note <> '' ORDER BY a.date DESC LIMIT 200`;
+  const lines: string[] = [];
+  let used = 0;
+  for (const r of rows) {
+    const d = r.date instanceof Date ? r.date.toISOString() : String(r.date);
+    const line = `- ${d.slice(0, 10)} ${r.activity_type}: ${r.note}`;
+    if (used + line.length > maxChars) break;
+    lines.push(line); used += line.length;
+  }
+  return lines.join('\n');
+}
+
+/** How much of the sampled history the analysis has read. */
+export async function sampleCoverage(): Promise<{ read: number; total: number }> {
+  await ensureTable();
+  const { rows } = await sql`
+    SELECT (SELECT COUNT(*) FROM activity_notes)::int AS read,
+           (SELECT COUNT(DISTINCT activity_id) FROM activity_samples)::int AS total`;
+  return { read: Number(rows[0]?.read ?? 0), total: Number(rows[0]?.total ?? 0) };
 }

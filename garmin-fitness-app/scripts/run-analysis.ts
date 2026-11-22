@@ -33,7 +33,8 @@ interface Job {
   update?: { previousDate: string; previousRunId: number; previous: string; changes: string; changeFiles: string[] } | null;
   claims?: string | null;
   /** Activities whose raw 10-second samples the runner should fetch, one at a time. */
-  sampleActivities?: { id: number; rows: number }[];
+  sampleActivities?: { id: number; start: string; type: string; title: string; rows: number; backfill: boolean }[];
+  priorNotes?: string;
   sampleFile?: string;
   skipped?: boolean;
   today: string;
@@ -149,6 +150,8 @@ async function analyse(job: Job): Promise<{ result: AnalysisResult; reasoning: s
       memory: job.memory ?? undefined,
       previousReview: job.previousReview ?? undefined,
       update: job.update ?? undefined,
+      samplesRead: sampleCsv ? job.sampleActivities : undefined,
+      priorNotes: job.priorNotes || undefined,
       claims: job.claims ?? undefined,
       today: job.today,
     });
