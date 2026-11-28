@@ -228,3 +228,26 @@ describe('ANALYSIS_SCHEMA', () => {
     check(ANALYSIS_SCHEMA.properties.card_checks.items);
   });
 });
+
+import { lastFinishedDeepRun, type AnalysisRun } from '@/lib/analysis';
+
+describe('lastFinishedDeepRun', () => {
+  const run = (id: number, kind: AnalysisRun['kind'], status: AnalysisRun['status'], finished_at: string | null): AnalysisRun =>
+    ({ id, kind, status, finished_at, question: null, requested_at: '', result: null, reasoning: null, error: null, model: null });
+
+  it('picks the latest finished deep run, ignoring other kinds and unfinished ones', () => {
+    const runs = [
+      run(1, 'deep', 'done', '2026-11-15T10:00:00Z'),
+      run(2, 'deep', 'done', '2026-11-21T14:00:00Z'),
+      run(3, 'monthly', 'done', '2026-11-27T08:00:00Z'),
+      run(4, 'deep', 'failed', '2026-11-26T08:00:00Z'),
+      run(5, 'deep', 'queued', null),
+    ];
+    expect(lastFinishedDeepRun(runs)?.id).toBe(2);
+  });
+
+  it('is null when none has finished', () => {
+    expect(lastFinishedDeepRun([])).toBeNull();
+    expect(lastFinishedDeepRun([run(1, 'deep', 'running', null)])).toBeNull();
+  });
+});

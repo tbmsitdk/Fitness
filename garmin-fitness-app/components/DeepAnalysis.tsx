@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { MAX_QUESTION_LENGTH, type AnalysisChart, type AnalysisRun, type CardVerdict, type Confidence } from '@/lib/analysis';
+import { MAX_QUESTION_LENGTH, lastFinishedDeepRun, type AnalysisChart, type AnalysisRun, type CardVerdict, type Confidence } from '@/lib/analysis';
 
 const ACTIONS_HINT = 'GitHub → Actions → Coach Analysis → Run workflow';
 
@@ -197,6 +197,7 @@ export default function DeepAnalysis() {
   useEffect(() => { load(); }, [load]);
 
   // Poll only while something is in flight.
+  const lastRun = lastFinishedDeepRun(runs);
   const pending = runs.some(r => r.status === 'queued' || r.status === 'running');
   useEffect(() => {
     if (!pending) return;
@@ -245,6 +246,11 @@ export default function DeepAnalysis() {
           <div className="flex items-center gap-2">
             <FlaskConical className="w-4 h-4 text-muted-foreground" />
             <span className="text-sm font-medium">Deep analysis</span>
+            {loaded && !error && (
+              <span className="ml-auto text-[11px] text-muted-foreground">
+                {lastRun ? <>Last run: <span className="text-foreground">{when(lastRun.finished_at)}</span>{lastRun.question ? ' (your question)' : ''}</> : 'Not run yet'}
+              </span>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
             The coach runs real statistics on your complete history — every day, not a summary — and reports what holds up,

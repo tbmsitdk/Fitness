@@ -459,3 +459,10 @@ export function sanitiseIncomingResult(raw: unknown): AnalysisResult {
   }
   return { ...result, charts };
 }
+
+/** The most recently FINISHED deep analysis (typed questions included), or null. */
+export function lastFinishedDeepRun(runs: AnalysisRun[]): AnalysisRun | null {
+  return runs
+    .filter(r => r.kind === 'deep' && r.status === 'done' && r.finished_at)
+    .sort((a, b) => Date.parse(b.finished_at!) - Date.parse(a.finished_at!))[0] ?? null;
+}
