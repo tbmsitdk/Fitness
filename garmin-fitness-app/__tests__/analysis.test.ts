@@ -251,3 +251,27 @@ describe('lastFinishedDeepRun', () => {
     expect(lastFinishedDeepRun([run(1, 'deep', 'running', null)])).toBeNull();
   });
 });
+
+import { scheduledKinds, WEEKLY_GUARD_DAYS } from '@/lib/analysis';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+describe('scheduled runs', () => {
+  it('queues the deep analysis and the cross-check weekly, the review monthly, nothing otherwise', () => {
+    expect(scheduledKinds('weekly')).toEqual(['deep', 'audit']);
+    expect(scheduledKinds('monthly')).toEqual(['monthly']);
+    expect(scheduledKinds(null)).toEqual([]);
+    expect(scheduledKinds('daily')).toEqual([]);
+    expect(WEEKLY_GUARD_DAYS).toBeLessThan(7); // or next Sunday's run would be blocked by last week's
+  });
+
+  it('the workflow has one cron for each, and maps each to its own schedule', () => {
+    const wf = readFileSync(join(__dirname, '..', '..', '.github', 'workflows', 'coach-analysis.yml'), 'utf8');
+    for (const cron of ['0 5 1 * *', '0 6 * * 0']) {
+      expect(wf).toContain(`- cron: '${cron}'`);
+      expect(wf).toContain(`github.event.schedule == '${cron}'`);
+    }
+    expect(wf).toContain("&& 'monthly'");
+    expect(wf).toContain("&& 'weekly'");
+  });
+});

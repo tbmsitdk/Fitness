@@ -466,3 +466,12 @@ export function lastFinishedDeepRun(runs: AnalysisRun[]): AnalysisRun | null {
     .filter(r => r.kind === 'deep' && r.status === 'done' && r.finished_at)
     .sort((a, b) => Date.parse(b.finished_at!) - Date.parse(a.finished_at!))[0] ?? null;
 }
+
+/** What a scheduled start queues. Anything else queues nothing and just works through the queue. */
+export function scheduledKinds(schedule: string | null | undefined): AnalysisKind[] {
+  if (schedule === 'monthly') return ['monthly'];
+  if (schedule === 'weekly') return ['deep', 'audit'];
+  return [];
+}
+/** A weekly run requested more recently than this is not queued again (a manual start or retry). */
+export const WEEKLY_GUARD_DAYS = 6;

@@ -5,9 +5,9 @@ import { listBackfillActivities, listSampleActivities, loadActivityDetail } from
 import { loadCoachData, lastDays } from '@/lib/coach-data';
 import { buildRawTables } from '@/lib/raw-data';
 import { chooseSampleActivities } from '@/lib/activity-detail';
-import { BACKFILL_PER_RUN, reuseUnchanged, sanitiseIncomingResult, summariseForNextReview, summariseForUpdate } from '@/lib/analysis';
+import { BACKFILL_PER_RUN, scheduledKinds, reuseUnchanged, sanitiseIncomingResult, summariseForNextReview, summariseForUpdate } from '@/lib/analysis';
 import {
-  claimNextRun, completeRun, failRun, getRun, lastMonthlyReview, monthlyAlreadyRequested, queueRun, saveDataState, lastBaselineRun, saveReadActivities, recordRead, coveredActivityIds, priorNotesText,
+  claimNextRun, completeRun, failRun, getRun, lastMonthlyReview, monthlyAlreadyRequested, queueRun, weeklyAlreadyRequested, saveDataState, lastBaselineRun, saveReadActivities, recordRead, coveredActivityIds, priorNotesText,
 } from '@/lib/analysis-db';
 import { loadMemorySection, recordAdvice } from '@/lib/coach-memory-db';
 
@@ -55,13 +55,15 @@ async function loadBundle(kind: string) {
 
 // GET /api/analysis/job?schedule=monthly
 //   Claims the next queued run and returns it with its data. With
-//   schedule=monthly, first queues this month's review if there is none yet.
+//   schedule=monthly, first queues this month's review if there is none yet;
+//   schedule=weekly, the week's deep analysis and cross-check.
 //   204 when there is nothing to do.
 export async function GET(req: NextRequest) {
   if (!bearerOk(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
-    if (req.nextUrl.searchParams.get('schedule') === 'monthly' && !(await monthlyAlreadyRequested())) {
-      await queueRun('monthly', null);
+    for (const kind of scheduledKinds(req.nextUrl.searchParams.get('schedule'))) {
+      const done = kind === 'monthly' ? await monthlyAlreadyRequested() : await weeklyAlreadyRequested(kind);
+      if (!done) await queueRun(kind, null);
     }
     let run = await claimNextRun();
     if (!run) return new NextResponse(null, { status: 204 });

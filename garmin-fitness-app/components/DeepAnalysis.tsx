@@ -255,7 +255,7 @@ export default function DeepAnalysis() {
           <p className="text-xs text-muted-foreground">
             The coach runs real statistics on your complete history — every day, not a summary — and reports what holds up,
             how sure it is, and what does not hold up. Ask a question, or leave it empty for the strongest relationships in your data.
-            Each run costs a few dollars of model time.
+            A deep analysis and a dashboard cross-check also run by themselves every Sunday. Each run costs model time.
           </p>
           {coverage && coverage.total > 0 && (
             <p className="text-[11px] text-muted-foreground">

@@ -75,7 +75,8 @@ const headers: Record<string, string> = {
 if (process.env.VERCEL_BYPASS_SECRET) headers['x-vercel-protection-bypass'] = process.env.VERCEL_BYPASS_SECRET;
 
 async function nextJob(): Promise<Job | null> {
-  const schedule = process.env.ANALYSIS_SCHEDULE === 'monthly' ? '?schedule=monthly' : '';
+  const wanted = process.env.ANALYSIS_SCHEDULE;
+  const schedule = wanted === 'monthly' || wanted === 'weekly' ? `?schedule=${wanted}` : '';
   const res = await fetch(`${APP_URL}/api/analysis/job${schedule}`, { headers });
   if (res.status === 204) return null;
   // Say WHICH failure this is: "could not reach the app" and "the app said no"

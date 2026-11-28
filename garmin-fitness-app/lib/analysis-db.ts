@@ -3,7 +3,7 @@
 import { sql } from '@vercel/postgres';
 import type { Fingerprints } from '@/lib/analysis-delta';
 import {
-  STALE_RUN_MINUTES, type AnalysisKind, type AnalysisResult, type AnalysisRun, type AnalysisStatus,
+  STALE_RUN_MINUTES, WEEKLY_GUARD_DAYS, type AnalysisKind, type AnalysisResult, type AnalysisRun, type AnalysisStatus,
 } from '@/lib/analysis';
 
 let ready: Promise<void> | null = null;
@@ -244,4 +244,19 @@ export async function sampleCoverage(): Promise<{ read: number; total: number }>
     SELECT (SELECT COUNT(*) FROM activity_notes)::int AS read,
            (SELECT COUNT(DISTINCT activity_id) FROM activity_samples)::int AS total`;
   return { read: Number(rows[0]?.read ?? 0), total: Number(rows[0]?.total ?? 0) };
+}
+
+/**
+ * True when this weekly kind was already requested in the last few days. Typed-question runs
+ * do not count: they answer one thing and must not replace the week's general analysis.
+ */
+export async function weeklyAlreadyRequested(kind: AnalysisKind): Promise<boolean> {
+  await ensureTable();
+  const { rows } = await sql`
+    SELECT 1 FROM analysis_runs
+    WHERE kind = ${kind} AND question IS NULL AND status <> 'failed'
+      AND requested_at > NOW() - (${WEEKLY_GUARD_DAYS} * INTERVAL '1 day')
+    LIMIT 1
+  `;
+  return rows.length > 0;
 }

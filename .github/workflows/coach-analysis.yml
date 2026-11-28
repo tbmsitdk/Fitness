@@ -9,10 +9,15 @@ name: Coach Analysis
 on:
   schedule:
     - cron: '0 5 1 * *'   # 05:00 UTC on the 1st — the monthly review
+    - cron: '0 6 * * 0'   # 06:00 UTC every Sunday — deep analysis + dashboard cross-check
   workflow_dispatch:
     inputs:
       monthly:
         description: 'Also run this month''s review now (skipped if it already ran this month)'
+        type: boolean
+        default: false
+      weekly:
+        description: 'Also run this week''s deep analysis and cross-check now (skipped if already run in the last 6 days)'
         type: boolean
         default: false
       effort:
@@ -55,6 +60,7 @@ jobs:
           APP_URL:              ${{ secrets.APP_URL }}
           SYNC_SECRET:          ${{ secrets.SYNC_SECRET }}
           VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_BYPASS_SECRET }}
-          ANALYSIS_SCHEDULE:    ${{ (github.event_name == 'schedule' || inputs.monthly) && 'monthly' || '' }}
+          # Which cron fired decides what gets queued; a manual start queues only what is ticked.
+          ANALYSIS_SCHEDULE:    ${{ (github.event.schedule == '0 5 1 * *' || inputs.monthly) && 'monthly' || (github.event.schedule == '0 6 * * 0' || inputs.weekly) && 'weekly' || '' }}
           ANALYSIS_EFFORT:      ${{ inputs.effort || 'high' }}
         run: npx tsx scripts/run-analysis.ts
